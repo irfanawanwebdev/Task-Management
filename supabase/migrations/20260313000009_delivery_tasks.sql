@@ -82,6 +82,13 @@ CREATE POLICY "delivery_tasks_update_assigned"
       WHERE ta.task_id = delivery_tasks.id
         AND ta.user_id = auth.uid()
     )
+  )
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM task_assignments ta
+      WHERE ta.task_id = delivery_tasks.id
+        AND ta.user_id = auth.uid()
+    )
   );
 
 -- ─── RLS: task_assignments ───────────────────────────────────────────────────

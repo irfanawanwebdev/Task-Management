@@ -1,4 +1,4 @@
--- Migration 5: user_roles table
+-- Migration 4: user_roles table
 -- Junction table — a user can hold multiple roles (e.g. owner + project_manager)
 
 CREATE TABLE IF NOT EXISTS user_roles (

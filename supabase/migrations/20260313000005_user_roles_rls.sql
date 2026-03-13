@@ -1,4 +1,4 @@
--- Migration 6: RLS policies for user_roles
+-- Migration 5: RLS policies for user_roles
 
 ALTER TABLE user_roles ENABLE ROW LEVEL SECURITY;
 

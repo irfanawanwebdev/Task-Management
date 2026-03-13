@@ -1,4 +1,7 @@
--- Migration 4: RLS policies for profiles
+-- Migration 6: RLS policies for profiles
+-- NOTE: Runs after user_roles table (migration 4) because profiles_update_admin
+-- queries user_roles directly. has_role() is not yet defined here (comes in migration 7),
+-- so a raw subquery is used intentionally.
 
 ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
 
