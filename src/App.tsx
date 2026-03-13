@@ -1,121 +1,204 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import heroImg from './assets/hero.png'
-import './App.css'
+import { lazy, Suspense } from 'react'
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { AuthProvider, useAuth } from '@/features/auth/AuthContext'
+import { ProtectedRoute } from '@/features/auth/ProtectedRoute'
+import AppLayout from '@/components/layout/AppLayout'
+import LoginPage from '@/features/auth/LoginPage'
+import { getDefaultRoute } from '@/lib/permissions'
 
-function App() {
-  const [count, setCount] = useState(0)
+// ── Lazy page imports ──────────────────────────────────────────────────────────
+const PMDashboard        = lazy(() => import('@/features/dashboard/PMDashboard'))
+const OwnerDashboard     = lazy(() => import('@/features/dashboard/OwnerDashboard'))
+const SpecialistDashboard= lazy(() => import('@/features/specialist/SpecialistDashboard'))
+const TasksPage          = lazy(() => import('@/features/tasks/TasksPage'))
+const ClientsPage        = lazy(() => import('@/features/clients/ClientsPage'))
+const ClientDetailPage   = lazy(() => import('@/features/clients/ClientDetailPage'))
+const RACIPage           = lazy(() => import('@/features/raci/RACIPage'))
+const AdminPage          = lazy(() => import('@/features/admin/AdminPage'))
 
-  return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.tsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
+// Phase 3–4 placeholders (to be built)
+const PlaceholderPage = ({ title }: { title: string }) => (
+  <div className="flex flex-col items-center justify-center h-64 gap-3">
+    <h1 className="text-xl font-semibold text-muted-foreground">{title}</h1>
+    <p className="text-sm text-muted-foreground/60">Coming in the next phase</p>
+  </div>
+)
 
-      <div className="ticks"></div>
+// ── Suspense fallback ──────────────────────────────────────────────────────────
+const PageLoader = () => (
+  <div className="flex h-64 items-center justify-center">
+    <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+  </div>
+)
 
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 1000 * 60 * 5, // 5 minutes
+      retry: 1,
+    },
+  },
+})
 
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
-  )
+function RootRedirect() {
+  const { role } = useAuth()
+  if (!role) return <Navigate to="/login" replace />
+  return <Navigate to={getDefaultRoute(role)} replace />
 }
 
-export default App
+export default function App() {
+  return (
+    <QueryClientProvider client={queryClient}>
+      <BrowserRouter>
+        <AuthProvider>
+          <Routes>
+            {/* Public */}
+            <Route path="/login" element={<LoginPage />} />
+
+            {/* Protected — inside AppLayout */}
+            <Route element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
+              <Route index element={<RootRedirect />} />
+
+              {/* PM Dashboard */}
+              <Route path="/"
+                element={
+                  <ProtectedRoute allowedRoles={['project_manager', 'owner']}>
+                    <Suspense fallback={<PageLoader />}>
+                      <PMDashboard />
+                    </Suspense>
+                  </ProtectedRoute>
+                }
+              />
+
+              {/* Owner Dashboard */}
+              <Route path="/owner"
+                element={
+                  <ProtectedRoute allowedRoles={['owner']}>
+                    <Suspense fallback={<PageLoader />}>
+                      <OwnerDashboard />
+                    </Suspense>
+                  </ProtectedRoute>
+                }
+              />
+
+              {/* Specialist Dashboard */}
+              <Route path="/specialist"
+                element={
+                  <Suspense fallback={<PageLoader />}>
+                    <SpecialistDashboard />
+                  </Suspense>
+                }
+              />
+
+              {/* Tasks */}
+              <Route path="/tasks"
+                element={
+                  <Suspense fallback={<PageLoader />}>
+                    <TasksPage />
+                  </Suspense>
+                }
+              />
+
+              {/* Clients */}
+              <Route path="/clients"
+                element={
+                  <ProtectedRoute allowedRoles={['project_manager', 'owner']}>
+                    <Suspense fallback={<PageLoader />}>
+                      <ClientsPage />
+                    </Suspense>
+                  </ProtectedRoute>
+                }
+              />
+              <Route path="/clients/:clientId"
+                element={
+                  <ProtectedRoute allowedRoles={['project_manager', 'owner']}>
+                    <Suspense fallback={<PageLoader />}>
+                      <ClientDetailPage />
+                    </Suspense>
+                  </ProtectedRoute>
+                }
+              />
+
+              {/* RACI Matrix */}
+              <Route path="/raci"
+                element={
+                  <ProtectedRoute allowedRoles={['project_manager', 'owner']}>
+                    <Suspense fallback={<PageLoader />}>
+                      <RACIPage />
+                    </Suspense>
+                  </ProtectedRoute>
+                }
+              />
+
+              {/* Blockers — Phase 3 */}
+              <Route path="/blockers"
+                element={<PlaceholderPage title="Blockers — Phase 3" />}
+              />
+
+              {/* Meetings & Reports — Phase 3 */}
+              <Route path="/meetings"
+                element={<PlaceholderPage title="Meetings & Reports — Phase 3" />}
+              />
+
+              {/* Team Workload — Phase 3 */}
+              <Route path="/workload"
+                element={
+                  <ProtectedRoute allowedRoles={['project_manager', 'owner']}>
+                    <PlaceholderPage title="Team Workload — Phase 3" />
+                  </ProtectedRoute>
+                }
+              />
+
+              {/* Internal Workspace — Phase 4 */}
+              <Route path="/instructions"
+                element={
+                  <ProtectedRoute allowedRoles={['project_manager', 'owner']}>
+                    <PlaceholderPage title="Internal Workspace — Phase 4" />
+                  </ProtectedRoute>
+                }
+              />
+              <Route path="/instructions/*"
+                element={
+                  <ProtectedRoute allowedRoles={['project_manager', 'owner']}>
+                    <PlaceholderPage title="Internal Workspace — Phase 4" />
+                  </ProtectedRoute>
+                }
+              />
+
+              {/* User Management */}
+              <Route path="/admin"
+                element={
+                  <ProtectedRoute allowedRoles={['project_manager', 'owner']}>
+                    <Suspense fallback={<PageLoader />}>
+                      <AdminPage />
+                    </Suspense>
+                  </ProtectedRoute>
+                }
+              />
+
+              {/* Settings — Phase 4 */}
+              <Route path="/settings"
+                element={
+                  <ProtectedRoute allowedRoles={['project_manager', 'owner']}>
+                    <PlaceholderPage title="Settings & Connectors — Phase 4" />
+                  </ProtectedRoute>
+                }
+              />
+            </Route>
+
+            {/* 404 */}
+            <Route path="*" element={
+              <div className="flex h-screen items-center justify-center bg-background">
+                <div className="text-center space-y-2">
+                  <h1 className="text-4xl font-bold text-muted-foreground">404</h1>
+                  <p className="text-muted-foreground">Page not found.</p>
+                </div>
+              </div>
+            } />
+          </Routes>
+        </AuthProvider>
+      </BrowserRouter>
+    </QueryClientProvider>
+  )
+}

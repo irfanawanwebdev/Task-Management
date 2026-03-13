@@ -1,111 +1,169 @@
-:root {
-  --text: #6b6375;
-  --text-h: #08060d;
-  --bg: #fff;
-  --border: #e5e4e7;
-  --code-bg: #f4f3ec;
-  --accent: #aa3bff;
-  --accent-bg: rgba(170, 59, 255, 0.1);
-  --accent-border: rgba(170, 59, 255, 0.5);
-  --social-bg: rgba(244, 243, 236, 0.5);
-  --shadow:
-    rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
 
-  --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --heading: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --mono: ui-monospace, Consolas, monospace;
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
-  font: 18px/145% var(--sans);
-  letter-spacing: 0.18px;
-  color-scheme: light dark;
-  color: var(--text);
-  background: var(--bg);
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-
-  @media (max-width: 1024px) {
-    font-size: 16px;
-  }
-}
-
-@media (prefers-color-scheme: dark) {
+@layer base {
   :root {
-    --text: #9ca3af;
-    --text-h: #f3f4f6;
-    --bg: #16171d;
-    --border: #2e303a;
-    --code-bg: #1f2028;
-    --accent: #c084fc;
-    --accent-bg: rgba(192, 132, 252, 0.15);
-    --accent-border: rgba(192, 132, 252, 0.5);
-    --social-bg: rgba(47, 48, 58, 0.5);
-    --shadow:
-      rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
-  }
+    --background: 228 25% 8%;
+    --foreground: 210 20% 90%;
+    --card: 228 20% 12%;
+    --card-foreground: 210 20% 90%;
+    --popover: 228 20% 12%;
+    --popover-foreground: 210 20% 90%;
+    --primary: 187 80% 48%;
+    --primary-foreground: 228 25% 8%;
+    --secondary: 228 18% 18%;
+    --secondary-foreground: 210 20% 90%;
+    --muted: 228 15% 16%;
+    --muted-foreground: 210 15% 55%;
+    --accent: 228 18% 22%;
+    --accent-foreground: 210 20% 90%;
+    --destructive: 0 72% 55%;
+    --destructive-foreground: 210 20% 98%;
+    --border: 228 18% 20%;
+    --input: 228 18% 20%;
+    --ring: 187 80% 48%;
+    --radius: 0.5rem;
 
-  #social .button-icon {
-    filter: invert(1) brightness(2);
-  }
-}
+    /* Status colors */
+    --success: 152 60% 45%;
+    --warning: 38 92% 55%;
+    --info: 210 80% 55%;
 
-#root {
-  width: 1126px;
-  max-width: 100%;
-  margin: 0 auto;
-  text-align: center;
-  border-inline: 1px solid var(--border);
-  min-height: 100svh;
-  display: flex;
-  flex-direction: column;
-  box-sizing: border-box;
-}
+    /* Health indicators */
+    --health-green: 152 60% 45%;
+    --health-yellow: 38 92% 55%;
+    --health-red: 0 72% 55%;
 
-body {
-  margin: 0;
-}
-
-h1,
-h2 {
-  font-family: var(--heading);
-  font-weight: 500;
-  color: var(--text-h);
-}
-
-h1 {
-  font-size: 56px;
-  letter-spacing: -1.68px;
-  margin: 32px 0;
-  @media (max-width: 1024px) {
-    font-size: 36px;
-    margin: 20px 0;
+    /* Completion thresholds */
+    --excellent: 152 60% 45%;
+    --very-good: 210 80% 55%;
+    --acceptable: 38 92% 55%;
+    --alert: 0 72% 55%;
   }
 }
-h2 {
-  font-size: 24px;
-  line-height: 118%;
-  letter-spacing: -0.24px;
-  margin: 0 0 8px;
-  @media (max-width: 1024px) {
-    font-size: 20px;
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground font-sans;
+    font-feature-settings: "rlig" 1, "calt" 1;
   }
 }
-p {
-  margin: 0;
-}
 
-code,
-.counter {
-  font-family: var(--mono);
-  display: inline-flex;
-  border-radius: 4px;
-  color: var(--text-h);
-}
+/* ========================================
+   JZ Operations Hub — Component Classes
+   ======================================== */
 
-code {
-  font-size: 15px;
-  line-height: 135%;
-  padding: 4px 8px;
-  background: var(--code-bg);
+@layer components {
+  /* --- Metric Cards --- */
+  .metric-card {
+    @apply bg-card border border-border rounded-lg p-4;
+  }
+  .metric-value {
+    @apply text-2xl font-bold font-mono tabular-nums;
+  }
+  .metric-label {
+    @apply text-xs font-medium uppercase tracking-wider text-muted-foreground;
+  }
+
+  /* --- Status Badges --- */
+  .status-badge {
+    @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium;
+  }
+  .status-not-started {
+    @apply status-badge bg-muted text-muted-foreground;
+  }
+  .status-in-progress {
+    @apply status-badge bg-info/20 text-info;
+  }
+  .status-blocked {
+    @apply status-badge bg-destructive/20 text-destructive;
+  }
+  .status-done {
+    @apply status-badge bg-success/20 text-[hsl(var(--success))];
+  }
+
+  /* --- Health Badges --- */
+  .health-green {
+    @apply status-badge bg-[hsl(var(--health-green))]/20 text-[hsl(var(--health-green))];
+  }
+  .health-yellow {
+    @apply status-badge bg-[hsl(var(--health-yellow))]/20 text-[hsl(var(--health-yellow))];
+  }
+  .health-red {
+    @apply status-badge bg-[hsl(var(--health-red))]/20 text-[hsl(var(--health-red))];
+  }
+
+  /* --- Completion % thresholds --- */
+  .completion-excellent  { @apply text-[hsl(var(--excellent))]; }
+  .completion-very-good  { @apply text-[hsl(var(--very-good))]; }
+  .completion-acceptable { @apply text-[hsl(var(--acceptable))]; }
+  .completion-alert      { @apply text-[hsl(var(--alert))]; }
+
+  /* --- Severity Badges --- */
+  .severity-high { @apply status-badge bg-destructive/20 text-destructive; }
+  .severity-med  { @apply status-badge bg-warning/20    text-[hsl(var(--warning))]; }
+  .severity-low  { @apply status-badge bg-muted         text-muted-foreground; }
+
+  /* --- Sidebar Link --- */
+  .sidebar-link {
+    @apply flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium
+           text-muted-foreground transition-colors
+           hover:bg-accent hover:text-foreground;
+  }
+  .sidebar-link-active {
+    @apply sidebar-link bg-accent text-foreground;
+  }
+
+  /* --- Data Table --- */
+  .data-table {
+    @apply w-full text-sm;
+  }
+  .data-table th {
+    @apply px-4 py-3 text-left text-xs font-medium uppercase tracking-wider
+           text-muted-foreground border-b border-border;
+  }
+  .data-table td {
+    @apply px-4 py-3 border-b border-border/50;
+  }
+  .data-table tbody tr {
+    @apply transition-colors hover:bg-accent/50 cursor-pointer;
+  }
+
+  /* --- View Tab --- */
+  .view-tab {
+    @apply px-4 py-2 text-sm font-medium rounded-md transition-colors
+           text-muted-foreground hover:text-foreground hover:bg-accent;
+  }
+  .view-tab-active {
+    @apply view-tab bg-primary/20 text-primary;
+  }
+
+  /* --- QA Gate Warning --- */
+  .qa-gate-warning {
+    @apply flex items-start gap-3 p-4 bg-warning/10 border-l-4
+           border-[hsl(var(--warning))] rounded-r-lg text-sm;
+  }
+
+  /* --- Section Header --- */
+  .section-header {
+    @apply text-xs font-semibold uppercase tracking-widest text-muted-foreground mb-3;
+  }
+
+  /* --- Workload Status --- */
+  .workload-healthy    { @apply text-[hsl(var(--health-green))] bg-[hsl(var(--health-green))]/10; }
+  .workload-busy       { @apply text-[hsl(var(--health-yellow))] bg-[hsl(var(--health-yellow))]/10; }
+  .workload-overloaded { @apply text-[hsl(var(--health-red))] bg-[hsl(var(--health-red))]/10; }
+
+  /* --- Blocker Aging Badge --- */
+  .aging-badge {
+    @apply px-1.5 py-0.5 rounded text-xs font-mono font-semibold;
+  }
+  .aging-critical { @apply aging-badge bg-destructive/20 text-destructive; }
+  .aging-normal   { @apply aging-badge bg-muted text-muted-foreground; }
 }
