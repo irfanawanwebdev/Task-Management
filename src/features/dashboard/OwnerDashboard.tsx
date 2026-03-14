@@ -6,7 +6,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { TrendingUp, CheckCircle2, AlertTriangle, Loader2, Target } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
-import type { Client, DeliveryTask, Blocker } from '@/lib/types'
+import type { Client, DeliveryTask, Blocker, Meeting, Report } from '@/lib/types'
 import { isOverdueEST, daysAgoEST, formatDateEST, todayDateEST } from '@/lib/timezone'
 import { getCompletionClass } from '@/lib/types'
 import { cn } from '@/lib/utils'
@@ -17,15 +17,25 @@ function useOwnerData() {
   return useQuery({
     queryKey: ['owner-dashboard'],
     queryFn: async () => {
-      const [clientsRes, tasksRes, blockersRes] = await Promise.all([
+      const now = new Date()
+      const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
+      const monthEnd   = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().slice(0, 10)
+
+      const [clientsRes, tasksRes, blockersRes, meetingsRes, reportsRes] = await Promise.all([
         supabase.from('clients').select('*').order('name'),
         supabase.from('delivery_tasks').select('*'),
         supabase.from('blockers').select('*, clients(name)').neq('status', 'Resolved').order('created_date'),
+        supabase.from('meetings').select('client_id, status, date')
+          .gte('date', monthStart).lte('date', monthEnd),
+        supabase.from('reports').select('client_id, status, due_date')
+          .gte('due_date', monthStart).lte('due_date', monthEnd),
       ])
       return {
         clients:  (clientsRes.data  ?? []) as unknown as Client[],
         tasks:    (tasksRes.data    ?? []) as unknown as DeliveryTask[],
         blockers: (blockersRes.data ?? []) as unknown as Blocker[],
+        meetings: (meetingsRes.data ?? []) as Pick<Meeting, 'client_id' | 'status' | 'date'>[],
+        reports:  (reportsRes.data  ?? []) as Pick<Report, 'client_id' | 'status' | 'due_date'>[],
       }
     },
   })
@@ -111,6 +121,8 @@ export default function OwnerDashboard() {
   const tasks    = data?.tasks    ?? []
   const clients  = data?.clients  ?? []
   const blockers = data?.blockers ?? []
+  const meetings = data?.meetings ?? []
+  const reports  = data?.reports  ?? []
 
   // KPI computations
   const allWithDue   = tasks.filter(t => t.due_date)
@@ -121,13 +133,25 @@ export default function OwnerDashboard() {
   const greenClients = clients.filter(c => c.health === 'Green').length
   const redClients   = clients.filter(c => c.health === 'Red').length
 
+  // Bonus condition 3: all active clients have at least one completed meeting this month
+  const activeClients = clients.filter(c => c.status === 'Active' || c.status === 'Onboarding')
+  const clientsWithMeetingThisMonth = new Set(
+    meetings.filter(m => m.status === 'Completed').map(m => m.client_id)
+  )
+  const allClientsHaveMeetings = activeClients.length > 0 &&
+    activeClients.every(c => clientsWithMeetingThisMonth.has(c.id))
+
+  // Bonus condition 4: all reports this month are Sent (no overdue/pending)
+  const allReportsSentOnTime = reports.length > 0 &&
+    reports.every(r => r.status === 'Sent')
+
   // Bonus conditions
   const highCriticalBlockers = blockers.filter(b => b.severity === 'High' && daysAgoEST(b.created_date) > 3)
   const bonusMet = [
     completion >= 90,
     highCriticalBlockers.length === 0,
-    false, // meetings — requires meetings data
-    false, // reports — requires reports data
+    allClientsHaveMeetings,
+    allReportsSentOnTime,
     redClients === 0,
   ]
 

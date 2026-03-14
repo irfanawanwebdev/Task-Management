@@ -7,12 +7,13 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
-  Loader2, AlertTriangle, CheckCircle2, X, ExternalLink,
+  Loader2, AlertTriangle, CheckCircle2, X, ExternalLink, Plus,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import type { Client, DeliveryTask } from '@/lib/types'
 import { isOverdueEST, formatDateEST, isDateTodayEST } from '@/lib/timezone'
 import { cn } from '@/lib/utils'
+import { CreateTaskDialog } from './CreateTaskDialog'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -55,6 +56,8 @@ function useClientList() {
 function TaskDetailDialog({ task, onClose }: { task: DeliveryTask; onClose: () => void }) {
   const queryClient = useQueryClient()
   const [qaWarning, setQaWarning] = useState(false)
+  const [outputUrl, setOutputUrl] = useState(task.output_link ?? '')
+  const [savingUrl, setSavingUrl] = useState(false)
 
   const updateStatus = useMutation({
     mutationFn: async (status: DeliveryTask['status']) => {
@@ -93,6 +96,13 @@ function TaskDetailDialog({ task, onClose }: { task: DeliveryTask; onClose: () =
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['tasks'] }),
   })
+
+  const saveOutputUrl = async () => {
+    setSavingUrl(true)
+    await supabase.from('delivery_tasks').update({ output_link: outputUrl.trim() || null } as never).eq('id', task.id)
+    queryClient.invalidateQueries({ queryKey: ['tasks'] })
+    setSavingUrl(false)
+  }
 
   const raciR = task.task_assignments?.filter(a => a.role_type === 'R') ?? []
   const raciA = task.task_assignments?.filter(a => a.role_type === 'A') ?? []
@@ -227,18 +237,26 @@ function TaskDetailDialog({ task, onClose }: { task: DeliveryTask; onClose: () =
           )}
 
           {/* Output Link */}
-          {task.output_link && (
-            <div>
-              <p className="section-header">Output / Attachment</p>
-              <a
-                href={task.output_link} target="_blank" rel="noopener noreferrer"
-                className="flex items-center gap-2 text-sm text-primary hover:underline"
-              >
-                <ExternalLink className="h-3.5 w-3.5" />
-                {task.output_link}
-              </a>
+          <div>
+            <p className="section-header">A/R Output URL</p>
+            <div className="flex gap-2 items-center">
+              <input
+                value={outputUrl}
+                onChange={e => setOutputUrl(e.target.value)}
+                onBlur={saveOutputUrl}
+                placeholder="https://… (paste output link)"
+                className="flex-1 px-3 py-1.5 bg-background border border-input rounded-md text-xs focus:outline-none focus:ring-2 focus:ring-ring"
+              />
+              {outputUrl && (
+                <a href={outputUrl} target="_blank" rel="noopener noreferrer"
+                  className="text-primary hover:text-primary/80"
+                >
+                  <ExternalLink className="h-4 w-4" />
+                </a>
+              )}
+              {savingUrl && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
             </div>
-          )}
+          </div>
 
           {/* Status Update */}
           <div>
@@ -383,6 +401,7 @@ export default function TasksPage() {
   const [activeView, setActiveView]     = useState<ViewTab>('timeline')
   const [clientFilter, setClientFilter] = useState('all')
   const [selectedTask, setSelectedTask] = useState<DeliveryTask | null>(null)
+  const [showCreate, setShowCreate]     = useState(false)
 
   const { data: tasks = [], isLoading } = useTasks(clientFilter)
   const { data: clients = [] }          = useClientList()
@@ -441,9 +460,25 @@ export default function TasksPage() {
 
   return (
     <div className="space-y-5">
-      <div>
-        <h1 className="text-2xl font-bold">Tasks</h1>
-        <p className="text-sm text-muted-foreground mt-1">Master delivery task database</p>
+      <CreateTaskDialog
+        open={showCreate}
+        onClose={() => setShowCreate(false)}
+        clients={clients}
+        presetClientId={clientFilter !== 'all' ? clientFilter : undefined}
+      />
+
+      <div className="flex items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold">Tasks</h1>
+          <p className="text-sm text-muted-foreground mt-1">Master delivery task database</p>
+        </div>
+        <button
+          onClick={() => setShowCreate(true)}
+          className="flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-sm hover:bg-primary/90 transition-colors"
+        >
+          <Plus className="h-4 w-4" />
+          Add Task
+        </button>
       </div>
 
       {/* Controls */}

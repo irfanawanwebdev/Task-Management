@@ -6,7 +6,7 @@
 
 import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   ArrowLeft, Plus, Loader2, CheckCircle2, AlertTriangle,
   Calendar, KeyRound, FileText, Star, BarChart2, ExternalLink,
@@ -18,6 +18,7 @@ import type {
 import { isOverdueEST, formatDateEST, daysAgoEST } from '@/lib/timezone'
 import { getCompletionClass } from '@/lib/types'
 import { cn } from '@/lib/utils'
+import { CreateTaskDialog } from '@/features/tasks/CreateTaskDialog'
 
 // ─── Data Hook ────────────────────────────────────────────────────────────────
 
@@ -352,7 +353,44 @@ function UpsellTab({ client, tasks }: { client: Client; tasks: DeliveryTask[] })
 
 // ─── Risk Log Tab ─────────────────────────────────────────────────────────────
 
-function RiskLogTab({ reviews }: { reviews: WeeklyReview[] }) {
+function RiskLogTab({ reviews, clientId }: { reviews: WeeklyReview[]; clientId: string }) {
+  const qc = useQueryClient()
+  const [showForm, setShowForm] = useState(false)
+  const [form, setForm] = useState({
+    review_date: new Date().toISOString().slice(0, 10),
+    week_number: Math.ceil((new Date().getDate()) / 7),
+    sentiment_observed: 'Neutral' as WeeklyReview['sentiment_observed'],
+    engagement_level: 'Medium' as WeeklyReview['engagement_level'],
+    confidence_in_retention: 'Moderate' as WeeklyReview['confidence_in_retention'],
+    hidden_risk_signals: '',
+    strategic_notes: '',
+    adjustment_score: 0,
+  })
+  const [formError, setFormError] = useState<string | null>(null)
+
+  const addReview = useMutation({
+    mutationFn: async () => {
+      const { error } = await supabase.from('weekly_reviews').insert({
+        client_id: clientId,
+        review_date: form.review_date,
+        week_number: form.week_number,
+        sentiment_observed: form.sentiment_observed,
+        engagement_level: form.engagement_level,
+        confidence_in_retention: form.confidence_in_retention,
+        hidden_risk_signals: form.hidden_risk_signals.trim() || null,
+        strategic_notes: form.strategic_notes.trim() || null,
+        adjustment_score: form.adjustment_score,
+      } as never)
+      if (error) throw new Error(error.message)
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['client-detail', clientId] })
+      setShowForm(false)
+      setFormError(null)
+    },
+    onError: (e: Error) => setFormError(e.message),
+  })
+
   const sentimentColor = (s: string) =>
     s === 'Positive' ? 'text-[hsl(var(--success))]' :
     s === 'Neutral'  ? 'text-muted-foreground' :
@@ -365,7 +403,127 @@ function RiskLogTab({ reviews }: { reviews: WeeklyReview[] }) {
 
   return (
     <div className="space-y-3">
-      {reviews.length === 0 ? (
+      {/* Add Review toggle */}
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+          Weekly Reviews ({reviews.length})
+        </p>
+        <button
+          onClick={() => setShowForm(s => !s)}
+          className="flex items-center gap-1 text-xs text-primary hover:underline"
+        >
+          <Plus className="h-3.5 w-3.5" />
+          {showForm ? 'Cancel' : 'Add Review'}
+        </button>
+      </div>
+
+      {/* Inline form */}
+      {showForm && (
+        <div className="p-4 bg-muted/30 border border-border rounded-lg space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium mb-1">Review Date</label>
+              <input
+                type="date"
+                value={form.review_date}
+                onChange={e => setForm(f => ({ ...f, review_date: e.target.value }))}
+                className="w-full px-3 py-1.5 bg-background border border-input rounded-md text-xs focus:outline-none focus:ring-2 focus:ring-ring"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium mb-1">Week #</label>
+              <input
+                type="number"
+                min={1}
+                max={52}
+                value={form.week_number}
+                onChange={e => setForm(f => ({ ...f, week_number: parseInt(e.target.value) || 1 }))}
+                className="w-full px-3 py-1.5 bg-background border border-input rounded-md text-xs focus:outline-none focus:ring-2 focus:ring-ring"
+              />
+            </div>
+          </div>
+          <div className="grid grid-cols-3 gap-3">
+            <div>
+              <label className="block text-xs font-medium mb-1">Sentiment</label>
+              <select
+                value={form.sentiment_observed}
+                onChange={e => setForm(f => ({ ...f, sentiment_observed: e.target.value as WeeklyReview['sentiment_observed'] }))}
+                className="w-full px-2 py-1.5 bg-background border border-input rounded-md text-xs focus:outline-none focus:ring-2 focus:ring-ring"
+              >
+                {['Positive', 'Neutral', 'Concerned', 'Negative'].map(v => <option key={v}>{v}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium mb-1">Engagement</label>
+              <select
+                value={form.engagement_level}
+                onChange={e => setForm(f => ({ ...f, engagement_level: e.target.value as WeeklyReview['engagement_level'] }))}
+                className="w-full px-2 py-1.5 bg-background border border-input rounded-md text-xs focus:outline-none focus:ring-2 focus:ring-ring"
+              >
+                {['High', 'Medium', 'Low', 'Disengaged'].map(v => <option key={v}>{v}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium mb-1">Retention</label>
+              <select
+                value={form.confidence_in_retention}
+                onChange={e => setForm(f => ({ ...f, confidence_in_retention: e.target.value as WeeklyReview['confidence_in_retention'] }))}
+                className="w-full px-2 py-1.5 bg-background border border-input rounded-md text-xs focus:outline-none focus:ring-2 focus:ring-ring"
+              >
+                {['Strong', 'Moderate', 'At Risk', 'Critical'].map(v => <option key={v}>{v}</option>)}
+              </select>
+            </div>
+          </div>
+          <div>
+            <label className="block text-xs font-medium mb-1">Risk Signals</label>
+            <input
+              value={form.hidden_risk_signals}
+              onChange={e => setForm(f => ({ ...f, hidden_risk_signals: e.target.value }))}
+              className="w-full px-3 py-1.5 bg-background border border-input rounded-md text-xs focus:outline-none focus:ring-2 focus:ring-ring"
+              placeholder="Any hidden risk signals?"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium mb-1">Strategic Notes</label>
+            <textarea
+              value={form.strategic_notes}
+              onChange={e => setForm(f => ({ ...f, strategic_notes: e.target.value }))}
+              rows={2}
+              className="w-full px-3 py-1.5 bg-background border border-input rounded-md text-xs focus:outline-none focus:ring-2 focus:ring-ring resize-none"
+              placeholder="Notes, observations…"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium mb-1">Score Adjustment</label>
+            <input
+              type="number"
+              value={form.adjustment_score}
+              onChange={e => setForm(f => ({ ...f, adjustment_score: parseInt(e.target.value) || 0 }))}
+              className="w-32 px-3 py-1.5 bg-background border border-input rounded-md text-xs focus:outline-none focus:ring-2 focus:ring-ring"
+              placeholder="0"
+            />
+          </div>
+          {formError && <p className="text-xs text-destructive">{formError}</p>}
+          <div className="flex justify-end gap-2">
+            <button
+              onClick={() => setShowForm(false)}
+              className="px-3 py-1.5 rounded-md text-xs border border-input hover:bg-accent transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={() => addReview.mutate()}
+              disabled={addReview.isPending}
+              className="px-3 py-1.5 rounded-md text-xs bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50 flex items-center gap-1.5"
+            >
+              {addReview.isPending && <Loader2 className="h-3 w-3 animate-spin" />}
+              Save Review
+            </button>
+          </div>
+        </div>
+      )}
+
+      {reviews.length === 0 && !showForm ? (
         <p className="text-sm text-muted-foreground">No weekly reviews yet.</p>
       ) : (
         reviews.map(r => (
@@ -415,6 +573,7 @@ export default function ClientDetailPage() {
   const { clientId } = useParams<{ clientId: string }>()
   const navigate = useNavigate()
   const [activeTab, setActiveTab] = useState<TabId>('onboarding')
+  const [showNewTask, setShowNewTask] = useState(false)
   const { data, isLoading, error } = useClientDetail(clientId!)
 
   if (isLoading) {
@@ -454,6 +613,12 @@ export default function ClientDetailPage() {
 
   return (
     <div className="space-y-5">
+      <CreateTaskDialog
+        open={showNewTask}
+        onClose={() => setShowNewTask(false)}
+        presetClientId={clientId}
+      />
+
       {/* Back + Header */}
       <div className="flex items-start gap-4">
         <button
@@ -476,7 +641,7 @@ export default function ClientDetailPage() {
           </p>
         </div>
         <button
-          onClick={() => {/* TODO: open task create dialog */}}
+          onClick={() => setShowNewTask(true)}
           className="flex items-center gap-2 px-3 py-1.5 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:opacity-90 shrink-0"
         >
           <Plus className="h-4 w-4" /> New Task
@@ -550,7 +715,7 @@ export default function ClientDetailPage() {
           {activeTab === 'reports'     && <ReportsTab     reports={reports} />}
           {activeTab === 'meetings'    && <MeetingsTab    meetings={meetings} />}
           {activeTab === 'upsell'      && <UpsellTab      client={client} tasks={tasks} />}
-          {activeTab === 'risk'        && <RiskLogTab     reviews={reviews} />}
+          {activeTab === 'risk'        && <RiskLogTab     reviews={reviews} clientId={clientId!} />}
         </div>
       </div>
     </div>
