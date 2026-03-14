@@ -16,8 +16,11 @@ const ClientsPage        = lazy(() => import('@/features/clients/ClientsPage'))
 const ClientDetailPage   = lazy(() => import('@/features/clients/ClientDetailPage'))
 const RACIPage           = lazy(() => import('@/features/raci/RACIPage'))
 const AdminPage          = lazy(() => import('@/features/admin/AdminPage'))
+const BlockersPage       = lazy(() => import('@/features/blockers/BlockersPage'))
+const MeetingsPage       = lazy(() => import('@/features/meetings/MeetingsPage'))
+const WorkloadPage       = lazy(() => import('@/features/workload/WorkloadPage'))
 
-// Phase 3–4 placeholders (to be built)
+// Phase 4 placeholders (to be built)
 const PlaceholderPage = ({ title }: { title: string }) => (
   <div className="flex flex-col items-center justify-center h-64 gap-3">
     <h1 className="text-xl font-semibold text-muted-foreground">{title}</h1>
@@ -131,21 +134,31 @@ export default function App() {
                 }
               />
 
-              {/* Blockers — Phase 3 */}
+              {/* Blockers */}
               <Route path="/blockers"
-                element={<PlaceholderPage title="Blockers — Phase 3" />}
+                element={
+                  <Suspense fallback={<PageLoader />}>
+                    <BlockersPage />
+                  </Suspense>
+                }
               />
 
-              {/* Meetings & Reports — Phase 3 */}
+              {/* Meetings & Reports */}
               <Route path="/meetings"
-                element={<PlaceholderPage title="Meetings & Reports — Phase 3" />}
+                element={
+                  <Suspense fallback={<PageLoader />}>
+                    <MeetingsPage />
+                  </Suspense>
+                }
               />
 
-              {/* Team Workload — Phase 3 */}
+              {/* Team Workload */}
               <Route path="/workload"
                 element={
                   <ProtectedRoute allowedRoles={['project_manager', 'owner']}>
-                    <PlaceholderPage title="Team Workload — Phase 3" />
+                    <Suspense fallback={<PageLoader />}>
+                      <WorkloadPage />
+                    </Suspense>
                   </ProtectedRoute>
                 }
               />

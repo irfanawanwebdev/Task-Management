@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cd \"E:\\\\JZ Smart Media\\\\Task Management\" && npm run build 2>&1)"
+    ]
+  }
+}
