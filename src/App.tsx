@@ -1,11 +1,10 @@
 import { lazy, Suspense } from 'react'
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { AuthProvider, useAuth } from '@/features/auth/AuthContext'
+import { AuthProvider } from '@/features/auth/AuthContext'
 import { ProtectedRoute } from '@/features/auth/ProtectedRoute'
 import AppLayout from '@/components/layout/AppLayout'
 import LoginPage from '@/features/auth/LoginPage'
-import { getDefaultRoute } from '@/lib/permissions'
 
 // ── Lazy page imports ──────────────────────────────────────────────────────────
 const PMDashboard        = lazy(() => import('@/features/dashboard/PMDashboard'))
@@ -18,15 +17,13 @@ const RACIPage           = lazy(() => import('@/features/raci/RACIPage'))
 const AdminPage          = lazy(() => import('@/features/admin/AdminPage'))
 const BlockersPage       = lazy(() => import('@/features/blockers/BlockersPage'))
 const MeetingsPage       = lazy(() => import('@/features/meetings/MeetingsPage'))
-const WorkloadPage       = lazy(() => import('@/features/workload/WorkloadPage'))
-
-// Phase 4 placeholders (to be built)
-const PlaceholderPage = ({ title }: { title: string }) => (
-  <div className="flex flex-col items-center justify-center h-64 gap-3">
-    <h1 className="text-xl font-semibold text-muted-foreground">{title}</h1>
-    <p className="text-sm text-muted-foreground/60">Coming in the next phase</p>
-  </div>
-)
+const WorkloadPage           = lazy(() => import('@/features/workload/WorkloadPage'))
+const InstructionsPage       = lazy(() => import('@/features/instructions/InstructionsPage'))
+const SOPPage                = lazy(() => import('@/features/instructions/SOPPage'))
+const SocialPage             = lazy(() => import('@/features/instructions/SocialPage'))
+const ReportsChecklistPage   = lazy(() => import('@/features/instructions/ReportsChecklistPage'))
+const ClientsDirectoryPage   = lazy(() => import('@/features/instructions/ClientsDirectoryPage'))
+const SettingsPage           = lazy(() => import('@/features/settings/SettingsPage'))
 
 // ── Suspense fallback ──────────────────────────────────────────────────────────
 const PageLoader = () => (
@@ -44,12 +41,6 @@ const queryClient = new QueryClient({
   },
 })
 
-function RootRedirect() {
-  const { role } = useAuth()
-  if (!role) return <Navigate to="/login" replace />
-  return <Navigate to={getDefaultRoute(role)} replace />
-}
-
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
@@ -61,7 +52,6 @@ export default function App() {
 
             {/* Protected — inside AppLayout */}
             <Route element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
-              <Route index element={<RootRedirect />} />
 
               {/* PM Dashboard */}
               <Route path="/"
@@ -163,18 +153,49 @@ export default function App() {
                 }
               />
 
-              {/* Internal Workspace — Phase 4 */}
+              {/* Internal Workspace */}
               <Route path="/instructions"
                 element={
                   <ProtectedRoute allowedRoles={['project_manager', 'owner']}>
-                    <PlaceholderPage title="Internal Workspace — Phase 4" />
+                    <Suspense fallback={<PageLoader />}>
+                      <InstructionsPage />
+                    </Suspense>
                   </ProtectedRoute>
                 }
               />
-              <Route path="/instructions/*"
+              <Route path="/instructions/sops"
                 element={
                   <ProtectedRoute allowedRoles={['project_manager', 'owner']}>
-                    <PlaceholderPage title="Internal Workspace — Phase 4" />
+                    <Suspense fallback={<PageLoader />}>
+                      <SOPPage />
+                    </Suspense>
+                  </ProtectedRoute>
+                }
+              />
+              <Route path="/instructions/social"
+                element={
+                  <ProtectedRoute allowedRoles={['project_manager', 'owner']}>
+                    <Suspense fallback={<PageLoader />}>
+                      <SocialPage />
+                    </Suspense>
+                  </ProtectedRoute>
+                }
+              />
+              <Route path="/instructions/reports"
+                element={
+                  <ProtectedRoute allowedRoles={['project_manager', 'owner']}>
+                    <Suspense fallback={<PageLoader />}>
+                      <ReportsChecklistPage />
+                    </Suspense>
+                  </ProtectedRoute>
+                }
+              />
+              <Route path="/instructions/clients"
+                element={
+                  <ProtectedRoute allowedRoles={['project_manager', 'owner']}>
+                    <Suspense fallback={<PageLoader />}>
+                      <ClientsDirectoryPage />
+                    </Suspense>
                   </ProtectedRoute>
                 }
               />
@@ -190,11 +211,13 @@ export default function App() {
                 }
               />
 
-              {/* Settings — Phase 4 */}
+              {/* Settings & Connectors */}
               <Route path="/settings"
                 element={
                   <ProtectedRoute allowedRoles={['project_manager', 'owner']}>
-                    <PlaceholderPage title="Settings & Connectors — Phase 4" />
+                    <Suspense fallback={<PageLoader />}>
+                      <SettingsPage />
+                    </Suspense>
                   </ProtectedRoute>
                 }
               />

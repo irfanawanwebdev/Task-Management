@@ -6,6 +6,7 @@ import {
 } from 'lucide-react'
 import { useAuth } from '@/features/auth/AuthContext'
 import { getNavForRole } from '@/lib/permissions'
+import { NotificationBell } from '@/components/NotificationBell'
 import { cn } from '@/lib/utils'
 
 const ICON_MAP: Record<string, React.ElementType> = {
@@ -61,7 +62,7 @@ export default function Sidebar() {
 
       {/* User footer */}
       <div className="border-t border-border p-3 space-y-2">
-        <div className="flex items-center gap-3 px-2 py-1">
+        <div className="flex items-center gap-2 px-2 py-1">
           <div className="h-7 w-7 rounded-full bg-primary/20 flex items-center justify-center shrink-0">
             <span className="text-primary text-xs font-semibold">
               {profile?.full_name?.charAt(0).toUpperCase() ?? '?'}
@@ -73,6 +74,7 @@ export default function Sidebar() {
               {role?.replace('_', ' ') ?? 'Viewer'}
             </p>
           </div>
+          <NotificationBell />
         </div>
         <button
           onClick={handleSignOut}

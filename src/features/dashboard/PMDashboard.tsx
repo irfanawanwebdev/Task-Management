@@ -14,12 +14,13 @@ import {
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import type {
-  DeliveryTask, Blocker, Meeting, Report, Client,
+  DeliveryTask, Blocker, Meeting, Report, Client, WeeklyReview,
 } from '@/lib/types'
 import {
   todayDateEST, isOverdueEST, formatDateEST, daysAgoEST, isDateTodayEST,
 } from '@/lib/timezone'
 import { getCompletionClass } from '@/lib/types'
+import { calcRiskScore } from '@/lib/riskEngine'
 import { cn } from '@/lib/utils'
 
 // ─── Data hooks ──────────────────────────────────────────────────────────────
@@ -70,6 +71,45 @@ function useUpcomingMeetings() {
         .limit(8)
       if (error) throw error
       return (data ?? []) as unknown as Meeting[]
+    },
+  })
+}
+
+function useAllMeetingsForRisk() {
+  return useQuery<Meeting[]>({
+    queryKey: ['all-meetings-risk'],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('meetings')
+        .select('id, client_id, type, status, date')
+        .order('date', { ascending: false })
+      return (data ?? []) as unknown as Meeting[]
+    },
+  })
+}
+
+function useAllReportsForRisk() {
+  return useQuery<Report[]>({
+    queryKey: ['all-reports-risk'],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('reports')
+        .select('id, client_id, status, due_date')
+        .order('due_date', { ascending: false })
+      return (data ?? []) as unknown as Report[]
+    },
+  })
+}
+
+function useWeeklyReviews() {
+  return useQuery<WeeklyReview[]>({
+    queryKey: ['weekly-reviews-risk'],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('weekly_reviews')
+        .select('*')
+        .order('review_date', { ascending: false })
+      return (data ?? []) as unknown as WeeklyReview[]
     },
   })
 }
@@ -148,27 +188,32 @@ function MetricCard({ label, value, threshold = 'default', icon, suffix }: Metri
 // ─── Risk Score Card ──────────────────────────────────────────────────────────
 
 interface RiskCardProps {
-  client: Client
-  tasks: DeliveryTask[]
+  client:   Client
+  tasks:    DeliveryTask[]
+  reviews:  WeeklyReview[]
+  meetings: Meeting[]
+  reports:  Report[]
 }
 
-function RiskCard({ client, tasks }: RiskCardProps) {
+function RiskCard({ client, tasks, reviews, meetings, reports }: RiskCardProps) {
   const [expanded, setExpanded] = useState(false)
 
-  const clientTasks = tasks.filter(t => t.client_id === client.id)
-  const done    = clientTasks.filter(t => t.status === 'Done' && t.due_date).length
-  const total   = clientTasks.filter(t => t.due_date).length
+  const clientTasks    = tasks.filter(t => t.client_id === client.id)
+  const clientReviews  = reviews.filter(r => r.client_id === client.id)
+  const clientMeetings = meetings.filter(m => m.client_id === client.id)
+  const clientReports  = reports.filter(r => r.client_id === client.id)
+
+  const risk = calcRiskScore(clientTasks, clientReviews, clientMeetings, clientReports)
+
   const overdue = clientTasks.filter(t => t.due_date && isOverdueEST(t.due_date) && t.status !== 'Done').length
   const blocked = clientTasks.filter(t => t.status === 'Blocked').length
 
-  // Simple delivery score (0–30)
-  const completionRate = total > 0 ? done / total : 1
-  const deliveryScore  = Math.round((1 - completionRate) * 15 + overdue * 3 + blocked * 5)
-  const clampedDelivery = Math.min(30, deliveryScore)
-
-  const healthClass = client.health === 'Green' ? 'health-green'
-    : client.health === 'Yellow' ? 'health-yellow'
+  const healthClass = risk.health === 'Green' ? 'health-green'
+    : risk.health === 'Yellow' ? 'health-yellow'
     : 'health-red'
+
+  const totalWithDue = clientTasks.filter(t => t.due_date).length
+  const done         = clientTasks.filter(t => t.status === 'Done' && t.due_date).length
 
   return (
     <div className="bg-card border border-border rounded-lg overflow-hidden">
@@ -177,37 +222,57 @@ function RiskCard({ client, tasks }: RiskCardProps) {
         className="w-full flex items-center justify-between p-3 hover:bg-accent/50 transition-colors text-left"
       >
         <div className="flex items-center gap-3 min-w-0">
-          <span className={healthClass}>{client.health}</span>
+          <span className={healthClass}>{risk.health}</span>
           <span className="text-sm font-medium truncate">{client.name}</span>
         </div>
         <div className="flex items-center gap-3 shrink-0 text-sm">
-          {overdue > 0 && (
-            <span className="text-xs text-destructive font-medium">{overdue} overdue</span>
-          )}
-          {blocked > 0 && (
-            <span className="text-xs text-[hsl(var(--warning))] font-medium">{blocked} blocked</span>
-          )}
+          <span className={cn(
+            'text-xs font-bold tabular-nums',
+            risk.health === 'Red' ? 'text-destructive' : risk.health === 'Yellow' ? 'text-[hsl(var(--warning))]' : 'text-[hsl(var(--success))]'
+          )}>
+            {risk.final_score}/100
+          </span>
+          {overdue > 0 && <span className="text-xs text-destructive font-medium">{overdue} overdue</span>}
+          {blocked > 0 && <span className="text-xs text-[hsl(var(--warning))] font-medium">{blocked} blocked</span>}
           {expanded ? <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" /> : <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />}
         </div>
       </button>
 
       {expanded && (
-        <div className="border-t border-border px-3 py-2 space-y-2 bg-background/30">
-          <div className="grid grid-cols-3 gap-2 text-xs">
-            <div>
-              <p className="text-muted-foreground">Completion</p>
-              <p className={cn('font-semibold', getCompletionClass(total > 0 ? Math.round((done/total)*100) : 100))}>
-                {total > 0 ? Math.round((done / total) * 100) : 100}%
-              </p>
+        <div className="border-t border-border px-3 py-3 bg-background/30 space-y-3">
+          {/* 4-Pillar breakdown */}
+          <div className="grid grid-cols-4 gap-2 text-xs">
+            <div className="text-center">
+              <p className="text-muted-foreground mb-0.5">Delivery</p>
+              <p className="font-bold text-base">{risk.delivery}<span className="text-muted-foreground font-normal">/30</span></p>
             </div>
-            <div>
-              <p className="text-muted-foreground">Delivery Risk</p>
-              <p className="font-semibold">{clampedDelivery}/30</p>
+            <div className="text-center">
+              <p className="text-muted-foreground mb-0.5">Sentiment</p>
+              <p className="font-bold text-base">{risk.sentiment}<span className="text-muted-foreground font-normal">/25</span></p>
             </div>
-            <div>
-              <p className="text-muted-foreground">Tasks</p>
-              <p className="font-semibold">{done}/{total}</p>
+            <div className="text-center">
+              <p className="text-muted-foreground mb-0.5">Performance</p>
+              <p className="font-bold text-base">{risk.performance}<span className="text-muted-foreground font-normal">/25</span></p>
             </div>
+            <div className="text-center">
+              <p className="text-muted-foreground mb-0.5">Visibility</p>
+              <p className="font-bold text-base">{risk.visibility}<span className="text-muted-foreground font-normal">/20</span></p>
+            </div>
+          </div>
+          {/* Completion + adjustment */}
+          <div className="flex items-center gap-4 text-xs text-muted-foreground pt-1 border-t border-border/40">
+            <span>
+              Completion:
+              <span className={cn('ml-1 font-semibold', getCompletionClass(totalWithDue > 0 ? Math.round((done / totalWithDue) * 100) : 100))}>
+                {totalWithDue > 0 ? Math.round((done / totalWithDue) * 100) : 100}%
+              </span>
+            </span>
+            <span>Tasks: <span className="font-medium text-foreground">{done}/{totalWithDue}</span></span>
+            {risk.adjustment !== 0 && (
+              <span>Adj: <span className={cn('font-medium', risk.adjustment > 0 ? 'text-destructive' : 'text-[hsl(var(--success))]')}>
+                {risk.adjustment > 0 ? '+' : ''}{risk.adjustment}
+              </span></span>
+            )}
           </div>
         </div>
       )}
@@ -292,11 +357,14 @@ function DailyChecklist() {
 // ─── Main Dashboard ───────────────────────────────────────────────────────────
 
 export default function PMDashboard() {
-  const { data: tasks,    isLoading: tasksLoading }    = useAllTasks()
-  const { data: blockers, isLoading: blockersLoading } = useAllBlockers()
-  const { data: meetings, isLoading: meetingsLoading } = useUpcomingMeetings()
-  const { data: reports,  isLoading: reportsLoading }  = useReportsDue()
-  const { data: clients }                              = useClients()
+  const { data: tasks,       isLoading: tasksLoading }       = useAllTasks()
+  const { data: blockers,    isLoading: blockersLoading }    = useAllBlockers()
+  const { data: meetings,    isLoading: meetingsLoading }    = useUpcomingMeetings()
+  const { data: reports,     isLoading: reportsLoading }     = useReportsDue()
+  const { data: clients,     isLoading: clientsLoading }     = useClients()
+  const { data: allMeetings  = [], isLoading: riskMtgLoading }  = useAllMeetingsForRisk()
+  const { data: allReports   = [], isLoading: riskRptLoading }  = useAllReportsForRisk()
+  const { data: allReviews   = [], isLoading: riskRevLoading }  = useWeeklyReviews()
 
   const today = todayDateEST()
 
@@ -318,6 +386,7 @@ export default function PMDashboard() {
     ? Math.round((highImpactDone.length / highImpactAll.length) * 100) : 0
 
   const isLoading = tasksLoading || blockersLoading || meetingsLoading || reportsLoading
+    || clientsLoading || riskMtgLoading || riskRptLoading || riskRevLoading
 
   return (
     <div className="space-y-6">
@@ -382,7 +451,14 @@ export default function PMDashboard() {
               <p className="section-header">Client Risk Scores</p>
               <div className="space-y-2">
                 {clients.map(c => (
-                  <RiskCard key={c.id} client={c} tasks={tasks ?? []} />
+                  <RiskCard
+                    key={c.id}
+                    client={c}
+                    tasks={tasks ?? []}
+                    reviews={allReviews}
+                    meetings={allMeetings}
+                    reports={allReports}
+                  />
                 ))}
               </div>
             </section>

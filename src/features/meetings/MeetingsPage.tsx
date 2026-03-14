@@ -8,7 +8,7 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Calendar, CheckCircle2, AlertTriangle, Plus, X, ExternalLink,
-  ChevronDown, Loader2, FileText, Users,
+  ChevronDown, Loader2, FileText, Users, Zap, Bell, RefreshCw,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import type { Meeting, Report, DeliveryTask, Client, Blocker } from '@/lib/types'
@@ -18,6 +18,27 @@ import {
 import { useAuth } from '@/features/auth/AuthContext'
 import { isPMOrOwner } from '@/lib/permissions'
 import { cn } from '@/lib/utils'
+
+// ─── Edge Function caller ─────────────────────────────────────────────────────
+
+async function callEdgeFunction(name: string, body: Record<string, unknown> = {}) {
+  const { data: { session } } = await supabase.auth.getSession()
+  const token = session?.access_token ?? ''
+  const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/${name}`
+  const res = await fetch(url, {
+    method:  'POST',
+    headers: {
+      'Content-Type':  'application/json',
+      'Authorization': `Bearer ${token}`,
+    },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: 'Unknown error' }))
+    throw new Error(err.error ?? `HTTP ${res.status}`)
+  }
+  return res.json()
+}
 
 // ─── Data Hooks ───────────────────────────────────────────────────────────────
 
@@ -420,6 +441,38 @@ export default function MeetingsPage() {
   const [reportTab, setReportTab]     = useState<ReportTab>('weekly-done')
   const [clientFilter, setClientFilter] = useState('all')
   const [showAdd, setShowAdd]         = useState(false)
+  const [actionMsg, setActionMsg]     = useState<{ ok: boolean; text: string } | null>(null)
+
+  const qcMeetings = useQueryClient()
+
+  const showMsg = (ok: boolean, text: string) => {
+    setActionMsg({ ok, text })
+    setTimeout(() => setActionMsg(null), 5000)
+  }
+
+  const generateMeetingsMut = useMutation({
+    mutationFn: () => callEdgeFunction('generate-meetings'),
+    onSuccess:  (d) => {
+      qcMeetings.invalidateQueries({ queryKey: ['meetings-all'] })
+      showMsg(true, `Generated ${d.created ?? 0} meeting records for this month.`)
+    },
+    onError: (e: Error) => showMsg(false, `Generate meetings failed: ${e.message}`),
+  })
+
+  const compileReportsMut = useMutation({
+    mutationFn: () => callEdgeFunction('compile-report', { batch: true }),
+    onSuccess:  (d) => {
+      qcMeetings.invalidateQueries({ queryKey: ['reports-all'] })
+      showMsg(true, `Compiled ${d.compiled ?? 0} reports from completed tasks.`)
+    },
+    onError: (e: Error) => showMsg(false, `Compile reports failed: ${e.message}`),
+  })
+
+  const sendRemindersMut = useMutation({
+    mutationFn: () => callEdgeFunction('send-reminders'),
+    onSuccess:  (d) => showMsg(true, `Sent ${d.sent ?? 0} notifications to ${d.targets ?? 0} staff.`),
+    onError:    (e: Error) => showMsg(false, `Reminders failed: ${e.message}`),
+  })
 
   const { data: meetings = [], isLoading: loadingMeetings } = useMeetings()
   const { data: clients  = [] }  = useClients()
@@ -543,15 +596,69 @@ export default function MeetingsPage() {
           </p>
         </div>
         {canEdit && (
-          <button
-            onClick={() => setShowAdd(true)}
-            className="inline-flex items-center gap-2 rounded bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
-          >
-            <Plus className="h-4 w-4" />
-            Schedule Meeting
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Automation actions */}
+            <button
+              onClick={() => generateMeetingsMut.mutate()}
+              disabled={generateMeetingsMut.isPending}
+              title="Auto-create mid-month and end-of-month meeting records for all active clients"
+              className="inline-flex items-center gap-1.5 rounded border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50 transition-colors"
+            >
+              {generateMeetingsMut.isPending
+                ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                : <Zap className="h-3.5 w-3.5" />
+              }
+              Generate Meetings
+            </button>
+            <button
+              onClick={() => compileReportsMut.mutate()}
+              disabled={compileReportsMut.isPending}
+              title="Auto-compile weekly reports from completed tasks for all active clients"
+              className="inline-flex items-center gap-1.5 rounded border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50 transition-colors"
+            >
+              {compileReportsMut.isPending
+                ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                : <RefreshCw className="h-3.5 w-3.5" />
+              }
+              Compile Reports
+            </button>
+            <button
+              onClick={() => sendRemindersMut.mutate()}
+              disabled={sendRemindersMut.isPending}
+              title="Trigger the daily reminder scan and notify PM/owner users of overdue items"
+              className="inline-flex items-center gap-1.5 rounded border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50 transition-colors"
+            >
+              {sendRemindersMut.isPending
+                ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                : <Bell className="h-3.5 w-3.5" />
+              }
+              Run Reminders
+            </button>
+            <button
+              onClick={() => setShowAdd(true)}
+              className="inline-flex items-center gap-2 rounded bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+            >
+              <Plus className="h-4 w-4" />
+              Schedule Meeting
+            </button>
+          </div>
         )}
       </div>
+
+      {/* Action feedback banner */}
+      {actionMsg && (
+        <div className={cn(
+          'rounded-lg border px-4 py-2.5 text-sm flex items-center justify-between gap-3',
+          actionMsg.ok
+            ? 'bg-green-50 border-green-200 text-green-800'
+            : 'bg-destructive/5 border-destructive/30 text-destructive',
+        )}>
+          <span>{actionMsg.text}</span>
+          <button onClick={() => setActionMsg(null)} className="shrink-0 hover:opacity-70">
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
 
       {/* 6 Top Metrics */}
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">

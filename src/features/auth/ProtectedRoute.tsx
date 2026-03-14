@@ -1,7 +1,7 @@
 import { Navigate, useLocation } from 'react-router-dom'
 import { useAuth } from './AuthContext'
 import type { AppRole } from '@/lib/types'
-import { canAccessRoute } from '@/lib/permissions'
+import { canAccessRoute, getDefaultRoute } from '@/lib/permissions'
 
 interface ProtectedRouteProps {
   children: React.ReactNode
@@ -41,11 +41,11 @@ export function ProtectedRoute({ children, allowedRoles }: ProtectedRouteProps) 
   }
 
   if (role && !canAccessRoute(role, location.pathname)) {
-    return <Navigate to="/" replace />
+    return <Navigate to={getDefaultRoute(role)} replace />
   }
 
   if (allowedRoles && role && !allowedRoles.includes(role)) {
-    return <Navigate to="/" replace />
+    return <Navigate to={getDefaultRoute(role)} replace />
   }
 
   return <>{children}</>

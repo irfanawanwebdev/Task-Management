@@ -54,6 +54,7 @@ function useClientList() {
 
 function TaskDetailDialog({ task, onClose }: { task: DeliveryTask; onClose: () => void }) {
   const queryClient = useQueryClient()
+  const [qaWarning, setQaWarning] = useState(false)
 
   const updateStatus = useMutation({
     mutationFn: async (status: DeliveryTask['status']) => {
@@ -62,8 +63,25 @@ function TaskDetailDialog({ task, onClose }: { task: DeliveryTask; onClose: () =
       const { error } = await supabase.from('delivery_tasks').update(upd as never).eq('id', task.id)
       if (error) throw error
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['tasks'] }),
+    onSuccess: () => {
+      setQaWarning(false)
+      queryClient.invalidateQueries({ queryKey: ['tasks'] })
+    },
   })
+
+  /** True if this task has A/R assignments and output is not yet logged */
+  const hasARAssignment = (task.task_assignments ?? []).some(
+    a => a.role_type === 'R' || a.role_type === 'A',
+  )
+  const needsQAGate = hasARAssignment && !task.ar_output_logged
+
+  function handleMarkDone() {
+    if (needsQAGate) {
+      setQaWarning(true)
+    } else {
+      updateStatus.mutate('Done')
+    }
+  }
 
   const toggleAR = useMutation({
     mutationFn: async () => {
@@ -225,8 +243,45 @@ function TaskDetailDialog({ task, onClose }: { task: DeliveryTask; onClose: () =
           {/* Status Update */}
           <div>
             <p className="section-header">Update Status</p>
+
+            {/* QA Gate confirmation */}
+            {qaWarning && (
+              <div className="qa-gate-warning mb-3">
+                <AlertTriangle className="h-4 w-4 text-[hsl(var(--warning))] shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <p className="font-medium text-sm">QA Gate: A/R Output Not Logged</p>
+                  <p className="text-xs mt-0.5 text-muted-foreground">
+                    This task has Accountable/Responsible assignments and the output has not been logged yet.
+                    Log the output before marking Done, or override to proceed anyway.
+                  </p>
+                  <div className="flex gap-2 mt-2">
+                    <button
+                      onClick={() => { toggleAR.mutate(); setQaWarning(false) }}
+                      disabled={toggleAR.isPending}
+                      className="px-3 py-1 rounded text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90"
+                    >
+                      Log Output First
+                    </button>
+                    <button
+                      onClick={() => updateStatus.mutate('Done')}
+                      disabled={updateStatus.isPending}
+                      className="px-3 py-1 rounded text-xs font-medium border border-destructive/50 text-destructive hover:bg-destructive/10"
+                    >
+                      Override — Mark Done Anyway
+                    </button>
+                    <button
+                      onClick={() => setQaWarning(false)}
+                      className="px-3 py-1 rounded text-xs text-muted-foreground hover:text-foreground"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div className="flex gap-2 flex-wrap">
-              {(['Not Started', 'In Progress', 'Blocked', 'Done'] as const).map(s => (
+              {(['Not Started', 'In Progress', 'Blocked'] as const).map(s => (
                 <button
                   key={s}
                   onClick={() => updateStatus.mutate(s)}
@@ -241,6 +296,20 @@ function TaskDetailDialog({ task, onClose }: { task: DeliveryTask; onClose: () =
                   {s}
                 </button>
               ))}
+              <button
+                onClick={handleMarkDone}
+                disabled={updateStatus.isPending || task.status === 'Done'}
+                className={cn(
+                  'px-3 py-1.5 rounded-md text-xs font-medium border transition-colors',
+                  task.status === 'Done'
+                    ? 'border-primary/50 bg-primary/10 text-primary cursor-default'
+                    : needsQAGate
+                    ? 'border-[hsl(var(--warning))]/50 bg-[hsl(var(--warning))]/10 text-[hsl(var(--warning))] hover:bg-[hsl(var(--warning))]/20'
+                    : 'border-border bg-muted text-muted-foreground hover:text-foreground hover:border-primary/30'
+                )}
+              >
+                Done {needsQAGate && '⚠'}
+              </button>
             </div>
           </div>
         </div>
