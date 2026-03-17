@@ -77,10 +77,11 @@ export function hasPageAccess(
   // Specialist dashboard is always accessible
   if (path === '/specialist' || path.startsWith('/specialist/')) return true
 
-  if (profile && profile.page_access.length > 0) {
+  const pageAccess = profile?.page_access ?? []
+  if (profile && pageAccess.length > 0) {
     const pageKey = getPageKeyForPath(path)
     if (!pageKey) return true // unknown path — allow through
-    return profile.page_access.includes(pageKey)
+    return pageAccess.includes(pageKey)
   }
 
   // Fallback: role-based
@@ -103,8 +104,9 @@ function getPageKeyForPath(path: string): string | null {
  * If page_access is empty, falls back to role-based nav.
  */
 export function getNavForProfile(profile: Profile | null, role: AppRole | null): NavItem[] {
-  if (profile && profile.page_access.length > 0) {
-    return ALL_NAV_ITEMS.filter(item => profile.page_access.includes(item.pageKey))
+  const pageAccess = profile?.page_access ?? []
+  if (profile && pageAccess.length > 0) {
+    return ALL_NAV_ITEMS.filter(item => pageAccess.includes(item.pageKey))
   }
   // Fallback to role-based
   return getNavForRole(role ?? 'viewer')

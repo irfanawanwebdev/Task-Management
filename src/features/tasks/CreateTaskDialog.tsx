@@ -10,6 +10,7 @@ import { X, Loader2 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import type { Client, Profile, Workstream } from '@/lib/types'
 import { WORKSTREAMS } from '@/lib/types'
+import { useNavigationGuard } from '@/lib/useNavigationGuard'
 import { cn } from '@/lib/utils'
 
 interface CreateTaskForm {
@@ -46,6 +47,8 @@ interface Props {
 }
 
 export function CreateTaskDialog({ open, onClose, presetClientId, clients = [] }: Props) {
+  useNavigationGuard(open)
+
   const qc = useQueryClient()
   const [form, setForm] = useState<CreateTaskForm>({
     ...BLANK, client_id: presetClientId ?? '',

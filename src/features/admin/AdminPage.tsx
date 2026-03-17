@@ -13,6 +13,7 @@ import type { AppDepartment, AppRole, Profile } from '@/lib/types'
 import { ALL_ROLES } from '@/lib/types'
 import { useAuth } from '@/features/auth/AuthContext'
 import { PAGE_KEYS } from '@/lib/permissions'
+import { useNavigationGuard } from '@/lib/useNavigationGuard'
 import { cn } from '@/lib/utils'
 
 // ─── Types ─────────────────────────────────────────────────────────────────
@@ -125,6 +126,8 @@ interface AddUserDialogProps {
 }
 
 function AddUserDialog({ onClose, onSuccess }: AddUserDialogProps) {
+  useNavigationGuard(true) // block navigation while dialog is open
+
   const [name, setName]                 = useState('')
   const [email, setEmail]               = useState('')
   const [password, setPassword]         = useState('')
@@ -533,11 +536,11 @@ function MemberCard({ member, canEdit }: { member: TeamMember; canEdit: boolean 
 export default function AdminPage() {
   const [showAddUser, setShowAddUser] = useState(false)
   const queryClient = useQueryClient()
-  const { profile } = useAuth()
+  const { profile, role } = useAuth()
   const { data: members, isLoading, error } = useTeamMembers()
 
-  // Only users with can_create_users flag can add/edit users (§7.2)
-  const canEdit = profile?.can_create_users === true
+  // Owners always have edit rights; others need can_create_users flag (§7.2)
+  const canEdit = role === 'owner' || profile?.can_create_users === true
 
   const activeCount   = members?.filter(m => m.is_active).length ?? 0
   const inactiveCount = members?.filter(m => !m.is_active).length ?? 0

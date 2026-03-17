@@ -13,6 +13,7 @@ import type { Client, DeliveryTask, Meeting, Profile, Workstream } from '@/lib/t
 import { WORKSTREAMS } from '@/lib/types'
 import { isOverdueEST, formatDateEST } from '@/lib/timezone'
 import { getCompletionClass } from '@/lib/types'
+import { useNavigationGuard } from '@/lib/useNavigationGuard'
 import { cn } from '@/lib/utils'
 
 // ─── Data Hook ────────────────────────────────────────────────────────────────
@@ -65,6 +66,8 @@ const BLANK_FORM: AddClientForm = {
 }
 
 function AddClientDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+  useNavigationGuard(open)
+
   const qc = useQueryClient()
   const [form, setForm] = useState<AddClientForm>(BLANK_FORM)
   const [error, setError] = useState<string | null>(null)

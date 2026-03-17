@@ -16,6 +16,7 @@ import { WORKSTREAMS } from '@/lib/types'
 import { formatDateEST, daysAgoEST, todayDateEST } from '@/lib/timezone'
 import { useAuth } from '@/features/auth/AuthContext'
 import { isPMOrOwner } from '@/lib/permissions'
+import { useNavigationGuard } from '@/lib/useNavigationGuard'
 import { cn } from '@/lib/utils'
 
 // ─── Data Hooks ───────────────────────────────────────────────────────────────
@@ -276,6 +277,8 @@ const EMPTY_FORM = {
 }
 
 function AddBlockerDialog({ clients, onClose }: { clients: Client[]; onClose: () => void }) {
+  useNavigationGuard(true)
+
   const queryClient = useQueryClient()
   const [form, setForm] = useState(EMPTY_FORM)
   const [error, setError] = useState('')

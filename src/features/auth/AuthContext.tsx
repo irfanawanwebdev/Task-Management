@@ -81,10 +81,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     })
 
-    // Listen for auth changes
+    // Listen for auth changes (token refresh, sign-in/out)
+    // Do NOT set isLoading: true here — that would unmount all open dialogs/modals
+    // via ProtectedRoute's loading spinner. isLoading is only true on initial mount.
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session?.user) {
-        setState(prev => ({ ...prev, session, user: session.user, isLoading: true }))
+        setState(prev => ({ ...prev, session, user: session.user }))
         loadProfile(session.user.id)
       } else {
         setState({

@@ -17,6 +17,7 @@ import {
 } from '@/lib/timezone'
 import { useAuth } from '@/features/auth/AuthContext'
 import { isPMOrOwner } from '@/lib/permissions'
+import { useNavigationGuard } from '@/lib/useNavigationGuard'
 import { cn } from '@/lib/utils'
 
 // ─── Edge Function caller ─────────────────────────────────────────────────────
@@ -272,6 +273,8 @@ const MEETING_TYPES: Meeting['type'][] = [
 ]
 
 function AddMeetingDialog({ clients, onClose }: { clients: Client[]; onClose: () => void }) {
+  useNavigationGuard(true)
+
   const queryClient = useQueryClient()
   const [form, setForm] = useState({
     client_id: '',
