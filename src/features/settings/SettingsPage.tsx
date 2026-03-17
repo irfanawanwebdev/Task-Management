@@ -192,10 +192,7 @@ function ConnectorCard({
     if (connector.id === 'google-calendar') {
       setConnecting(true)
       try {
-        const { data: { session } } = await supabase.auth.getSession()
-        const res = await supabase.functions.invoke('google-calendar-auth', {
-          headers: { Authorization: `Bearer ${session?.access_token}` },
-        })
+        const res = await supabase.functions.invoke('google-calendar-auth')
         if (res.data?.url) {
           window.location.href = res.data.url
         } else {
