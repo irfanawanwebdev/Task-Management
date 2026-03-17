@@ -187,9 +187,8 @@ const router = createBrowserRouter(
     { path: '*', element: <NotFound /> },
   ],
   {
-    future: {
-      v7_relativeSplatPath: true,
-    },
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    future: { v7_relativeSplatPath: true, v7_startTransition: true } as any,
   }
 )
 
