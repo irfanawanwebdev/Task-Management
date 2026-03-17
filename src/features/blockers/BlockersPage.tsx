@@ -21,6 +21,24 @@ import { cn } from '@/lib/utils'
 // ─── Data Hooks ───────────────────────────────────────────────────────────────
 
 function useBlockers() {
+  const { profile, role } = useAuth()
+  const isManager = role ? isPMOrOwner(role) : false
+
+  // For non-managers: fetch user's assigned task IDs to scope visibility (§6.2)
+  const { data: myTaskIds = [] } = useQuery<string[]>({
+    queryKey: ['my-task-ids', profile?.user_id],
+    queryFn: async () => {
+      if (!profile?.user_id) return []
+      const { data, error } = await supabase
+        .from('task_assignments')
+        .select('task_id')
+        .eq('user_id', profile.user_id)
+      if (error) return []
+      return (data ?? []).map((r: { task_id: string }) => r.task_id)
+    },
+    enabled: !isManager && !!profile?.user_id,
+  })
+
   return useQuery<Blocker[]>({
     queryKey: ['blockers-page'],
     queryFn: async () => {
@@ -30,6 +48,15 @@ function useBlockers() {
         .order('created_at', { ascending: false })
       if (error) throw error
       return (data ?? []) as unknown as Blocker[]
+    },
+    select: (data) => {
+      // PM/Owner: see all blockers
+      if (isManager) return data
+      // Specialists: see only blockers where they are the owner OR the blocker's task is assigned to them
+      return data.filter(b =>
+        b.owner_id === profile?.id ||
+        (b.task_id && myTaskIds.includes(b.task_id))
+      )
     },
   })
 }

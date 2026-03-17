@@ -1,7 +1,7 @@
 import { Navigate, useLocation } from 'react-router-dom'
 import { useAuth } from './AuthContext'
 import type { AppRole } from '@/lib/types'
-import { canAccessRoute, getDefaultRoute } from '@/lib/permissions'
+import { hasPageAccess, getDefaultRoute } from '@/lib/permissions'
 
 interface ProtectedRouteProps {
   children: React.ReactNode
@@ -40,8 +40,9 @@ export function ProtectedRoute({ children, allowedRoles }: ProtectedRouteProps) 
     )
   }
 
-  if (role && !canAccessRoute(role, location.pathname)) {
-    return <Navigate to={getDefaultRoute(role)} replace />
+  // Per-user page access check (falls back to role-based if page_access is empty)
+  if (!hasPageAccess(profile, role, location.pathname)) {
+    return <Navigate to={role ? getDefaultRoute(role) : '/login'} replace />
   }
 
   if (allowedRoles && role && !allowedRoles.includes(role)) {

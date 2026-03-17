@@ -9,7 +9,7 @@ import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Users, Loader2, Search, Plus, X } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
-import type { Client, DeliveryTask, Meeting, Workstream } from '@/lib/types'
+import type { Client, DeliveryTask, Meeting, Profile, Workstream } from '@/lib/types'
 import { WORKSTREAMS } from '@/lib/types'
 import { isOverdueEST, formatDateEST } from '@/lib/timezone'
 import { getCompletionClass } from '@/lib/types'
@@ -44,6 +44,8 @@ function useClientsPageData() {
 
 interface AddClientForm {
   name: string
+  owner_pm: string
+  account_manager_name: string
   status: string
   health: string
   start_date: string
@@ -55,7 +57,8 @@ interface AddClientForm {
 }
 
 const BLANK_FORM: AddClientForm = {
-  name: '', status: 'Active', health: 'Green',
+  name: '', owner_pm: '', account_manager_name: '',
+  status: 'Onboarding', health: 'Green',
   start_date: new Date().toISOString().slice(0, 10),
   primary_workstreams: [],
   notes: '', drive_folder_url: '', credentials_sheet_url: '', website_url: '',
@@ -66,10 +69,24 @@ function AddClientDialog({ open, onClose }: { open: boolean; onClose: () => void
   const [form, setForm] = useState<AddClientForm>(BLANK_FORM)
   const [error, setError] = useState<string | null>(null)
 
+  const { data: profiles = [] } = useQuery<Profile[]>({
+    queryKey: ['profiles-active'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('profiles').select('id, user_id, full_name, department, is_active, page_access, can_create_users, created_at, updated_at')
+        .eq('is_active', true).order('full_name')
+      if (error) throw error
+      return (data ?? []) as unknown as Profile[]
+    },
+    enabled: open,
+  })
+
   const mutation = useMutation({
     mutationFn: async (data: AddClientForm) => {
       const { error } = await supabase.from('clients').insert({
         name: data.name.trim(),
+        owner_pm: data.owner_pm.trim() || null,
+        account_manager_name: data.account_manager_name.trim() || null,
         status: data.status,
         health: data.health,
         start_date: data.start_date,
@@ -102,6 +119,8 @@ function AddClientDialog({ open, onClose }: { open: boolean; onClose: () => void
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (!form.name.trim()) { setError('Client name is required.'); return }
+    if (!form.owner_pm.trim()) { setError('Owner PM is required.'); return }
+    if (!form.account_manager_name.trim()) { setError('Account Manager is required.'); return }
     setError(null)
     mutation.mutate(form)
   }
@@ -130,6 +149,32 @@ function AddClientDialog({ open, onClose }: { open: boolean; onClose: () => void
               className="w-full px-3 py-1.5 bg-background border border-input rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-ring"
               placeholder="e.g. Acme Corp"
             />
+          </div>
+
+          {/* Owner PM + Account Manager */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium mb-1">Owner PM <span className="text-destructive">*</span></label>
+              <select
+                value={form.owner_pm}
+                onChange={e => setForm(f => ({ ...f, owner_pm: e.target.value }))}
+                className="w-full px-3 py-1.5 bg-background border border-input rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              >
+                <option value="">Select person…</option>
+                {profiles.map(p => <option key={p.user_id} value={p.full_name}>{p.full_name}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium mb-1">Account Manager <span className="text-destructive">*</span></label>
+              <select
+                value={form.account_manager_name}
+                onChange={e => setForm(f => ({ ...f, account_manager_name: e.target.value }))}
+                className="w-full px-3 py-1.5 bg-background border border-input rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              >
+                <option value="">Select person…</option>
+                {profiles.map(p => <option key={p.user_id} value={p.full_name}>{p.full_name}</option>)}
+              </select>
+            </div>
           </div>
 
           {/* Status + Health */}

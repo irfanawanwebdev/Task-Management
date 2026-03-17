@@ -31,6 +31,8 @@ export interface Database {
         full_name: string
         department: string | null
         is_active: boolean
+        page_access: string[]
+        can_create_users: boolean
         created_at: string
         updated_at: string
       }>
@@ -49,6 +51,7 @@ export interface Database {
         account_manager_id: string | null
         primary_workstreams: string[]
         notes: string | null
+        account_manager_name: string | null
         drive_folder_url: string | null
         credentials_sheet_url: string | null
         website_url: string | null

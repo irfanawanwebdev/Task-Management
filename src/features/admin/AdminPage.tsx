@@ -1,15 +1,18 @@
 /**
  * Admin / User Management — JZ Operations Hub
- * Allows Owner and PM to manage team members: create users, assign/remove roles,
- * activate/deactivate accounts.
+ * Allows authorized users (Jordan, Alice, Kashif — those with can_create_users=true)
+ * to manage team members: create users, assign roles, set page access, activate/deactivate.
+ * Everyone else with admin page access sees a read-only view (§7.2).
  */
 
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { UserPlus, X, Loader2, ShieldCheck, Users } from 'lucide-react'
+import { UserPlus, X, Loader2, ShieldCheck, Users, ChevronDown, ChevronUp } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import type { AppDepartment, AppRole, Profile } from '@/lib/types'
 import { ALL_ROLES } from '@/lib/types'
+import { useAuth } from '@/features/auth/AuthContext'
+import { PAGE_KEYS } from '@/lib/permissions'
 import { cn } from '@/lib/utils'
 
 // ─── Types ─────────────────────────────────────────────────────────────────
@@ -41,6 +44,21 @@ const ROLE_LABELS: Record<AppRole, string> = {
   viewer:          'Viewer',
 }
 
+/** All configurable page access options with display labels */
+const PAGE_ACCESS_OPTIONS: { key: string; label: string }[] = [
+  { key: PAGE_KEYS.OWNER_DASHBOARD, label: 'Executive Dashboard' },
+  { key: PAGE_KEYS.PM_DASHBOARD,    label: 'PM Dashboard' },
+  { key: PAGE_KEYS.CLIENTS,         label: 'Clients' },
+  { key: PAGE_KEYS.TASKS,           label: 'Tasks' },
+  { key: PAGE_KEYS.RACI,            label: 'RACI Matrix' },
+  { key: PAGE_KEYS.MEETINGS,        label: 'Meetings & Reports' },
+  { key: PAGE_KEYS.BLOCKERS,        label: 'Blockers' },
+  { key: PAGE_KEYS.WORKLOAD,        label: 'Team Workload' },
+  { key: PAGE_KEYS.INSTRUCTIONS,    label: 'Internal Workspace' },
+  { key: PAGE_KEYS.ADMIN,           label: 'User Management' },
+  { key: PAGE_KEYS.SETTINGS,        label: 'Settings' },
+]
+
 // ─── Data Hooks ─────────────────────────────────────────────────────────────
 
 function useTeamMembers() {
@@ -66,6 +84,39 @@ function useTeamMembers() {
   })
 }
 
+// ─── Page Access Toggle Group ───────────────────────────────────────────────
+
+function PageAccessSelector({
+  value,
+  onChange,
+}: {
+  value: string[]
+  onChange: (next: string[]) => void
+}) {
+  const toggle = (key: string) =>
+    onChange(value.includes(key) ? value.filter(k => k !== key) : [...value, key])
+
+  return (
+    <div className="flex flex-wrap gap-2">
+      {PAGE_ACCESS_OPTIONS.map(opt => (
+        <button
+          key={opt.key}
+          type="button"
+          onClick={() => toggle(opt.key)}
+          className={cn(
+            'px-2.5 py-1 rounded-full text-xs font-medium border transition-colors',
+            value.includes(opt.key)
+              ? 'bg-primary/20 border-primary/50 text-primary'
+              : 'bg-muted border-border text-muted-foreground hover:text-foreground',
+          )}
+        >
+          {opt.label}
+        </button>
+      ))}
+    </div>
+  )
+}
+
 // ─── Add User Dialog ─────────────────────────────────────────────────────────
 
 interface AddUserDialogProps {
@@ -74,18 +125,18 @@ interface AddUserDialogProps {
 }
 
 function AddUserDialog({ onClose, onSuccess }: AddUserDialogProps) {
-  const [name, setName]           = useState('')
-  const [email, setEmail]         = useState('')
-  const [password, setPassword]   = useState('')
-  const [dept, setDept]           = useState<AppDepartment>('operations')
-  const [roles, setRoles]         = useState<AppRole[]>(['viewer'])
-  const [error, setError]         = useState<string | null>(null)
-  const [isLoading, setIsLoading] = useState(false)
+  const [name, setName]                 = useState('')
+  const [email, setEmail]               = useState('')
+  const [password, setPassword]         = useState('')
+  const [dept, setDept]                 = useState<AppDepartment>('operations')
+  const [roles, setRoles]               = useState<AppRole[]>(['viewer'])
+  const [pageAccess, setPageAccess]     = useState<string[]>([])
+  const [canCreate, setCanCreate]       = useState(false)
+  const [error, setError]               = useState<string | null>(null)
+  const [isLoading, setIsLoading]       = useState(false)
 
   const toggleRole = (r: AppRole) => {
-    setRoles(prev =>
-      prev.includes(r) ? prev.filter(x => x !== r) : [...prev, r]
-    )
+    setRoles(prev => prev.includes(r) ? prev.filter(x => x !== r) : [...prev, r])
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -95,7 +146,15 @@ function AddUserDialog({ onClose, onSuccess }: AddUserDialogProps) {
     setIsLoading(true)
 
     const { error: fnErr } = await supabase.functions.invoke('create-user', {
-      body: { full_name: name, email, password, department: dept, roles },
+      body: {
+        full_name: name,
+        email,
+        password,
+        department: dept,
+        roles,
+        page_access: pageAccess,
+        can_create_users: canCreate,
+      },
     })
 
     if (fnErr) {
@@ -109,24 +168,26 @@ function AddUserDialog({ onClose, onSuccess }: AddUserDialogProps) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm">
-      <div className="relative w-full max-w-md bg-card border border-border rounded-xl shadow-xl p-6 space-y-5">
-        <div className="flex items-center justify-between">
+      <div className="relative w-full max-w-lg bg-card border border-border rounded-xl shadow-xl flex flex-col max-h-[90vh]">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-border shrink-0">
           <h2 className="text-lg font-semibold">Add Team Member</h2>
           <button onClick={onClose} className="text-muted-foreground hover:text-foreground">
             <X className="h-4 w-4" />
           </button>
         </div>
 
-        {error && (
-          <div className="p-3 bg-destructive/10 border border-destructive/30 rounded-lg text-sm text-destructive">
-            {error}
-          </div>
-        )}
+        {/* Scrollable body */}
+        <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
+          {error && (
+            <div className="p-3 bg-destructive/10 border border-destructive/30 rounded-lg text-sm text-destructive">
+              {error}
+            </div>
+          )}
 
-        <form onSubmit={handleSubmit} className="space-y-4">
           {/* Name */}
           <div className="space-y-1.5">
-            <label className="text-sm font-medium">Full Name</label>
+            <label className="text-sm font-medium">Full Name <span className="text-destructive">*</span></label>
             <input
               type="text" value={name} onChange={e => setName(e.target.value)}
               placeholder="Jane Smith" required
@@ -136,7 +197,7 @@ function AddUserDialog({ onClose, onSuccess }: AddUserDialogProps) {
 
           {/* Email */}
           <div className="space-y-1.5">
-            <label className="text-sm font-medium">Email</label>
+            <label className="text-sm font-medium">Email <span className="text-destructive">*</span></label>
             <input
               type="email" value={email} onChange={e => setEmail(e.target.value)}
               placeholder="jane@jzsmartmedia.com" required
@@ -146,7 +207,7 @@ function AddUserDialog({ onClose, onSuccess }: AddUserDialogProps) {
 
           {/* Password */}
           <div className="space-y-1.5">
-            <label className="text-sm font-medium">Temporary Password</label>
+            <label className="text-sm font-medium">Temporary Password <span className="text-destructive">*</span></label>
             <input
               type="password" value={password} onChange={e => setPassword(e.target.value)}
               placeholder="At least 8 characters" minLength={8} required
@@ -169,7 +230,7 @@ function AddUserDialog({ onClose, onSuccess }: AddUserDialogProps) {
 
           {/* Roles */}
           <div className="space-y-1.5">
-            <label className="text-sm font-medium">Roles</label>
+            <label className="text-sm font-medium">Roles (for record)</label>
             <div className="flex flex-wrap gap-2">
               {ALL_ROLES.map(r => (
                 <button
@@ -188,22 +249,43 @@ function AddUserDialog({ onClose, onSuccess }: AddUserDialogProps) {
             </div>
           </div>
 
-          <div className="flex gap-3 pt-2">
-            <button
-              type="button" onClick={onClose}
-              className="flex-1 py-2 px-4 bg-muted text-foreground rounded-md text-sm font-medium hover:bg-accent transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit" disabled={isLoading}
-              className="flex-1 py-2 px-4 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:opacity-90 disabled:opacity-50 flex items-center justify-center gap-2"
-            >
-              {isLoading && <Loader2 className="h-4 w-4 animate-spin" />}
-              Create User
-            </button>
+          {/* Page Access */}
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium">Page Access</label>
+            <p className="text-xs text-muted-foreground mb-2">
+              Select which pages this user can access. Leave empty to use role defaults.
+            </p>
+            <PageAccessSelector value={pageAccess} onChange={setPageAccess} />
           </div>
-        </form>
+
+          {/* Can Create Users */}
+          <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={canCreate}
+              onChange={e => setCanCreate(e.target.checked)}
+              className="rounded"
+            />
+            <span className="font-medium">Can create new users</span>
+          </label>
+        </div>
+
+        {/* Footer */}
+        <div className="flex gap-3 px-6 py-4 border-t border-border shrink-0">
+          <button
+            type="button" onClick={onClose}
+            className="flex-1 py-2 px-4 bg-muted text-foreground rounded-md text-sm font-medium hover:bg-accent transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSubmit} disabled={isLoading}
+            className="flex-1 py-2 px-4 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:opacity-90 disabled:opacity-50 flex items-center justify-center gap-2"
+          >
+            {isLoading && <Loader2 className="h-4 w-4 animate-spin" />}
+            Create User
+          </button>
+        </div>
       </div>
     </div>
   )
@@ -211,14 +293,41 @@ function AddUserDialog({ onClose, onSuccess }: AddUserDialogProps) {
 
 // ─── Member Card ─────────────────────────────────────────────────────────────
 
-function MemberCard({ member }: { member: TeamMember }) {
+function MemberCard({ member, canEdit }: { member: TeamMember; canEdit: boolean }) {
   const queryClient = useQueryClient()
+  const [showPageAccess, setShowPageAccess] = useState(false)
+  const [editingAccess, setEditingAccess]   = useState<string[]>(member.page_access ?? [])
 
   const toggleActive = useMutation({
     mutationFn: async (isActive: boolean) => {
       const { error } = await supabase
         .from('profiles')
         .update({ is_active: isActive } as never)
+        .eq('user_id', member.user_id)
+      if (error) throw error
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['team-members'] }),
+  })
+
+  const savePageAccess = useMutation({
+    mutationFn: async (access: string[]) => {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ page_access: access } as never)
+        .eq('user_id', member.user_id)
+      if (error) throw error
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['team-members'] })
+      setShowPageAccess(false)
+    },
+  })
+
+  const toggleCanCreate = useMutation({
+    mutationFn: async (val: boolean) => {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ can_create_users: val } as never)
         .eq('user_id', member.user_id)
       if (error) throw error
     },
@@ -237,7 +346,7 @@ function MemberCard({ member }: { member: TeamMember }) {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['team-members'] }),
   })
 
-  const [addingRole, setAddingRole] = useState(false)
+  const [addingRole, setAddingRole]     = useState(false)
   const [selectedRole, setSelectedRole] = useState<AppRole>('viewer')
 
   const addRole = useMutation({
@@ -255,6 +364,7 @@ function MemberCard({ member }: { member: TeamMember }) {
 
   const availableRoles = ALL_ROLES.filter(r => !member.roles.includes(r))
   const initials = member.full_name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()
+  const accessCount = (member.page_access ?? []).length
 
   return (
     <div className={cn(
@@ -276,24 +386,26 @@ function MemberCard({ member }: { member: TeamMember }) {
           </div>
         </div>
 
-        {/* Active toggle */}
-        <button
-          onClick={() => toggleActive.mutate(!member.is_active)}
-          disabled={toggleActive.isPending}
-          className={cn(
-            'relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent',
-            'transition-colors focus:outline-none',
-            member.is_active ? 'bg-primary' : 'bg-muted'
-          )}
-          title={member.is_active ? 'Deactivate user' : 'Activate user'}
-        >
-          <span
+        {/* Active toggle — edit only if canEdit */}
+        {canEdit && (
+          <button
+            onClick={() => toggleActive.mutate(!member.is_active)}
+            disabled={toggleActive.isPending}
             className={cn(
-              'pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform',
-              member.is_active ? 'translate-x-4' : 'translate-x-0'
+              'relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent',
+              'transition-colors focus:outline-none',
+              member.is_active ? 'bg-primary' : 'bg-muted'
             )}
-          />
-        </button>
+            title={member.is_active ? 'Deactivate user' : 'Activate user'}
+          >
+            <span
+              className={cn(
+                'pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform',
+                member.is_active ? 'translate-x-4' : 'translate-x-0'
+              )}
+            />
+          </button>
+        )}
       </div>
 
       {/* Roles */}
@@ -304,7 +416,7 @@ function MemberCard({ member }: { member: TeamMember }) {
             className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-primary/10 text-primary border border-primary/20"
           >
             {ROLE_LABELS[r]}
-            {member.roles.length > 1 && (
+            {canEdit && member.roles.length > 1 && (
               <button
                 onClick={() => removeRole.mutate(r)}
                 disabled={removeRole.isPending}
@@ -317,8 +429,7 @@ function MemberCard({ member }: { member: TeamMember }) {
           </span>
         ))}
 
-        {/* Add role */}
-        {availableRoles.length > 0 && !addingRole && (
+        {canEdit && availableRoles.length > 0 && !addingRole && (
           <button
             onClick={() => setAddingRole(true)}
             className="px-2 py-0.5 rounded-full text-xs text-muted-foreground border border-dashed border-border hover:border-primary/50 hover:text-primary transition-colors"
@@ -345,15 +456,74 @@ function MemberCard({ member }: { member: TeamMember }) {
             >
               {addRole.isPending ? '...' : 'Add'}
             </button>
-            <button
-              onClick={() => setAddingRole(false)}
-              className="text-xs text-muted-foreground hover:text-foreground"
-            >
+            <button onClick={() => setAddingRole(false)} className="text-xs text-muted-foreground hover:text-foreground">
               <X className="h-3 w-3" />
             </button>
           </div>
         )}
       </div>
+
+      {/* Page Access section */}
+      <div>
+        <button
+          onClick={() => {
+            setEditingAccess(member.page_access ?? [])
+            setShowPageAccess(v => !v)
+          }}
+          className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+        >
+          {showPageAccess ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+          Page Access
+          {accessCount > 0 && (
+            <span className="ml-1 px-1.5 py-0 rounded-full bg-primary/10 text-primary text-[10px]">
+              {accessCount}
+            </span>
+          )}
+          {accessCount === 0 && (
+            <span className="ml-1 text-[10px] text-muted-foreground">(role defaults)</span>
+          )}
+        </button>
+
+        {showPageAccess && (
+          <div className="mt-2 space-y-2">
+            <PageAccessSelector value={editingAccess} onChange={setEditingAccess} />
+            {canEdit && (
+              <div className="flex gap-2">
+                <button
+                  onClick={() => savePageAccess.mutate(editingAccess)}
+                  disabled={savePageAccess.isPending}
+                  className="text-xs px-3 py-1 bg-primary text-primary-foreground rounded hover:opacity-90 disabled:opacity-50"
+                >
+                  {savePageAccess.isPending ? 'Saving…' : 'Save'}
+                </button>
+                <button
+                  onClick={() => setShowPageAccess(false)}
+                  className="text-xs px-3 py-1 bg-muted rounded hover:bg-accent"
+                >
+                  Cancel
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Can create users */}
+      {canEdit && (
+        <label className="flex items-center gap-2 text-xs cursor-pointer select-none text-muted-foreground">
+          <input
+            type="checkbox"
+            checked={member.can_create_users ?? false}
+            onChange={e => toggleCanCreate.mutate(e.target.checked)}
+            disabled={toggleCanCreate.isPending}
+            className="rounded"
+          />
+          Can create users
+        </label>
+      )}
+      {!canEdit && member.can_create_users && (
+        <p className="text-xs text-muted-foreground">Can create users</p>
+      )}
     </div>
   )
 }
@@ -363,7 +533,11 @@ function MemberCard({ member }: { member: TeamMember }) {
 export default function AdminPage() {
   const [showAddUser, setShowAddUser] = useState(false)
   const queryClient = useQueryClient()
+  const { profile } = useAuth()
   const { data: members, isLoading, error } = useTeamMembers()
+
+  // Only users with can_create_users flag can add/edit users (§7.2)
+  const canEdit = profile?.can_create_users === true
 
   const activeCount   = members?.filter(m => m.is_active).length ?? 0
   const inactiveCount = members?.filter(m => !m.is_active).length ?? 0
@@ -375,16 +549,20 @@ export default function AdminPage() {
         <div>
           <h1 className="text-2xl font-bold">User Management</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Manage team members, roles, and access.
+            {canEdit
+              ? 'Manage team members, roles, and page access.'
+              : 'View team members and their access. Contact Jordan, Alice, or Kashif to make changes.'}
           </p>
         </div>
-        <button
-          onClick={() => setShowAddUser(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:opacity-90 transition-opacity"
-        >
-          <UserPlus className="h-4 w-4" />
-          Add User
-        </button>
+        {canEdit && (
+          <button
+            onClick={() => setShowAddUser(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:opacity-90 transition-opacity"
+          >
+            <UserPlus className="h-4 w-4" />
+            Add User
+          </button>
+        )}
       </div>
 
       {/* Stats row */}
@@ -438,7 +616,7 @@ export default function AdminPage() {
       {members && members.length > 0 && (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {members.map(m => (
-            <MemberCard key={m.id} member={m} />
+            <MemberCard key={m.id} member={m} canEdit={canEdit} />
           ))}
         </div>
       )}

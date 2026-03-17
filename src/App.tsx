@@ -23,6 +23,7 @@ const SOPPage                = lazy(() => import('@/features/instructions/SOPPag
 const SocialPage             = lazy(() => import('@/features/instructions/SocialPage'))
 const ReportsChecklistPage   = lazy(() => import('@/features/instructions/ReportsChecklistPage'))
 const ClientsDirectoryPage   = lazy(() => import('@/features/instructions/ClientsDirectoryPage'))
+const ClientSOPPage          = lazy(() => import('@/features/instructions/ClientSOPPage'))
 const SettingsPage           = lazy(() => import('@/features/settings/SettingsPage'))
 
 // ── Suspense fallback ──────────────────────────────────────────────────────────
@@ -195,6 +196,15 @@ export default function App() {
                   <ProtectedRoute allowedRoles={['project_manager', 'owner']}>
                     <Suspense fallback={<PageLoader />}>
                       <ClientsDirectoryPage />
+                    </Suspense>
+                  </ProtectedRoute>
+                }
+              />
+              <Route path="/instructions/clients/:clientId"
+                element={
+                  <ProtectedRoute allowedRoles={['project_manager', 'owner']}>
+                    <Suspense fallback={<PageLoader />}>
+                      <ClientSOPPage />
                     </Suspense>
                   </ProtectedRoute>
                 }

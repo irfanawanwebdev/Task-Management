@@ -5,7 +5,7 @@
  * Caller must be authenticated as owner or project_manager.
  * Uses the service_role key to bypass RLS for the inserts.
  *
- * POST body: { email, password, full_name, department?, roles: string[] }
+ * POST body: { email, password, full_name, department?, roles: string[], page_access?: string[], can_create_users?: boolean }
  */
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
@@ -40,23 +40,19 @@ serve(async (req: Request) => {
       return json({ error: 'Unauthorized' }, 401)
     }
 
-    // ── 2. Verify caller is owner or project_manager ───────────────────────
-    const { data: callerRoles, error: rolesError } = await callerClient
-      .from('user_roles')
-      .select('role')
+    // ── 2. Verify caller has can_create_users permission ──────────────────
+    const { data: callerProfile, error: profileCheckError } = await callerClient
+      .from('profiles')
+      .select('can_create_users')
       .eq('user_id', caller.id)
+      .single()
 
-    if (rolesError) {
-      return json({ error: 'Failed to verify caller role' }, 500)
+    if (profileCheckError) {
+      return json({ error: 'Failed to verify caller permissions' }, 500)
     }
 
-    const allowed = ['owner', 'project_manager']
-    const hasPermission = (callerRoles ?? []).some((r: { role: string }) =>
-      allowed.includes(r.role)
-    )
-
-    if (!hasPermission) {
-      return json({ error: 'Insufficient permissions. Requires owner or project_manager role.' }, 403)
+    if (!callerProfile?.can_create_users) {
+      return json({ error: 'Insufficient permissions. User creation is not enabled for your account.' }, 403)
     }
 
     // ── 3. Parse and validate request body ────────────────────────────────
@@ -65,7 +61,7 @@ serve(async (req: Request) => {
       return json({ error: 'Invalid JSON body' }, 400)
     }
 
-    const { email, password, full_name, department = null, roles } = body
+    const { email, password, full_name, department = null, roles, page_access = [], can_create_users = false } = body
 
     if (!email || !password || !full_name) {
       return json({ error: 'Missing required fields: email, password, full_name' }, 400)
@@ -98,10 +94,12 @@ serve(async (req: Request) => {
     const { error: profileError } = await adminClient
       .from('profiles')
       .insert({
-        user_id:    newUser.id,
+        user_id:          newUser.id,
         full_name,
-        department: department ?? null,
-        is_active:  true,
+        department:       department ?? null,
+        is_active:        true,
+        page_access:      Array.isArray(page_access) ? page_access : [],
+        can_create_users: can_create_users === true,
       })
 
     if (profileError) {

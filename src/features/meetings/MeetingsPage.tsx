@@ -43,6 +43,28 @@ async function callEdgeFunction(name: string, body: Record<string, unknown> = {}
 // ─── Data Hooks ───────────────────────────────────────────────────────────────
 
 function useMeetings() {
+  const { profile, role } = useAuth()
+  const isManager = role ? isPMOrOwner(role) : false
+
+  // For non-managers: get client IDs where user has task assignments (§6.1)
+  const { data: myClientIds = [] } = useQuery<string[]>({
+    queryKey: ['my-client-ids', profile?.user_id],
+    queryFn: async () => {
+      if (!profile?.user_id) return []
+      const { data, error } = await supabase
+        .from('task_assignments')
+        .select('task_id, delivery_tasks(client_id)')
+        .eq('user_id', profile.user_id)
+      if (error) return []
+      type Row = { task_id: string; delivery_tasks: { client_id: string } | null }
+      const ids = (data as unknown as Row[])
+        .map(r => r.delivery_tasks?.client_id)
+        .filter((id): id is string => Boolean(id))
+      return [...new Set(ids)]
+    },
+    enabled: !isManager && !!profile?.user_id,
+  })
+
   return useQuery<Meeting[]>({
     queryKey: ['meetings-all'],
     queryFn: async () => {
@@ -52,6 +74,12 @@ function useMeetings() {
         .order('date', { ascending: false })
       if (error) throw error
       return (data ?? []) as unknown as Meeting[]
+    },
+    select: (data) => {
+      // PM/Owner: see all meetings
+      if (isManager) return data
+      // Specialists: see only meetings for clients where they have task assignments
+      return data.filter(m => myClientIds.includes(m.client_id))
     },
   })
 }

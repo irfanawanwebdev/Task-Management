@@ -5,7 +5,7 @@ import {
   TrendingUp, LogOut, ChevronRight,
 } from 'lucide-react'
 import { useAuth } from '@/features/auth/AuthContext'
-import { getNavForRole } from '@/lib/permissions'
+import { getNavForProfile } from '@/lib/permissions'
 import { NotificationBell } from '@/components/NotificationBell'
 import { cn } from '@/lib/utils'
 
@@ -19,7 +19,7 @@ export default function Sidebar() {
   const location = useLocation()
   const navigate = useNavigate()
 
-  const navItems = role ? getNavForRole(role) : []
+  const navItems = getNavForProfile(profile ?? null, role)
 
   const handleSignOut = async () => {
     await signOut()

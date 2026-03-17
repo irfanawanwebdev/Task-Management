@@ -92,6 +92,8 @@ export interface Profile {
   full_name: string
   department: AppDepartment | null
   is_active: boolean
+  page_access: string[]
+  can_create_users: boolean
   created_at: string
   updated_at: string
 }
@@ -109,6 +111,7 @@ export interface Client {
   health: HealthStatus
   start_date: string
   owner_pm: string | null
+  account_manager_name: string | null
   account_manager_id: string | null
   primary_workstreams: Workstream[]
   notes: string | null
