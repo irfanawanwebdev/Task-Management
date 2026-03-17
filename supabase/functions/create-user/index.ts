@@ -29,19 +29,20 @@ serve(async (req: Request) => {
       return json({ error: 'Missing authorization header' }, 401)
     }
 
-    const callerClient = createClient(
+    // Verify the JWT by passing the token directly to getUser()
+    const token = authHeader.replace('Bearer ', '')
+    const adminClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-      { global: { headers: { Authorization: authHeader } } }
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     )
 
-    const { data: { user: caller }, error: authError } = await callerClient.auth.getUser()
+    const { data: { user: caller }, error: authError } = await adminClient.auth.getUser(token)
     if (authError || !caller) {
       return json({ error: 'Unauthorized' }, 401)
     }
 
     // ── 2. Verify caller has can_create_users permission ──────────────────
-    const { data: callerProfile, error: profileCheckError } = await callerClient
+    const { data: callerProfile, error: profileCheckError } = await adminClient
       .from('profiles')
       .select('can_create_users')
       .eq('user_id', caller.id)
@@ -74,11 +75,6 @@ serve(async (req: Request) => {
     }
 
     // ── 4. Create auth user via Admin API (service_role) ──────────────────
-    const adminClient = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    )
-
     const { data: { user: newUser }, error: createError } =
       await adminClient.auth.admin.createUser({
         email,
