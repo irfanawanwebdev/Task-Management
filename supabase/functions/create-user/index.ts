@@ -2,13 +2,11 @@
  * create-user — Supabase Edge Function
  *
  * Creates a new team member: Supabase Auth user + profile row + role assignments.
- * Caller must be authenticated as owner or project_manager.
- * Uses the service_role key to bypass RLS for the inserts.
+ * Caller must be authenticated and have can_create_users = true in their profile.
  *
  * POST body: { email, password, full_name, department?, roles: string[], page_access?: string[], can_create_users?: boolean }
  */
 
-import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const CORS_HEADERS = {
@@ -16,51 +14,55 @@ const CORS_HEADERS = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-serve(async (req: Request) => {
-  // Handle CORS preflight
+Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: CORS_HEADERS })
   }
 
   try {
-    // ── 1. Verify caller is authenticated ─────────────────────────────────
+    // ── 1. Extract user ID from JWT (already verified by Supabase gateway) ─
     const authHeader = req.headers.get('Authorization')
     if (!authHeader) {
       return json({ error: 'Missing authorization header' }, 401)
     }
 
-    // Verify the JWT by passing the token directly to getUser()
     const token = authHeader.replace('Bearer ', '')
-    const adminClient = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    )
-
-    const { data: { user: caller }, error: authError } = await adminClient.auth.getUser(token)
-    if (authError || !caller) {
-      return json({ error: 'Unauthorized' }, 401)
+    let callerId: string
+    try {
+      // JWT uses base64url — convert to standard base64 before atob
+      const b64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')
+      const padded = b64.padEnd(b64.length + (4 - b64.length % 4) % 4, '=')
+      const payload = JSON.parse(atob(padded))
+      callerId = payload.sub
+      if (!callerId) throw new Error('No sub')
+    } catch {
+      return json({ error: 'Invalid token' }, 401)
     }
 
-    // ── 2. Verify caller has can_create_users permission ──────────────────
+    // ── 2. Admin client (service role bypasses RLS) ───────────────────────
+    const adminClient = createClient(
+      Deno.env.get('SUPABASE_URL')!,
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+    )
+
+    // ── 3. Verify caller has can_create_users permission ──────────────────
     const { data: callerProfile, error: profileCheckError } = await adminClient
       .from('profiles')
       .select('can_create_users')
-      .eq('user_id', caller.id)
+      .eq('user_id', callerId)
       .single()
 
     if (profileCheckError) {
-      return json({ error: 'Failed to verify caller permissions' }, 500)
+      return json({ error: `Permission check failed: ${profileCheckError.message}` }, 500)
     }
 
     if (!callerProfile?.can_create_users) {
       return json({ error: 'Insufficient permissions. User creation is not enabled for your account.' }, 403)
     }
 
-    // ── 3. Parse and validate request body ────────────────────────────────
+    // ── 4. Parse and validate request body ────────────────────────────────
     const body = await req.json().catch(() => null)
-    if (!body) {
-      return json({ error: 'Invalid JSON body' }, 400)
-    }
+    if (!body) return json({ error: 'Invalid JSON body' }, 400)
 
     const { email, password, full_name, department = null, roles, page_access = [], can_create_users = false } = body
 
@@ -74,19 +76,19 @@ serve(async (req: Request) => {
       return json({ error: 'Password must be at least 8 characters' }, 400)
     }
 
-    // ── 4. Create auth user via Admin API (service_role) ──────────────────
+    // ── 5. Create auth user ───────────────────────────────────────────────
     const { data: { user: newUser }, error: createError } =
       await adminClient.auth.admin.createUser({
         email,
         password,
-        email_confirm: true,  // skip email verification for internal users
+        email_confirm: true,
       })
 
     if (createError || !newUser) {
       return json({ error: createError?.message ?? 'Failed to create auth user' }, 400)
     }
 
-    // ── 5. Insert profile ─────────────────────────────────────────────────
+    // ── 6. Insert profile ─────────────────────────────────────────────────
     const { error: profileError } = await adminClient
       .from('profiles')
       .insert({
@@ -99,30 +101,24 @@ serve(async (req: Request) => {
       })
 
     if (profileError) {
-      // Rollback: delete the auth user so we don't leave orphaned accounts
       await adminClient.auth.admin.deleteUser(newUser.id)
       return json({ error: `Failed to create profile: ${profileError.message}` }, 500)
     }
 
-    // ── 6. Insert roles ───────────────────────────────────────────────────
+    // ── 7. Insert roles ───────────────────────────────────────────────────
     const roleRows = roles.map((role: string) => ({ user_id: newUser.id, role }))
-
-    const { error: rolesInsertError } = await adminClient
-      .from('user_roles')
-      .insert(roleRows)
+    const { error: rolesInsertError } = await adminClient.from('user_roles').insert(roleRows)
 
     if (rolesInsertError) {
-      // Rollback
       await adminClient.auth.admin.deleteUser(newUser.id)
       return json({ error: `Failed to assign roles: ${rolesInsertError.message}` }, 500)
     }
 
-    // ── 7. Return success ─────────────────────────────────────────────────
     return json({ success: true, user_id: newUser.id }, 200)
 
   } catch (err) {
     console.error('create-user error:', err)
-    return json({ error: 'Internal server error' }, 500)
+    return json({ error: String(err) }, 500)
   }
 })
 

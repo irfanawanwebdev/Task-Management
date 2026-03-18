@@ -31,7 +31,8 @@ const DEPT_OPTIONS: { value: AppDepartment; label: string }[] = [
   { value: 'ads',                label: 'Ads/PPC' },
   { value: 'social',             label: 'Social Media' },
   { value: 'account_management', label: 'Account Management' },
-  { value: 'executive',          label: 'Executive' },
+  { value: 'executive',             label: 'Executive' },
+  { value: 'tracking_analytics_ai', label: 'Tracking / Analytics / AI Integration' },
 ]
 
 const ROLE_LABELS: Record<AppRole, string> = {

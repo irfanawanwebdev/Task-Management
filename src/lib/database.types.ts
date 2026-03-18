@@ -76,6 +76,9 @@ export interface Database {
         due_date: string | null
         completed_date: string | null
         blocker_text: string | null
+        recurrence: string
+        recurrence_group_id: string | null
+        recurrence_anchor_date: string | null
         created_at: string
         updated_at: string
       }>
@@ -149,6 +152,20 @@ export interface Database {
         sent_at: string | null
         created_at: string
         updated_at: string
+      }>
+      client_health_snapshots: TableDef<{
+        id: string
+        client_id: string
+        period_start: string
+        period_end: string
+        delivery_score: number
+        sentiment_score: number
+        performance_score: number
+        visibility_score: number
+        weekly_strategic_adjustment: number
+        final_risk_score: number
+        classification: string
+        created_at: string
       }>
       connector_tokens: TableDef<{
         id: string

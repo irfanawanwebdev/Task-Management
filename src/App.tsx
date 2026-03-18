@@ -54,19 +54,11 @@ const router = createBrowserRouter(
       children: [
         {
           path: '/',
-          element: (
-            <ProtectedRoute allowedRoles={['project_manager', 'owner']}>
-              <Suspense fallback={<PageLoader />}><PMDashboard /></Suspense>
-            </ProtectedRoute>
-          ),
+          element: <Suspense fallback={<PageLoader />}><PMDashboard /></Suspense>,
         },
         {
           path: '/owner',
-          element: (
-            <ProtectedRoute allowedRoles={['owner']}>
-              <Suspense fallback={<PageLoader />}><OwnerDashboard /></Suspense>
-            </ProtectedRoute>
-          ),
+          element: <Suspense fallback={<PageLoader />}><OwnerDashboard /></Suspense>,
         },
         {
           path: '/specialist',
@@ -78,27 +70,15 @@ const router = createBrowserRouter(
         },
         {
           path: '/clients',
-          element: (
-            <ProtectedRoute allowedRoles={['project_manager', 'owner']}>
-              <Suspense fallback={<PageLoader />}><ClientsPage /></Suspense>
-            </ProtectedRoute>
-          ),
+          element: <Suspense fallback={<PageLoader />}><ClientsPage /></Suspense>,
         },
         {
           path: '/clients/:clientId',
-          element: (
-            <ProtectedRoute allowedRoles={['project_manager', 'owner']}>
-              <Suspense fallback={<PageLoader />}><ClientDetailPage /></Suspense>
-            </ProtectedRoute>
-          ),
+          element: <Suspense fallback={<PageLoader />}><ClientDetailPage /></Suspense>,
         },
         {
           path: '/raci',
-          element: (
-            <ProtectedRoute allowedRoles={['project_manager', 'owner']}>
-              <Suspense fallback={<PageLoader />}><RACIPage /></Suspense>
-            </ProtectedRoute>
-          ),
+          element: <Suspense fallback={<PageLoader />}><RACIPage /></Suspense>,
         },
         {
           path: '/blockers',
@@ -110,75 +90,39 @@ const router = createBrowserRouter(
         },
         {
           path: '/workload',
-          element: (
-            <ProtectedRoute allowedRoles={['project_manager', 'owner']}>
-              <Suspense fallback={<PageLoader />}><WorkloadPage /></Suspense>
-            </ProtectedRoute>
-          ),
+          element: <Suspense fallback={<PageLoader />}><WorkloadPage /></Suspense>,
         },
         {
           path: '/instructions',
-          element: (
-            <ProtectedRoute allowedRoles={['project_manager', 'owner']}>
-              <Suspense fallback={<PageLoader />}><InstructionsPage /></Suspense>
-            </ProtectedRoute>
-          ),
+          element: <Suspense fallback={<PageLoader />}><InstructionsPage /></Suspense>,
         },
         {
           path: '/instructions/sops',
-          element: (
-            <ProtectedRoute allowedRoles={['project_manager', 'owner']}>
-              <Suspense fallback={<PageLoader />}><SOPPage /></Suspense>
-            </ProtectedRoute>
-          ),
+          element: <Suspense fallback={<PageLoader />}><SOPPage /></Suspense>,
         },
         {
           path: '/instructions/social',
-          element: (
-            <ProtectedRoute allowedRoles={['project_manager', 'owner']}>
-              <Suspense fallback={<PageLoader />}><SocialPage /></Suspense>
-            </ProtectedRoute>
-          ),
+          element: <Suspense fallback={<PageLoader />}><SocialPage /></Suspense>,
         },
         {
           path: '/instructions/reports',
-          element: (
-            <ProtectedRoute allowedRoles={['project_manager', 'owner']}>
-              <Suspense fallback={<PageLoader />}><ReportsChecklistPage /></Suspense>
-            </ProtectedRoute>
-          ),
+          element: <Suspense fallback={<PageLoader />}><ReportsChecklistPage /></Suspense>,
         },
         {
           path: '/instructions/clients',
-          element: (
-            <ProtectedRoute allowedRoles={['project_manager', 'owner']}>
-              <Suspense fallback={<PageLoader />}><ClientsDirectoryPage /></Suspense>
-            </ProtectedRoute>
-          ),
+          element: <Suspense fallback={<PageLoader />}><ClientsDirectoryPage /></Suspense>,
         },
         {
           path: '/instructions/clients/:clientId',
-          element: (
-            <ProtectedRoute allowedRoles={['project_manager', 'owner']}>
-              <Suspense fallback={<PageLoader />}><ClientSOPPage /></Suspense>
-            </ProtectedRoute>
-          ),
+          element: <Suspense fallback={<PageLoader />}><ClientSOPPage /></Suspense>,
         },
         {
           path: '/admin',
-          element: (
-            <ProtectedRoute allowedRoles={['project_manager', 'owner']}>
-              <Suspense fallback={<PageLoader />}><AdminPage /></Suspense>
-            </ProtectedRoute>
-          ),
+          element: <Suspense fallback={<PageLoader />}><AdminPage /></Suspense>,
         },
         {
           path: '/settings',
-          element: (
-            <ProtectedRoute allowedRoles={['project_manager', 'owner']}>
-              <Suspense fallback={<PageLoader />}><SettingsPage /></Suspense>
-            </ProtectedRoute>
-          ),
+          element: <Suspense fallback={<PageLoader />}><SettingsPage /></Suspense>,
         },
       ],
     },

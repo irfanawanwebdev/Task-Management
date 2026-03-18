@@ -14,6 +14,7 @@ import type { Client, DeliveryTask } from '@/lib/types'
 import { isOverdueEST, formatDateEST, isDateTodayEST } from '@/lib/timezone'
 import { cn } from '@/lib/utils'
 import { CreateTaskDialog } from './CreateTaskDialog'
+import { useAuth } from '@/features/auth/AuthContext'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -21,10 +22,36 @@ type ViewTab = 'timeline' | 'workstream' | 'qa-gate' | 'blocked' | 'overdue' | '
 
 // ─── Data Hooks ───────────────────────────────────────────────────────────────
 
-function useTasks(clientFilter: string) {
+/**
+ * Fetches tasks. PM/Owner see all tasks with full RACI joins.
+ * Other roles (specialist, viewer) see only their assigned tasks via a 2-step query.
+ */
+function useTasks(clientFilter: string, assignedUserId?: string) {
   return useQuery<DeliveryTask[]>({
-    queryKey: ['tasks', clientFilter],
+    queryKey: ['tasks', clientFilter, assignedUserId ?? 'all'],
     queryFn: async () => {
+      // Non-PM/Owner: fetch only tasks they're assigned to
+      if (assignedUserId) {
+        const { data: assignments, error: aErr } = await supabase
+          .from('task_assignments')
+          .select('task_id')
+          .eq('user_id', assignedUserId)
+        if (aErr) throw aErr
+
+        const taskIds = (assignments ?? []).map(a => (a as { task_id: string }).task_id)
+        if (taskIds.length === 0) return []
+
+        const { data, error } = await supabase
+          .from('delivery_tasks')
+          .select('*, clients(name), task_assignments(role_type, workstream, user_id)')
+          .in('id', taskIds)
+          .order('step')
+          .order('due_date')
+        if (error) throw error
+        return (data ?? []) as unknown as DeliveryTask[]
+      }
+
+      // PM/Owner: all tasks with full join
       let q = supabase
         .from('delivery_tasks')
         .select('*, clients(name), task_assignments(role_type, workstream, user_id, profiles(full_name))')
@@ -403,8 +430,14 @@ export default function TasksPage() {
   const [selectedTask, setSelectedTask] = useState<DeliveryTask | null>(null)
   const [showCreate, setShowCreate]     = useState(false)
 
-  const { data: tasks = [], isLoading } = useTasks(clientFilter)
-  const { data: clients = [] }          = useClientList()
+  const { role, profile } = useAuth()
+  const isPMOrOwner = role === 'owner' || role === 'project_manager'
+
+  const { data: tasks = [], isLoading, isError } = useTasks(
+    clientFilter,
+    isPMOrOwner ? undefined : profile?.user_id,
+  )
+  const { data: clients = [] } = useClientList()
 
   // ── View filtering ──────────────────────────────────────────────────────────
   const visibleTasks = (() => {
@@ -531,6 +564,12 @@ export default function TasksPage() {
       {isLoading && (
         <div className="flex items-center gap-2 text-muted-foreground text-sm">
           <Loader2 className="h-4 w-4 animate-spin" /> Loading tasks…
+        </div>
+      )}
+
+      {isError && (
+        <div className="flex items-center gap-2 text-destructive text-sm">
+          <AlertTriangle className="h-4 w-4" /> Failed to load tasks. Please refresh.
         </div>
       )}
 

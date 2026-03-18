@@ -26,6 +26,7 @@ export type AppDepartment =
   | 'social'
   | 'account_management'
   | 'executive'
+  | 'tracking_analytics_ai'
 
 export type Workstream =
   | 'Sales'
@@ -140,6 +141,9 @@ export interface DeliveryTask {
   due_date: string | null
   completed_date: string | null
   blocker_text: string | null
+  recurrence?: 'none' | 'weekly' | 'biweekly' | 'monthly'
+  recurrence_group_id?: string | null
+  recurrence_anchor_date?: string | null
   created_at: string
   updated_at: string
   // Joined fields
@@ -237,13 +241,28 @@ export interface Report {
 // ─────────────────────────────────────────────
 
 export interface RiskScore {
-  delivery: number
-  sentiment: number
-  visibility: number
-  performance: number
-  adjustment: number
-  final_score: number
+  delivery: number       // 0–30: high-impact overdue task penalty
+  sentiment: number      // 0–25: from latest WeeklyReview.sentiment_observed (manual)
+  visibility: number     // 0–20: unlogged done tasks + missing bi-weekly meetings
+  performance: number    // 0–25: task completion rate
+  adjustment: number     // -10 to +20: weekly strategic adjustment (manual)
+  final_score: number    // sum of all pillars; 0–25=Green, 26–45=Yellow, 46+=Red
   health: HealthStatus
+}
+
+export interface ClientHealthSnapshot {
+  id: string
+  client_id: string
+  period_start: string
+  period_end: string
+  delivery_score: number
+  sentiment_score: number
+  performance_score: number
+  visibility_score: number
+  weekly_strategic_adjustment: number
+  final_risk_score: number
+  classification: 'Green' | 'Yellow' | 'Red'
+  created_at: string
 }
 
 export interface TeamWorkloadRow {

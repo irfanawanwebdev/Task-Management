@@ -23,6 +23,7 @@ interface CreateTaskForm {
   description: string
   blocker_text: string
   client_facing_risk: boolean
+  recurrence: 'none' | 'weekly' | 'biweekly' | 'monthly'
   // Web/Dev asset fields (conditional)
   asset_which: string
   asset_format: string
@@ -35,8 +36,25 @@ const BLANK: CreateTaskForm = {
   task_name: '', client_id: '', assignee_user_id: '', due_date: '',
   impact_level: 'Medium', workstream: 'Ops/PM',
   description: '', blocker_text: '', client_facing_risk: false,
+  recurrence: 'none',
   asset_which: '', asset_format: '', asset_destination: '',
   asset_client_contact: '', asset_client_deadline: '',
+}
+
+/** Compute the next due date for a recurring task. */
+function calcNextDueDate(dueDate: string, recurrence: 'weekly' | 'biweekly' | 'monthly'): string {
+  const d = new Date(dueDate + 'T12:00:00')
+  if (recurrence === 'weekly') {
+    d.setDate(d.getDate() + 7)
+  } else if (recurrence === 'biweekly') {
+    d.setDate(d.getDate() + 14)
+  } else {
+    const day = d.getDate()
+    d.setMonth(d.getMonth() + 1)
+    // If month rollover (e.g. Jan 31 → Mar), clamp to last day of intended month
+    if (d.getDate() !== day) d.setDate(0)
+  }
+  return d.toISOString().split('T')[0]
 }
 
 interface Props {
@@ -124,6 +142,55 @@ export function CreateTaskDialog({ open, onClose, presetClientId, clients = [] }
             role_type: 'R',
           } as never)
         if (assignErr) throw new Error(assignErr.message)
+      }
+
+      // 3. If recurring, patch initial task + create next occurrence
+      if (data.recurrence !== 'none' && data.due_date && inserted?.id) {
+        const groupId = crypto.randomUUID()
+        await supabase
+          .from('delivery_tasks')
+          .update({
+            recurrence: data.recurrence,
+            recurrence_group_id: groupId,
+            recurrence_anchor_date: data.due_date,
+          } as never)
+          .eq('id', inserted.id)
+
+        const nextDue = calcNextDueDate(data.due_date, data.recurrence)
+        const { data: nextTask, error: nextErr } = await supabase
+          .from('delivery_tasks')
+          .insert({
+            task_name:            data.task_name.trim(),
+            client_id:            data.client_id,
+            due_date:             nextDue,
+            impact_level:         data.impact_level,
+            workstream:           data.workstream,
+            description:          descriptionText,
+            blocker_text:         data.blocker_text.trim() || null,
+            status:               'Not Started',
+            step:                 0,
+            step_name:            'Ad-hoc',
+            timeline:             'TBD',
+            ar_output_logged:     false,
+            recurrence:           data.recurrence,
+            recurrence_group_id:  groupId,
+            recurrence_anchor_date: data.due_date,
+          } as never)
+          .select('id')
+          .single()
+
+        if (nextErr) throw new Error(nextErr.message)
+
+        if (nextTask?.id && data.assignee_user_id) {
+          const { error: nextAssignErr } = await supabase
+            .from('task_assignments')
+            .insert({
+              task_id:   nextTask.id,
+              user_id:   data.assignee_user_id,
+              role_type: 'R',
+            } as never)
+          if (nextAssignErr) throw new Error(nextAssignErr.message)
+        }
       }
     },
     onSuccess: () => {
@@ -234,6 +301,26 @@ export function CreateTaskDialog({ open, onClose, presetClientId, clients = [] }
                 {['High', 'Medium', 'Low'].map(l => <option key={l}>{l}</option>)}
               </select>
             </div>
+          </div>
+
+          {/* Repeat */}
+          <div>
+            <label className="block text-xs font-medium mb-1">Repeat</label>
+            <select
+              value={form.recurrence}
+              onChange={e => setForm(f => ({ ...f, recurrence: e.target.value as CreateTaskForm['recurrence'] }))}
+              className="w-full px-3 py-1.5 bg-background border border-input rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+            >
+              <option value="none">No Repeat</option>
+              <option value="weekly">Weekly</option>
+              <option value="biweekly">Bi-weekly (every 2 weeks)</option>
+              <option value="monthly">Monthly</option>
+            </select>
+            {form.recurrence !== 'none' && form.due_date && (
+              <p className="text-xs text-muted-foreground mt-1">
+                Next occurrence: {calcNextDueDate(form.due_date, form.recurrence)}
+              </p>
+            )}
           </div>
 
           {/* Workstream */}

@@ -9,8 +9,7 @@ import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Users, Loader2, Search, Plus, X } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
-import type { Client, DeliveryTask, Meeting, Profile, Workstream } from '@/lib/types'
-import { WORKSTREAMS } from '@/lib/types'
+import type { Client, DeliveryTask, Meeting, ClientStatus } from '@/lib/types'
 import { isOverdueEST, formatDateEST } from '@/lib/timezone'
 import { getCompletionClass } from '@/lib/types'
 import { useNavigationGuard } from '@/lib/useNavigationGuard'
@@ -42,27 +41,26 @@ function useClientsPageData() {
 }
 
 // ─── Add Client Dialog ────────────────────────────────────────────────────────
+// Health is NEVER set here — it is always computed from the risk score engine.
 
 interface AddClientForm {
   name: string
-  owner_pm: string
-  account_manager_name: string
-  status: string
-  health: string
+  status: ClientStatus
   start_date: string
-  primary_workstreams: Workstream[]
-  notes: string
+  website_url: string
   drive_folder_url: string
   credentials_sheet_url: string
-  website_url: string
+  notes: string
 }
 
 const BLANK_FORM: AddClientForm = {
-  name: '', owner_pm: '', account_manager_name: '',
-  status: 'Onboarding', health: 'Green',
+  name: '',
+  status: 'Onboarding',
   start_date: new Date().toISOString().slice(0, 10),
-  primary_workstreams: [],
-  notes: '', drive_folder_url: '', credentials_sheet_url: '', website_url: '',
+  website_url: '',
+  drive_folder_url: '',
+  credentials_sheet_url: '',
+  notes: '',
 }
 
 function AddClientDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
@@ -72,32 +70,18 @@ function AddClientDialog({ open, onClose }: { open: boolean; onClose: () => void
   const [form, setForm] = useState<AddClientForm>(BLANK_FORM)
   const [error, setError] = useState<string | null>(null)
 
-  const { data: profiles = [] } = useQuery<Profile[]>({
-    queryKey: ['profiles-active'],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('profiles').select('id, user_id, full_name, department, is_active, page_access, can_create_users, created_at, updated_at')
-        .eq('is_active', true).order('full_name')
-      if (error) throw error
-      return (data ?? []) as unknown as Profile[]
-    },
-    enabled: open,
-  })
-
   const mutation = useMutation({
     mutationFn: async (data: AddClientForm) => {
       const { error } = await supabase.from('clients').insert({
-        name: data.name.trim(),
-        owner_pm: data.owner_pm.trim() || null,
-        account_manager_name: data.account_manager_name.trim() || null,
-        status: data.status,
-        health: data.health,
-        start_date: data.start_date,
-        primary_workstreams: data.primary_workstreams,
-        notes: data.notes.trim() || null,
-        drive_folder_url: data.drive_folder_url.trim() || null,
+        name:                  data.name.trim(),
+        status:                data.status,
+        start_date:            data.start_date,
+        website_url:           data.website_url.trim() || null,
+        drive_folder_url:      data.drive_folder_url.trim() || null,
         credentials_sheet_url: data.credentials_sheet_url.trim() || null,
-        website_url: data.website_url.trim() || null,
+        notes:                 data.notes.trim() || null,
+        // health is NOT accepted as user input — DB defaults to 'Green'
+        // owner_pm, account_manager_name, primary_workstreams are not required at creation
       } as never)
       if (error) throw new Error(error.message)
     },
@@ -110,20 +94,15 @@ function AddClientDialog({ open, onClose }: { open: boolean; onClose: () => void
     onError: (e: Error) => setError(e.message),
   })
 
-  const toggleWS = (ws: Workstream) => {
-    setForm(f => ({
-      ...f,
-      primary_workstreams: f.primary_workstreams.includes(ws)
-        ? f.primary_workstreams.filter(w => w !== ws)
-        : [...f.primary_workstreams, ws],
-    }))
-  }
-
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    if (!form.name.trim()) { setError('Client name is required.'); return }
-    if (!form.owner_pm.trim()) { setError('Owner PM is required.'); return }
-    if (!form.account_manager_name.trim()) { setError('Account Manager is required.'); return }
+    if (!form.name.trim())                  { setError('Client name is required.'); return }
+    if (!form.status)                       { setError('Status is required.'); return }
+    if (!form.start_date)                   { setError('Start date is required.'); return }
+    if (!form.website_url.trim())           { setError('Website URL is required.'); return }
+    if (!form.drive_folder_url.trim())      { setError('Drive Folder URL is required.'); return }
+    if (!form.credentials_sheet_url.trim()) { setError('Credentials Sheet URL is required.'); return }
+    if (!form.notes.trim())                 { setError('Notes is required.'); return }
     setError(null)
     mutation.mutate(form)
   }
@@ -154,61 +133,23 @@ function AddClientDialog({ open, onClose }: { open: boolean; onClose: () => void
             />
           </div>
 
-          {/* Owner PM + Account Manager */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-medium mb-1">Owner PM <span className="text-destructive">*</span></label>
-              <select
-                value={form.owner_pm}
-                onChange={e => setForm(f => ({ ...f, owner_pm: e.target.value }))}
-                className="w-full px-3 py-1.5 bg-background border border-input rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-              >
-                <option value="">Select person…</option>
-                {profiles.map(p => <option key={p.user_id} value={p.full_name}>{p.full_name}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-medium mb-1">Account Manager <span className="text-destructive">*</span></label>
-              <select
-                value={form.account_manager_name}
-                onChange={e => setForm(f => ({ ...f, account_manager_name: e.target.value }))}
-                className="w-full px-3 py-1.5 bg-background border border-input rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-              >
-                <option value="">Select person…</option>
-                {profiles.map(p => <option key={p.user_id} value={p.full_name}>{p.full_name}</option>)}
-              </select>
-            </div>
-          </div>
-
-          {/* Status + Health */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-medium mb-1">Status</label>
-              <select
-                value={form.status}
-                onChange={e => setForm(f => ({ ...f, status: e.target.value }))}
-                className="w-full px-3 py-1.5 bg-background border border-input rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-              >
-                {['Active', 'Onboarding', 'At Risk', 'Paused', 'Churned'].map(s => (
-                  <option key={s}>{s}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-medium mb-1">Health</label>
-              <select
-                value={form.health}
-                onChange={e => setForm(f => ({ ...f, health: e.target.value }))}
-                className="w-full px-3 py-1.5 bg-background border border-input rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-              >
-                {['Green', 'Yellow', 'Red'].map(h => <option key={h}>{h}</option>)}
-              </select>
-            </div>
+          {/* Status */}
+          <div>
+            <label className="block text-xs font-medium mb-1">Status <span className="text-destructive">*</span></label>
+            <select
+              value={form.status}
+              onChange={e => setForm(f => ({ ...f, status: e.target.value as ClientStatus }))}
+              className="w-full px-3 py-1.5 bg-background border border-input rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+            >
+              {(['Active', 'Onboarding', 'At Risk', 'Paused', 'Offboarding'] as ClientStatus[]).map(s => (
+                <option key={s}>{s}</option>
+              ))}
+            </select>
           </div>
 
           {/* Start Date */}
           <div>
-            <label className="block text-xs font-medium mb-1">Start Date</label>
+            <label className="block text-xs font-medium mb-1">Start Date <span className="text-destructive">*</span></label>
             <input
               type="date"
               value={form.start_date}
@@ -217,37 +158,15 @@ function AddClientDialog({ open, onClose }: { open: boolean; onClose: () => void
             />
           </div>
 
-          {/* Workstreams */}
-          <div>
-            <label className="block text-xs font-medium mb-1.5">Primary Workstreams</label>
-            <div className="flex flex-wrap gap-1.5">
-              {WORKSTREAMS.map(ws => (
-                <button
-                  key={ws}
-                  type="button"
-                  onClick={() => toggleWS(ws)}
-                  className={cn(
-                    'px-2.5 py-1 rounded text-xs font-medium border transition-colors',
-                    form.primary_workstreams.includes(ws)
-                      ? 'bg-primary/20 border-primary/40 text-primary'
-                      : 'bg-muted border-transparent text-muted-foreground hover:text-foreground'
-                  )}
-                >
-                  {ws}
-                </button>
-              ))}
-            </div>
-          </div>
-
           {/* URLs */}
           <div className="space-y-3">
             {([
-              ['website_url', 'Website URL'],
-              ['drive_folder_url', 'Drive Folder URL'],
+              ['website_url',           'Website URL'],
+              ['drive_folder_url',      'Drive Folder URL'],
               ['credentials_sheet_url', 'Credentials Sheet URL'],
             ] as const).map(([field, label]) => (
               <div key={field}>
-                <label className="block text-xs font-medium mb-1">{label}</label>
+                <label className="block text-xs font-medium mb-1">{label} <span className="text-destructive">*</span></label>
                 <input
                   value={form[field]}
                   onChange={e => setForm(f => ({ ...f, [field]: e.target.value }))}
@@ -260,13 +179,13 @@ function AddClientDialog({ open, onClose }: { open: boolean; onClose: () => void
 
           {/* Notes */}
           <div>
-            <label className="block text-xs font-medium mb-1">Notes</label>
+            <label className="block text-xs font-medium mb-1">Notes <span className="text-destructive">*</span></label>
             <textarea
               value={form.notes}
               onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
               rows={3}
               className="w-full px-3 py-1.5 bg-background border border-input rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-ring resize-none"
-              placeholder="Optional notes…"
+              placeholder="Brief context about this client…"
             />
           </div>
 

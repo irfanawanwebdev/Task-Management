@@ -88,18 +88,6 @@ function useAllMeetingsForRisk() {
   })
 }
 
-function useAllReportsForRisk() {
-  return useQuery<Report[]>({
-    queryKey: ['all-reports-risk'],
-    queryFn: async () => {
-      const { data } = await supabase
-        .from('reports')
-        .select('id, client_id, status, due_date')
-        .order('due_date', { ascending: false })
-      return (data ?? []) as unknown as Report[]
-    },
-  })
-}
 
 function useWeeklyReviews() {
   return useQuery<WeeklyReview[]>({
@@ -192,18 +180,16 @@ interface RiskCardProps {
   tasks:    DeliveryTask[]
   reviews:  WeeklyReview[]
   meetings: Meeting[]
-  reports:  Report[]
 }
 
-function RiskCard({ client, tasks, reviews, meetings, reports }: RiskCardProps) {
+function RiskCard({ client, tasks, reviews, meetings }: RiskCardProps) {
   const [expanded, setExpanded] = useState(false)
 
   const clientTasks    = tasks.filter(t => t.client_id === client.id)
   const clientReviews  = reviews.filter(r => r.client_id === client.id)
   const clientMeetings = meetings.filter(m => m.client_id === client.id)
-  const clientReports  = reports.filter(r => r.client_id === client.id)
 
-  const risk = calcRiskScore(clientTasks, clientReviews, clientMeetings, clientReports)
+  const risk = calcRiskScore(clientTasks, clientReviews, clientMeetings)
 
   const overdue = clientTasks.filter(t => t.due_date && isOverdueEST(t.due_date) && t.status !== 'Done').length
   const blocked = clientTasks.filter(t => t.status === 'Blocked').length
@@ -363,7 +349,6 @@ export default function PMDashboard() {
   const { data: reports,     isLoading: reportsLoading }     = useReportsDue()
   const { data: clients,     isLoading: clientsLoading }     = useClients()
   const { data: allMeetings  = [], isLoading: riskMtgLoading }  = useAllMeetingsForRisk()
-  const { data: allReports   = [], isLoading: riskRptLoading }  = useAllReportsForRisk()
   const { data: allReviews   = [], isLoading: riskRevLoading }  = useWeeklyReviews()
 
   const today = todayDateEST()
@@ -386,7 +371,7 @@ export default function PMDashboard() {
     ? Math.round((highImpactDone.length / highImpactAll.length) * 100) : 0
 
   const isLoading = tasksLoading || blockersLoading || meetingsLoading || reportsLoading
-    || clientsLoading || riskMtgLoading || riskRptLoading || riskRevLoading
+    || clientsLoading || riskMtgLoading || riskRevLoading
 
   return (
     <div className="space-y-6">
@@ -457,7 +442,6 @@ export default function PMDashboard() {
                     tasks={tasks ?? []}
                     reviews={allReviews}
                     meetings={allMeetings}
-                    reports={allReports}
                   />
                 ))}
               </div>

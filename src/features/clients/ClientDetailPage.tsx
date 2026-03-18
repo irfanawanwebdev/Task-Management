@@ -15,7 +15,8 @@ import { supabase } from '@/lib/supabase'
 import type {
   Client, DeliveryTask, Blocker, Meeting, Report, WeeklyReview,
 } from '@/lib/types'
-import { isOverdueEST, formatDateEST, daysAgoEST } from '@/lib/timezone'
+import { isOverdueEST, formatDateEST, daysAgoEST, todayDateEST } from '@/lib/timezone'
+import { calcRiskScore } from '@/lib/riskEngine'
 import { getCompletionClass } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import { CreateTaskDialog } from '@/features/tasks/CreateTaskDialog'
@@ -353,7 +354,14 @@ function UpsellTab({ client, tasks }: { client: Client; tasks: DeliveryTask[] })
 
 // ─── Risk Log Tab ─────────────────────────────────────────────────────────────
 
-function RiskLogTab({ reviews, clientId }: { reviews: WeeklyReview[]; clientId: string }) {
+function RiskLogTab({
+  reviews, tasks, meetings, clientId,
+}: {
+  reviews: WeeklyReview[]
+  tasks: DeliveryTask[]
+  meetings: Meeting[]
+  clientId: string
+}) {
   const qc = useQueryClient()
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState({
@@ -382,6 +390,35 @@ function RiskLogTab({ reviews, clientId }: { reviews: WeeklyReview[]; clientId: 
         adjustment_score: form.adjustment_score,
       } as never)
       if (error) throw new Error(error.message)
+
+      // Compute snapshot and persist — health is always derived, never manual
+      const newReview: WeeklyReview = {
+        id: '',
+        client_id: clientId,
+        review_date: form.review_date,
+        week_number: form.week_number,
+        sentiment_observed: form.sentiment_observed,
+        engagement_level: form.engagement_level,
+        confidence_in_retention: form.confidence_in_retention,
+        hidden_risk_signals: form.hidden_risk_signals.trim() || null,
+        strategic_notes: form.strategic_notes.trim() || null,
+        adjustment_score: form.adjustment_score,
+        created_at: new Date().toISOString(),
+      }
+      const score = calcRiskScore(tasks, [...reviews, newReview], meetings)
+      const today = todayDateEST()
+      await supabase.from('client_health_snapshots').insert({
+        client_id:                  clientId,
+        period_start:               today,
+        period_end:                 today,
+        delivery_score:             score.delivery,
+        sentiment_score:            score.sentiment,
+        performance_score:          score.performance,
+        visibility_score:           score.visibility,
+        weekly_strategic_adjustment: score.adjustment,
+        final_risk_score:           score.final_score,
+        classification:             score.health,
+      } as never)
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['client-detail', clientId] })
@@ -715,7 +752,7 @@ export default function ClientDetailPage() {
           {activeTab === 'reports'     && <ReportsTab     reports={reports} />}
           {activeTab === 'meetings'    && <MeetingsTab    meetings={meetings} />}
           {activeTab === 'upsell'      && <UpsellTab      client={client} tasks={tasks} />}
-          {activeTab === 'risk'        && <RiskLogTab     reviews={reviews} clientId={clientId!} />}
+          {activeTab === 'risk'        && <RiskLogTab     reviews={reviews} tasks={tasks} meetings={meetings} clientId={clientId!} />}
         </div>
       </div>
     </div>
