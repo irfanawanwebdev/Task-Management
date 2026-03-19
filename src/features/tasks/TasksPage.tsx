@@ -7,7 +7,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
-  Loader2, AlertTriangle, CheckCircle2, X, ExternalLink, Plus,
+  Loader2, AlertTriangle, CheckCircle2, X, ExternalLink, Plus, Copy,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import type { Client, DeliveryTask } from '@/lib/types'
@@ -78,13 +78,212 @@ function useClientList() {
   })
 }
 
+// ─── Duplicate Task Dialog ────────────────────────────────────────────────────
+
+type DuplicateMode = 'same' | 'copy' | 'move'
+
+function DuplicateTaskDialog({
+  task,
+  clients,
+  onClose,
+}: {
+  task: DeliveryTask
+  clients: Client[]
+  onClose: () => void
+}) {
+  const qc = useQueryClient()
+  const { data: profilesList = [] } = useQuery<{ id: string; user_id: string; full_name: string }[]>({
+    queryKey: ['profiles-simple'],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('profiles')
+        .select('id, user_id, full_name')
+        .eq('is_active', true)
+        .order('full_name')
+      return (data ?? []) as { id: string; user_id: string; full_name: string }[]
+    },
+  })
+
+  const [mode, setMode]                   = useState<DuplicateMode>('same')
+  const [destClientId, setDestClientId]   = useState(task.client_id)
+  const [assigneeUserId, setAssigneeUserId] = useState('')
+  const [keepDueDate, setKeepDueDate]     = useState(true)
+  const [loading, setLoading]             = useState(false)
+  const [error, setError]                 = useState<string | null>(null)
+
+  async function handleSubmit() {
+    setLoading(true); setError(null)
+    const targetClientId = mode === 'same' ? task.client_id : destClientId
+
+    const { data: newTask, error: insertErr } = await supabase
+      .from('delivery_tasks')
+      .insert({
+        task_name:        task.task_name,
+        client_id:        targetClientId,
+        description:      task.description ?? null,
+        impact_level:     task.impact_level,
+        workstream:       task.workstream,
+        step:             task.step,
+        step_name:        task.step_name,
+        timeline:         task.timeline,
+        due_date:         keepDueDate ? (task.due_date ?? null) : null,
+        status:           'Not Started',
+        ar_output_logged: false,
+        blocker_text:     task.blocker_text ?? null,
+      } as never)
+      .select('id')
+      .single()
+
+    if (insertErr || !newTask) {
+      setError(insertErr?.message ?? 'Insert failed')
+      setLoading(false)
+      return
+    }
+
+    if (assigneeUserId) {
+      await supabase.from('task_assignments').insert({
+        task_id: newTask.id, user_id: assigneeUserId, role_type: 'R',
+      } as never)
+    }
+
+    if (mode === 'move') {
+      await supabase.from('delivery_tasks').delete().eq('id', task.id)
+    }
+
+    qc.invalidateQueries({ queryKey: ['tasks'] })
+    qc.invalidateQueries({ queryKey: ['client-detail'] })
+    onClose()
+  }
+
+  const modeLabels: Record<DuplicateMode, string> = {
+    same: 'Duplicate on Same Client',
+    copy: 'Copy to Another Client',
+    move: 'Move to Another Client',
+  }
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-background/80 backdrop-blur-sm p-4">
+      <div className="w-full max-w-md bg-card border border-border rounded-xl shadow-xl">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+          <h3 className="font-semibold text-sm flex items-center gap-2">
+            <Copy className="h-4 w-4 text-muted-foreground" />
+            Duplicate / Move Task
+          </h3>
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="p-5 space-y-4">
+          <p className="text-xs text-muted-foreground truncate">Task: <span className="text-foreground font-medium">{task.task_name}</span></p>
+
+          {/* Mode */}
+          <div className="space-y-1.5">
+            <p className="text-xs font-medium">Action</p>
+            <div className="grid grid-cols-3 gap-1.5">
+              {(['same', 'copy', 'move'] as DuplicateMode[]).map(m => (
+                <button
+                  key={m}
+                  onClick={() => setMode(m)}
+                  className={cn(
+                    'px-2 py-1.5 rounded-md border text-xs font-medium transition-colors text-center',
+                    mode === m
+                      ? 'border-primary bg-primary/10 text-primary'
+                      : 'border-border bg-muted text-muted-foreground hover:text-foreground',
+                  )}
+                >
+                  {modeLabels[m]}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Destination client (copy/move) */}
+          {mode !== 'same' && (
+            <div className="space-y-1">
+              <label className="text-xs font-medium">Destination Client</label>
+              <select
+                value={destClientId}
+                onChange={e => setDestClientId(e.target.value)}
+                className="w-full px-3 py-1.5 bg-background border border-input rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+              >
+                {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            </div>
+          )}
+
+          {/* Assignee */}
+          <div className="space-y-1">
+            <label className="text-xs font-medium">Assignee (optional)</label>
+            <select
+              value={assigneeUserId}
+              onChange={e => setAssigneeUserId(e.target.value)}
+              className="w-full px-3 py-1.5 bg-background border border-input rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+            >
+              <option value="">No assignee</option>
+              {profilesList.map(p => (
+                <option key={p.user_id} value={p.user_id}>{p.full_name}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Keep due date */}
+          <label className="flex items-center gap-2 text-sm cursor-pointer">
+            <input
+              type="checkbox"
+              checked={keepDueDate}
+              onChange={e => setKeepDueDate(e.target.checked)}
+              className="rounded border-input"
+            />
+            Keep original due date
+          </label>
+
+          {error && <p className="text-xs text-destructive">{error}</p>}
+
+          {mode === 'move' && (
+            <p className="text-xs text-[hsl(var(--warning))] bg-[hsl(var(--warning))]/10 px-3 py-2 rounded-md">
+              Move will delete the original task after creating the copy.
+            </p>
+          )}
+        </div>
+
+        <div className="flex gap-2 px-5 pb-5">
+          <button
+            onClick={handleSubmit}
+            disabled={loading}
+            className="flex-1 inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 disabled:opacity-60 transition-all"
+          >
+            {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Copy className="h-3.5 w-3.5" />}
+            {mode === 'move' ? 'Move Task' : 'Duplicate Task'}
+          </button>
+          <button
+            onClick={onClose}
+            className="px-4 py-2 rounded-lg border border-border/60 text-sm font-medium text-muted-foreground hover:bg-accent transition-colors"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── Task Detail Dialog ───────────────────────────────────────────────────────
 
-function TaskDetailDialog({ task, onClose }: { task: DeliveryTask; onClose: () => void }) {
+function TaskDetailDialog({
+  task,
+  clients,
+  onClose,
+}: {
+  task: DeliveryTask
+  clients: Client[]
+  onClose: () => void
+}) {
   const queryClient = useQueryClient()
-  const [qaWarning, setQaWarning] = useState(false)
-  const [outputUrl, setOutputUrl] = useState(task.output_link ?? '')
-  const [savingUrl, setSavingUrl] = useState(false)
+  const [qaWarning, setQaWarning]       = useState(false)
+  const [outputUrl, setOutputUrl]       = useState(task.output_link ?? '')
+  const [savingUrl, setSavingUrl]       = useState(false)
+  const [showDuplicate, setShowDuplicate] = useState(false)
 
   const updateStatus = useMutation({
     mutationFn: async (status: DeliveryTask['status']) => {
@@ -285,6 +484,18 @@ function TaskDetailDialog({ task, onClose }: { task: DeliveryTask; onClose: () =
             </div>
           </div>
 
+          {/* Duplicate / Move */}
+          <div className="flex items-center justify-between">
+            <p className="section-header mb-0">Actions</p>
+            <button
+              onClick={() => setShowDuplicate(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border/60 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+            >
+              <Copy className="h-3 w-3" />
+              Duplicate / Move
+            </button>
+          </div>
+
           {/* Status Update */}
           <div>
             <p className="section-header">Update Status</p>
@@ -359,6 +570,14 @@ function TaskDetailDialog({ task, onClose }: { task: DeliveryTask; onClose: () =
           </div>
         </div>
       </div>
+
+      {showDuplicate && (
+        <DuplicateTaskDialog
+          task={task}
+          clients={clients}
+          onClose={() => setShowDuplicate(false)}
+        />
+      )}
     </div>
   )
 }
@@ -427,6 +646,7 @@ function TaskRow({ task, onClick }: { task: DeliveryTask; onClick: () => void })
 export default function TasksPage() {
   const [activeView, setActiveView]     = useState<ViewTab>('timeline')
   const [clientFilter, setClientFilter] = useState('all')
+  const [dateFilter, setDateFilter]     = useState<'all' | '7' | '14' | '30'>('all')
   const [selectedTask, setSelectedTask] = useState<DeliveryTask | null>(null)
   const [showCreate, setShowCreate]     = useState(false)
 
@@ -439,19 +659,28 @@ export default function TasksPage() {
   )
   const { data: clients = [] } = useClientList()
 
+  // ── Date filtering ──────────────────────────────────────────────────────────
+  const dateTasks = (() => {
+    if (dateFilter === 'all') return tasks
+    const cutoff = new Date()
+    cutoff.setDate(cutoff.getDate() - parseInt(dateFilter))
+    const cutoffStr = cutoff.toISOString().slice(0, 10)
+    return tasks.filter(t => t.due_date && t.due_date >= cutoffStr)
+  })()
+
   // ── View filtering ──────────────────────────────────────────────────────────
   const visibleTasks = (() => {
     switch (activeView) {
       case 'qa-gate':
-        return tasks.filter(t => !t.ar_output_logged && t.status !== 'Not Started')
+        return dateTasks.filter(t => !t.ar_output_logged && t.status !== 'Not Started')
       case 'blocked':
-        return tasks.filter(t => t.status === 'Blocked')
+        return dateTasks.filter(t => t.status === 'Blocked')
       case 'overdue':
-        return tasks.filter(t => t.due_date && isOverdueEST(t.due_date) && t.status !== 'Done')
+        return dateTasks.filter(t => t.due_date && isOverdueEST(t.due_date) && t.status !== 'Done')
       case 'next-ready':
-        return tasks.filter(t => t.ar_output_logged && t.status === 'Done')
+        return dateTasks.filter(t => t.ar_output_logged && t.status === 'Done')
       default:
-        return tasks
+        return dateTasks
     }
   })()
 
@@ -538,11 +767,29 @@ export default function TasksPage() {
           ))}
         </div>
 
+        {/* Date Filter Pills */}
+        <div className="flex gap-1 ml-auto">
+          {(['all', '7', '14', '30'] as const).map(f => (
+            <button
+              key={f}
+              onClick={() => setDateFilter(f)}
+              className={cn(
+                'px-2.5 py-1 rounded-full text-xs border transition-colors',
+                dateFilter === f
+                  ? 'bg-primary text-primary-foreground border-primary'
+                  : 'border-border text-muted-foreground hover:text-foreground bg-background',
+              )}
+            >
+              {f === 'all' ? 'All Time' : `Last ${f}d`}
+            </button>
+          ))}
+        </div>
+
         {/* Client Filter */}
         <select
           value={clientFilter}
           onChange={e => setClientFilter(e.target.value)}
-          className="ml-auto px-3 py-1.5 bg-background border border-input rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+          className="px-3 py-1.5 bg-background border border-input rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-ring"
         >
           <option value="all">All Clients</option>
           {clients.map(c => (
@@ -620,6 +867,7 @@ export default function TasksPage() {
       {selectedTask && (
         <TaskDetailDialog
           task={selectedTask}
+          clients={clients}
           onClose={() => setSelectedTask(null)}
         />
       )}

@@ -7,7 +7,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Users, Loader2, Search, Plus, X } from 'lucide-react'
+import { Users, Loader2, Search, Plus, X, ChevronRight } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import type { Client, DeliveryTask, Meeting, ClientStatus } from '@/lib/types'
 import { isOverdueEST, formatDateEST } from '@/lib/timezone'
@@ -51,6 +51,12 @@ interface AddClientForm {
   drive_folder_url: string
   credentials_sheet_url: string
   notes: string
+  facebook_url: string
+  instagram_url: string
+  linkedin_url: string
+  youtube_url: string
+  location_count: 0 | 1 | 2 | 3
+  location_names: [string, string, string]
 }
 
 const BLANK_FORM: AddClientForm = {
@@ -61,6 +67,12 @@ const BLANK_FORM: AddClientForm = {
   drive_folder_url: '',
   credentials_sheet_url: '',
   notes: '',
+  facebook_url: '',
+  instagram_url: '',
+  linkedin_url: '',
+  youtube_url: '',
+  location_count: 0,
+  location_names: ['', '', ''],
 }
 
 function AddClientDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
@@ -72,7 +84,8 @@ function AddClientDialog({ open, onClose }: { open: boolean; onClose: () => void
 
   const mutation = useMutation({
     mutationFn: async (data: AddClientForm) => {
-      const { error } = await supabase.from('clients').insert({
+      // 1. Insert parent client
+      const { data: parent, error } = await supabase.from('clients').insert({
         name:                  data.name.trim(),
         status:                data.status,
         start_date:            data.start_date,
@@ -80,10 +93,33 @@ function AddClientDialog({ open, onClose }: { open: boolean; onClose: () => void
         drive_folder_url:      data.drive_folder_url.trim() || null,
         credentials_sheet_url: data.credentials_sheet_url.trim() || null,
         notes:                 data.notes.trim() || null,
+        facebook_url:          data.facebook_url.trim() || null,
+        instagram_url:         data.instagram_url.trim() || null,
+        linkedin_url:          data.linkedin_url.trim() || null,
+        youtube_url:           data.youtube_url.trim() || null,
+        parent_client_id:      null,
+        location_name:         null,
         // health is NOT accepted as user input — DB defaults to 'Green'
-        // owner_pm, account_manager_name, primary_workstreams are not required at creation
-      } as never)
+      } as never).select('id').single()
       if (error) throw new Error(error.message)
+
+      // 2. Insert child location clients if any
+      if (data.location_count > 0 && parent) {
+        const children = data.location_names
+          .slice(0, data.location_count)
+          .filter(n => n.trim())
+          .map(locationName => ({
+            name:             `${data.name.trim()} ${locationName.trim()}`,
+            status:           data.status,
+            start_date:       data.start_date,
+            parent_client_id: parent.id,
+            location_name:    locationName.trim(),
+          }))
+        if (children.length > 0) {
+          const { error: childErr } = await supabase.from('clients').insert(children as never)
+          if (childErr) throw new Error(childErr.message)
+        }
+      }
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['clients-page'] })
@@ -177,6 +213,31 @@ function AddClientDialog({ open, onClose }: { open: boolean; onClose: () => void
             ))}
           </div>
 
+          {/* Social Media (optional) */}
+          <details className="group">
+            <summary className="cursor-pointer text-xs font-medium text-muted-foreground hover:text-foreground select-none">
+              Social Media URLs (optional) <span className="group-open:hidden">▼</span><span className="hidden group-open:inline">▲</span>
+            </summary>
+            <div className="mt-3 space-y-3">
+              {([
+                ['facebook_url',  'Facebook URL'],
+                ['instagram_url', 'Instagram URL'],
+                ['linkedin_url',  'LinkedIn URL'],
+                ['youtube_url',   'YouTube URL'],
+              ] as const).map(([field, label]) => (
+                <div key={field}>
+                  <label className="block text-xs font-medium mb-1">{label}</label>
+                  <input
+                    value={form[field]}
+                    onChange={e => setForm(f => ({ ...f, [field]: e.target.value }))}
+                    className="w-full px-3 py-1.5 bg-background border border-input rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                    placeholder="https://…"
+                  />
+                </div>
+              ))}
+            </div>
+          </details>
+
           {/* Notes */}
           <div>
             <label className="block text-xs font-medium mb-1">Notes <span className="text-destructive">*</span></label>
@@ -187,6 +248,34 @@ function AddClientDialog({ open, onClose }: { open: boolean; onClose: () => void
               className="w-full px-3 py-1.5 bg-background border border-input rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-ring resize-none"
               placeholder="Brief context about this client…"
             />
+          </div>
+
+          {/* Locations (optional) */}
+          <div className="space-y-2">
+            <label className="block text-xs font-medium">Locations (optional)</label>
+            <select
+              value={form.location_count}
+              onChange={e => setForm(f => ({ ...f, location_count: Number(e.target.value) as 0|1|2|3 }))}
+              className="w-full px-3 py-1.5 bg-background border border-input rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+            >
+              <option value={0}>No locations (single office)</option>
+              <option value={1}>1 location</option>
+              <option value={2}>2 locations</option>
+              <option value={3}>3 locations</option>
+            </select>
+            {form.location_count > 0 && Array.from({ length: form.location_count }).map((_, i) => (
+              <input
+                key={i}
+                placeholder={`Location ${i + 1} name (e.g. "Los Angeles")`}
+                value={form.location_names[i] ?? ''}
+                onChange={e => setForm(f => {
+                  const names = [...f.location_names] as [string, string, string]
+                  names[i] = e.target.value
+                  return { ...f, location_names: names }
+                })}
+                className="w-full px-3 py-1.5 bg-background border border-input rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              />
+            ))}
           </div>
 
           {error && (
@@ -249,7 +338,17 @@ export default function ClientsPage() {
   const tasks    = data?.tasks    ?? []
   const meetings = data?.meetings ?? []
 
-  const filtered = clients.filter(c => {
+  // Separate parents (no parent_client_id) and children (has parent_client_id)
+  const parentClients = clients.filter(c => !c.parent_client_id)
+  const childrenByParent = clients.reduce<Record<string, Client[]>>((acc, c) => {
+    if (c.parent_client_id) {
+      acc[c.parent_client_id] = acc[c.parent_client_id] ?? []
+      acc[c.parent_client_id].push(c)
+    }
+    return acc
+  }, {})
+
+  const filtered = parentClients.filter(c => {
     const matchSearch = c.name.toLowerCase().includes(search.toLowerCase())
     const matchHealth = filterHealth === 'All' || c.health === filterHealth
     return matchSearch && matchHealth
@@ -360,18 +459,26 @@ export default function ClientsPage() {
                     </td>
                   </tr>
                 ) : (
-                  filtered.map(c => {
+                  filtered.flatMap(c => {
                     const { over, blk, comp, next } = clientStats(c)
                     const healthClass = c.health === 'Green' ? 'health-green'
                       : c.health === 'Yellow' ? 'health-yellow' : 'health-red'
                     const statusClass = c.status === 'Active' ? 'status-in-progress'
                       : c.status === 'At Risk' ? 'status-blocked'
                       : 'status-not-started'
-                    return (
+                    const children = childrenByParent[c.id] ?? []
+                    const rows = [
                       <tr key={c.id} onClick={() => navigate(`/clients/${c.id}`)}>
                         <td className="px-4 py-3">
                           <div>
-                            <p className="text-sm font-medium">{c.name}</p>
+                            <div className="flex items-center gap-1.5">
+                              <p className="text-sm font-medium">{c.name}</p>
+                              {children.length > 0 && (
+                                <span className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded-full">
+                                  {children.length} loc
+                                </span>
+                              )}
+                            </div>
                             <p className="text-xs text-muted-foreground">Since {formatDateEST(c.start_date)}</p>
                           </div>
                         </td>
@@ -384,27 +491,16 @@ export default function ClientsPage() {
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-2">
                             <div className="flex-1 h-1.5 bg-muted rounded-full min-w-12 max-w-20 overflow-hidden">
-                              <div
-                                className="h-full bg-primary rounded-full"
-                                style={{ width: `${comp}%` }}
-                              />
+                              <div className="h-full bg-primary rounded-full" style={{ width: `${comp}%` }} />
                             </div>
-                            <span className={cn('text-xs font-mono font-medium', getCompletionClass(comp))}>
-                              {comp}%
-                            </span>
+                            <span className={cn('text-xs font-mono font-medium', getCompletionClass(comp))}>{comp}%</span>
                           </div>
                         </td>
                         <td className="px-4 py-3">
-                          {over > 0
-                            ? <span className="text-sm font-medium text-destructive">{over}</span>
-                            : <span className="text-sm text-muted-foreground">—</span>
-                          }
+                          {over > 0 ? <span className="text-sm font-medium text-destructive">{over}</span> : <span className="text-sm text-muted-foreground">—</span>}
                         </td>
                         <td className="px-4 py-3">
-                          {blk > 0
-                            ? <span className="text-sm font-medium text-[hsl(var(--warning))]">{blk}</span>
-                            : <span className="text-sm text-muted-foreground">—</span>
-                          }
+                          {blk > 0 ? <span className="text-sm font-medium text-[hsl(var(--warning))]">{blk}</span> : <span className="text-sm text-muted-foreground">—</span>}
                         </td>
                         <td className="px-4 py-3">
                           {next ? (
@@ -419,8 +515,37 @@ export default function ClientsPage() {
                         <td className="px-4 py-3">
                           <WorkstreamChips streams={c.primary_workstreams ?? []} />
                         </td>
-                      </tr>
-                    )
+                      </tr>,
+                      // Child location rows
+                      ...children.map(child => {
+                        const childHealth = child.health === 'Green' ? 'health-green'
+                          : child.health === 'Yellow' ? 'health-yellow' : 'health-red'
+                        return (
+                          <tr key={child.id} onClick={() => navigate(`/clients/${child.id}`)}
+                            className="bg-muted/20">
+                            <td className="px-4 py-2.5">
+                              <div className="flex items-center gap-2 pl-4 border-l-2 border-border/50">
+                                <ChevronRight className="h-3 w-3 text-muted-foreground shrink-0" />
+                                <div>
+                                  <p className="text-sm font-medium">{child.location_name ?? child.name}</p>
+                                  <p className="text-xs text-muted-foreground">{child.name}</p>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="px-4 py-2.5">
+                              <span className={child.status === 'Active' ? 'status-in-progress' : 'status-not-started'}>{child.status}</span>
+                            </td>
+                            <td className="px-4 py-2.5">
+                              <span className={childHealth}>{child.health}</span>
+                            </td>
+                            <td colSpan={5} className="px-4 py-2.5 text-xs text-muted-foreground">
+                              View location dashboard →
+                            </td>
+                          </tr>
+                        )
+                      }),
+                    ]
+                    return rows
                   })
                 )}
               </tbody>

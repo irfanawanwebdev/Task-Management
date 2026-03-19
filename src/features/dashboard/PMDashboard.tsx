@@ -198,8 +198,6 @@ function RiskCard({ client, tasks, reviews, meetings }: RiskCardProps) {
     : risk.health === 'Yellow' ? 'health-yellow'
     : 'health-red'
 
-  const totalWithDue = clientTasks.filter(t => t.due_date).length
-  const done         = clientTasks.filter(t => t.status === 'Done' && t.due_date).length
 
   return (
     <div className="bg-card border border-border rounded-lg overflow-hidden">
@@ -226,40 +224,71 @@ function RiskCard({ client, tasks, reviews, meetings }: RiskCardProps) {
 
       {expanded && (
         <div className="border-t border-border px-3 py-3 bg-background/30 space-y-3">
-          {/* 4-Pillar breakdown */}
-          <div className="grid grid-cols-4 gap-2 text-xs">
-            <div className="text-center">
-              <p className="text-muted-foreground mb-0.5">Delivery</p>
-              <p className="font-bold text-base">{risk.delivery}<span className="text-muted-foreground font-normal">/30</span></p>
-            </div>
-            <div className="text-center">
-              <p className="text-muted-foreground mb-0.5">Sentiment</p>
-              <p className="font-bold text-base">{risk.sentiment}<span className="text-muted-foreground font-normal">/25</span></p>
-            </div>
-            <div className="text-center">
-              <p className="text-muted-foreground mb-0.5">Performance</p>
-              <p className="font-bold text-base">{risk.performance}<span className="text-muted-foreground font-normal">/25</span></p>
-            </div>
-            <div className="text-center">
-              <p className="text-muted-foreground mb-0.5">Visibility</p>
-              <p className="font-bold text-base">{risk.visibility}<span className="text-muted-foreground font-normal">/20</span></p>
-            </div>
+          {/* System Risk Breakdown label */}
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">System Risk Breakdown</p>
+
+          {/* 4-Pillar progress bars */}
+          <div className="space-y-2.5">
+            {([
+              { label: 'Delivery',    score: risk.delivery,    max: 30 },
+              { label: 'Sentiment',   score: risk.sentiment,   max: 25 },
+              { label: 'Performance', score: risk.performance, max: 25 },
+              { label: 'Visibility',  score: risk.visibility,  max: 20 },
+            ] as const).map(({ label, score, max }) => {
+              const pct = max > 0 ? (score / max) * 100 : 0
+              const barColor = pct <= 30 ? 'bg-[hsl(var(--success))]'
+                : pct <= 60 ? 'bg-[hsl(var(--warning))]'
+                : 'bg-destructive'
+              return (
+                <div key={label} className="space-y-0.5">
+                  <div className="flex justify-between text-xs">
+                    <span className="text-muted-foreground">{label}</span>
+                    <span className="font-medium tabular-nums">
+                      {score}<span className="text-muted-foreground font-normal">/{max}</span>
+                    </span>
+                  </div>
+                  <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+                    <div
+                      className={cn('h-full rounded-full transition-all', barColor)}
+                      style={{ width: `${pct}%` }}
+                    />
+                  </div>
+                </div>
+              )
+            })}
           </div>
-          {/* Completion + adjustment */}
-          <div className="flex items-center gap-4 text-xs text-muted-foreground pt-1 border-t border-border/40">
-            <span>
-              Completion:
-              <span className={cn('ml-1 font-semibold', getCompletionClass(totalWithDue > 0 ? Math.round((done / totalWithDue) * 100) : 100))}>
-                {totalWithDue > 0 ? Math.round((done / totalWithDue) * 100) : 100}%
+
+          {/* Summary row */}
+          <div className="flex items-center justify-between text-xs pt-1 border-t border-border/40">
+            <span className="text-muted-foreground">
+              System: <span className="font-semibold text-foreground">{risk.delivery + risk.sentiment + risk.performance + risk.visibility}</span>
+            </span>
+            <span className="text-muted-foreground">
+              Adj: <span className={cn('font-semibold',
+                risk.adjustment > 0 ? 'text-destructive' :
+                risk.adjustment < 0 ? 'text-[hsl(var(--success))]' :
+                'text-foreground'
+              )}>
+                {risk.adjustment > 0 ? '+' : ''}{risk.adjustment}
               </span>
             </span>
-            <span>Tasks: <span className="font-medium text-foreground">{done}/{totalWithDue}</span></span>
-            {risk.adjustment !== 0 && (
-              <span>Adj: <span className={cn('font-medium', risk.adjustment > 0 ? 'text-destructive' : 'text-[hsl(var(--success))]')}>
-                {risk.adjustment > 0 ? '+' : ''}{risk.adjustment}
-              </span></span>
-            )}
+            <span className="text-muted-foreground">
+              Final: <span className={cn('font-bold',
+                risk.health === 'Red'    ? 'text-destructive' :
+                risk.health === 'Yellow' ? 'text-[hsl(var(--warning))]' :
+                'text-[hsl(var(--success))]'
+              )}>
+                {risk.final_score}
+              </span>
+            </span>
           </div>
+
+          {/* Weekly review note — shown if no reviews logged yet */}
+          {clientReviews.length === 0 && (
+            <p className="text-xs text-muted-foreground italic">
+              Weekly strategic reviews will appear here once logged.
+            </p>
+          )}
         </div>
       )}
     </div>
@@ -299,15 +328,30 @@ function BlockerRow({ blocker }: { blocker: Blocker }) {
 
 // ─── PM Checklist ─────────────────────────────────────────────────────────────
 
-const CHECKLIST_ITEMS = [
+const FALLBACK_CHECKLIST = [
   'Check overdue tasks and follow up with team',
   'Review and clear blocked items',
   'Send pending weekly/monthly reports',
   'Log new risks or blockers identified',
 ]
 
-function DailyChecklist() {
-  const [checked, setChecked] = useState<boolean[]>([false, false, false, false])
+function useNonNegotiables() {
+  return useQuery<string[]>({
+    queryKey: ['app-settings', 'weekly_non_negotiables'],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('app_settings')
+        .select('value')
+        .eq('key', 'weekly_non_negotiables')
+        .single()
+      return ((data as unknown as { value: string[] } | null)?.value) ?? FALLBACK_CHECKLIST
+    },
+    placeholderData: FALLBACK_CHECKLIST,
+  })
+}
+
+function DailyChecklist({ items }: { items: string[] }) {
+  const [checked, setChecked] = useState<boolean[]>(() => items.map(() => false))
 
   const toggle = (i: number) => {
     setChecked(prev => prev.map((v, idx) => idx === i ? !v : v))
@@ -319,9 +363,9 @@ function DailyChecklist() {
     <div className="space-y-2">
       <div className="flex items-center justify-between">
         <p className="section-header">Daily PM Checklist</p>
-        <span className="text-xs text-muted-foreground">{done}/{CHECKLIST_ITEMS.length}</span>
+        <span className="text-xs text-muted-foreground">{done}/{items.length}</span>
       </div>
-      {CHECKLIST_ITEMS.map((item, i) => (
+      {items.map((item, i) => (
         <button
           key={i}
           onClick={() => toggle(i)}
@@ -350,6 +394,7 @@ export default function PMDashboard() {
   const { data: clients,     isLoading: clientsLoading }     = useClients()
   const { data: allMeetings  = [], isLoading: riskMtgLoading }  = useAllMeetingsForRisk()
   const { data: allReviews   = [], isLoading: riskRevLoading }  = useWeeklyReviews()
+  const { data: checklistItems = FALLBACK_CHECKLIST }        = useNonNegotiables()
 
   const today = todayDateEST()
 
@@ -556,7 +601,7 @@ export default function PMDashboard() {
 
           {/* Daily PM Checklist */}
           <div className="metric-card">
-            <DailyChecklist />
+            <DailyChecklist items={checklistItems} />
           </div>
 
           {/* Client Meetings This Week */}

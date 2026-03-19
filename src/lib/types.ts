@@ -121,6 +121,12 @@ export interface Client {
   website_url: string | null
   gbp_url: string | null
   ad_accounts_url: string | null
+  facebook_url: string | null
+  instagram_url: string | null
+  linkedin_url: string | null
+  youtube_url: string | null
+  parent_client_id: string | null
+  location_name: string | null
   created_at: string
   updated_at: string
 }

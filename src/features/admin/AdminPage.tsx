@@ -7,7 +7,7 @@
 
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { UserPlus, X, Loader2, ShieldCheck, Users, ChevronDown, ChevronUp } from 'lucide-react'
+import { UserPlus, X, Loader2, ShieldCheck, Users, ChevronDown, ChevronUp, Pencil, Check } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import type { AppDepartment, AppRole, Profile } from '@/lib/types'
 import { ALL_ROLES } from '@/lib/types'
@@ -302,6 +302,28 @@ function MemberCard({ member, canEdit }: { member: TeamMember; canEdit: boolean 
   const [showPageAccess, setShowPageAccess] = useState(false)
   const [editingAccess, setEditingAccess]   = useState<string[]>(member.page_access ?? [])
 
+  // ── Profile edit (name + department) ─────────────────────────────────────
+  const [isEditingProfile, setIsEditingProfile] = useState(false)
+  const [editName, setEditName]   = useState(member.full_name)
+  const [editDept, setEditDept]   = useState<AppDepartment>(member.department ?? 'operations')
+  const [profileError, setProfileError] = useState<string | null>(null)
+
+  const saveProfile = useMutation({
+    mutationFn: async () => {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ full_name: editName.trim(), department: editDept } as never)
+        .eq('user_id', member.user_id)
+      if (error) throw error
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['team-members'] })
+      setIsEditingProfile(false)
+      setProfileError(null)
+    },
+    onError: (e: Error) => setProfileError(e.message),
+  })
+
   const toggleActive = useMutation({
     mutationFn: async (isActive: boolean) => {
       const { error } = await supabase
@@ -377,17 +399,65 @@ function MemberCard({ member, canEdit }: { member: TeamMember; canEdit: boolean 
     )}>
       {/* Header row */}
       <div className="flex items-start justify-between gap-3">
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-1 min-w-0">
           <div className="h-9 w-9 rounded-full bg-primary/20 flex items-center justify-center shrink-0">
             <span className="text-primary text-sm font-semibold">{initials}</span>
           </div>
-          <div>
-            <p className="font-medium text-sm">{member.full_name}</p>
-            <p className="text-xs text-muted-foreground capitalize">
-              {member.department?.replace('_', ' ') ?? 'No department'}
-              {!member.is_active && <span className="ml-2 text-destructive font-medium">Deactivated</span>}
-            </p>
-          </div>
+          {isEditingProfile ? (
+            <div className="flex-1 space-y-1.5">
+              <input
+                value={editName}
+                onChange={e => setEditName(e.target.value)}
+                className="w-full px-2 py-1 bg-background border border-input rounded text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                placeholder="Full name"
+              />
+              <select
+                value={editDept}
+                onChange={e => setEditDept(e.target.value as AppDepartment)}
+                className="w-full px-2 py-1 bg-background border border-input rounded text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+              >
+                {DEPT_OPTIONS.map(o => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
+              {profileError && <p className="text-xs text-destructive">{profileError}</p>}
+              <div className="flex gap-1.5">
+                <button
+                  onClick={() => saveProfile.mutate()}
+                  disabled={saveProfile.isPending || !editName.trim()}
+                  className="flex items-center gap-1 text-xs px-2 py-0.5 bg-primary text-primary-foreground rounded hover:opacity-90 disabled:opacity-50"
+                >
+                  {saveProfile.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
+                  Save
+                </button>
+                <button
+                  onClick={() => { setIsEditingProfile(false); setEditName(member.full_name); setEditDept(member.department ?? 'operations'); setProfileError(null) }}
+                  className="text-xs px-2 py-0.5 bg-muted rounded hover:bg-accent"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-1.5">
+                <p className="font-medium text-sm truncate">{member.full_name}</p>
+                {canEdit && (
+                  <button
+                    onClick={() => { setEditName(member.full_name); setEditDept(member.department ?? 'operations'); setIsEditingProfile(true) }}
+                    className="text-muted-foreground hover:text-foreground transition-colors shrink-0"
+                    title="Edit name and department"
+                  >
+                    <Pencil className="h-3 w-3" />
+                  </button>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground capitalize">
+                {member.department?.replace(/_/g, ' ') ?? 'No department'}
+                {!member.is_active && <span className="ml-2 text-destructive font-medium">Deactivated</span>}
+              </p>
+            </div>
+          )}
         </div>
 
         {/* Active toggle — edit only if canEdit */}

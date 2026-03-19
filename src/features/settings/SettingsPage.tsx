@@ -4,12 +4,29 @@
  */
 
 import { useState, useEffect } from 'react'
-import { Settings, ExternalLink, RefreshCw, Check, Zap, CheckCircle2, AlertCircle } from 'lucide-react'
+import { Settings, ExternalLink, RefreshCw, Check, Zap, CheckCircle2, AlertCircle, Unplug, Plus, Trash2, Pencil, X } from 'lucide-react'
 import { useSearchParams } from 'react-router-dom'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/features/auth/AuthContext'
 import { cn } from '@/lib/utils'
+
+// ─── OAuth error message map ──────────────────────────────────────────────────
+const OAUTH_ERROR_MESSAGES: Record<string, string> = {
+  oauth_denied:   'You denied access. Click Connect to try again.',
+  token_exchange: 'Failed to exchange auth code. Verify GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET are set in Supabase secrets.',
+  missing_params: 'OAuth callback missing required parameters. Check that the redirect URI in Google Console matches exactly.',
+  db_error:       'Token storage failed. Check the Supabase service role key.',
+  unexpected:     'Unexpected server error. Check edge function logs in Supabase dashboard.',
+}
+
+// ─── Fallback checklist for non-negotiables ───────────────────────────────────
+const FALLBACK_NON_NEGOTIABLES = [
+  'Check overdue tasks and follow up with team',
+  'Review and clear blocked items',
+  'Send pending weekly/monthly reports',
+  'Log new risks or blockers identified',
+]
 
 // ─── Brand SVG Icons ──────────────────────────────────────────────────────────
 
@@ -178,32 +195,41 @@ const CATEGORY_COLORS: Record<string, string> = {
 function ConnectorCard({
   connector,
   connectedEmail,
+  userId,
+  onDisconnect,
 }: {
   connector: Connector
   connectedEmail?: string | null
+  userId?: string
+  onDisconnect?: () => void
 }) {
   const [connecting, setConnecting] = useState(false)
-  const [notice, setNotice] = useState(false)
+  const [notice, setNotice]         = useState(false)
+  const [connectError, setConnectError] = useState<string | null>(null)
   const { Icon } = connector
   const isConnected = connectedEmail !== undefined
 
   async function handleConnect() {
+    setConnectError(null)
     // Only Google Calendar has a live OAuth flow right now
     if (connector.id === 'google-calendar') {
       setConnecting(true)
       try {
         const res = await supabase.functions.invoke('google-calendar-auth')
+        if (res.error) {
+          setConnectError(res.error.message ?? 'Edge function error. Check Supabase logs.')
+          setConnecting(false)
+          return
+        }
         if (res.data?.url) {
           window.location.href = res.data.url
         } else {
+          setConnectError('Edge function returned no redirect URL. Ensure GOOGLE_CLIENT_ID secret is set in Supabase.')
           setConnecting(false)
-          setNotice(true)
-          setTimeout(() => setNotice(false), 4000)
         }
-      } catch {
+      } catch (err) {
+        setConnectError(err instanceof Error ? err.message : 'Unexpected error. Check edge function is deployed.')
         setConnecting(false)
-        setNotice(true)
-        setTimeout(() => setNotice(false), 4000)
       }
       return
     }
@@ -215,6 +241,16 @@ function ConnectorCard({
       setNotice(true)
       setTimeout(() => setNotice(false), 4000)
     }, 800)
+  }
+
+  async function handleDisconnect() {
+    if (!userId) return
+    await supabase
+      .from('connector_tokens')
+      .delete()
+      .eq('user_id', userId)
+      .eq('connector_id', connector.id)
+    onDisconnect?.()
   }
 
   return (
@@ -271,29 +307,46 @@ function ConnectorCard({
         </div>
       )}
 
+      {connectError && (
+        <div className="mx-4 mb-3 flex items-start gap-2 rounded-lg border border-destructive/20 bg-destructive/8 px-3 py-2 text-xs text-destructive leading-relaxed">
+          <AlertCircle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+          <span className="flex-1">{connectError}</span>
+          <button onClick={() => setConnectError(null)} className="shrink-0 hover:opacity-70">
+            <X className="h-3 w-3" />
+          </button>
+        </div>
+      )}
+
       <div className="border-t border-border/40" />
 
       {/* Actions */}
       <div className="flex items-center gap-2 px-4 py-3">
-        <button
-          onClick={handleConnect}
-          disabled={connecting || isConnected}
-          className={cn(
-            'inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all',
-            isConnected
-              ? 'bg-emerald-500/10 text-emerald-400 ring-1 ring-emerald-500/20 cursor-default'
-              : 'bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-60',
-          )}
-        >
-          {connecting ? (
-            <RefreshCw className="h-3 w-3 animate-spin" />
-          ) : isConnected ? (
-            <Check className="h-3 w-3" />
-          ) : (
-            <Zap className="h-3 w-3" />
-          )}
-          {connecting ? 'Connecting…' : isConnected ? 'Connected' : 'Connect'}
-        </button>
+        {isConnected ? (
+          <>
+            <div className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold bg-emerald-500/10 text-emerald-400 ring-1 ring-emerald-500/20">
+              <Check className="h-3 w-3" />
+              Connected
+            </div>
+            {connector.id === 'google-calendar' && (
+              <button
+                onClick={handleDisconnect}
+                className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium border border-destructive/30 text-destructive hover:bg-destructive/10 transition-colors"
+              >
+                <Unplug className="h-3 w-3" />
+                Disconnect
+              </button>
+            )}
+          </>
+        ) : (
+          <button
+            onClick={handleConnect}
+            disabled={connecting}
+            className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-60 transition-all"
+          >
+            {connecting ? <RefreshCw className="h-3 w-3 animate-spin" /> : <Zap className="h-3 w-3" />}
+            {connecting ? 'Connecting…' : 'Connect'}
+          </button>
+        )}
         <a
           href={connector.docsUrl}
           target="_blank"
@@ -304,6 +357,194 @@ function ConnectorCard({
           API Docs
         </a>
       </div>
+    </div>
+  )
+}
+
+// ─── Google Calendar Setup Guide ─────────────────────────────────────────────
+
+function GoogleCalendarSetupGuide({ supabaseUrl }: { supabaseUrl?: string }) {
+  const [open, setOpen] = useState(false)
+  const redirectUri = supabaseUrl
+    ? `${supabaseUrl}/functions/v1/google-calendar-callback`
+    : '{SUPABASE_URL}/functions/v1/google-calendar-callback'
+
+  const steps = [
+    { done: false, label: 'Deploy google-calendar-auth edge function', code: 'npx supabase functions deploy google-calendar-auth --project-ref <ref>' },
+    { done: false, label: 'Deploy google-calendar-callback (no-verify-jwt)', code: 'npx supabase functions deploy google-calendar-callback --project-ref <ref> --no-verify-jwt' },
+    { done: false, label: 'Set GOOGLE_CLIENT_ID secret in Supabase', code: 'npx supabase secrets set GOOGLE_CLIENT_ID=<your-id> --project-ref <ref>' },
+    { done: false, label: 'Set GOOGLE_CLIENT_SECRET secret in Supabase', code: 'npx supabase secrets set GOOGLE_CLIENT_SECRET=<your-secret> --project-ref <ref>' },
+    { done: false, label: 'Set APP_URL secret (your deployment URL)', code: 'npx supabase secrets set APP_URL=https://your-app.vercel.app --project-ref <ref>' },
+    { done: false, label: 'Add redirect URI in Google Console:', code: redirectUri },
+  ]
+
+  return (
+    <div className="rounded-xl border border-blue-500/20 bg-blue-500/5 overflow-hidden">
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center justify-between p-4 text-left hover:bg-blue-500/8 transition-colors"
+      >
+        <div className="flex items-center gap-2">
+          <GoogleCalendarIcon className="h-5 w-5" />
+          <span className="font-semibold text-sm">Google Calendar OAuth Setup Requirements</span>
+        </div>
+        <span className="text-xs text-muted-foreground">{open ? '▲ Hide' : '▼ Show'}</span>
+      </button>
+
+      {open && (
+        <div className="border-t border-blue-500/20 px-4 pb-4 pt-3 space-y-2.5">
+          {steps.map((step, i) => (
+            <div key={i} className="flex items-start gap-3">
+              <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground text-xs font-bold mt-0.5">
+                {i + 1}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-medium text-foreground">{step.label}</p>
+                <code className="block mt-1 text-xs bg-muted/60 px-2 py-1 rounded text-muted-foreground break-all font-mono">
+                  {step.code}
+                </code>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Weekly Non-Negotiables ───────────────────────────────────────────────────
+
+function WeeklyNonNegotiables() {
+  const { role } = useAuth()
+  const qc = useQueryClient()
+  const isManager = role === 'owner' || role === 'project_manager'
+
+  const { data: items = FALLBACK_NON_NEGOTIABLES } = useQuery<string[]>({
+    queryKey: ['app-settings', 'weekly_non_negotiables'],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('app_settings')
+        .select('value')
+        .eq('key', 'weekly_non_negotiables')
+        .single()
+      return ((data as unknown as { value: string[] } | null)?.value) ?? FALLBACK_NON_NEGOTIABLES
+    },
+  })
+
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft]     = useState<string[]>([])
+  const [newItem, setNewItem] = useState('')
+
+  function startEdit() {
+    setDraft([...items])
+    setEditing(true)
+  }
+
+  function cancelEdit() {
+    setEditing(false)
+    setNewItem('')
+  }
+
+  const saveMutation = useMutation({
+    mutationFn: async (next: string[]) => {
+      const { error } = await supabase
+        .from('app_settings')
+        .upsert({ key: 'weekly_non_negotiables', value: next } as never, { onConflict: 'key' })
+      if (error) throw error
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['app-settings', 'weekly_non_negotiables'] })
+      setEditing(false)
+      setNewItem('')
+    },
+  })
+
+  function addItem() {
+    const t = newItem.trim()
+    if (!t) return
+    setDraft(d => [...d, t])
+    setNewItem('')
+  }
+
+  return (
+    <div className="rounded-xl border border-border/60 bg-card p-5 space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="font-semibold text-sm">Weekly Non-Negotiables</h2>
+          <p className="text-xs text-muted-foreground mt-0.5">Tasks shown on the PM Dashboard daily checklist</p>
+        </div>
+        {isManager && !editing && (
+          <button
+            onClick={startEdit}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-border/60 px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+          >
+            <Pencil className="h-3 w-3" />
+            Edit
+          </button>
+        )}
+      </div>
+
+      {editing ? (
+        <div className="space-y-3">
+          <ul className="space-y-1.5">
+            {draft.map((item, i) => (
+              <li key={i} className="flex items-center gap-2 group">
+                <span className="flex-1 text-sm text-foreground">{item}</span>
+                <button
+                  onClick={() => setDraft(d => d.filter((_, idx) => idx !== i))}
+                  className="opacity-0 group-hover:opacity-100 p-1 rounded text-destructive hover:bg-destructive/10 transition-all"
+                >
+                  <Trash2 className="h-3 w-3" />
+                </button>
+              </li>
+            ))}
+          </ul>
+          <div className="flex gap-2">
+            <input
+              value={newItem}
+              onChange={e => setNewItem(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addItem() } }}
+              placeholder="Add new item…"
+              className="flex-1 px-3 py-1.5 bg-background border border-input rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+            />
+            <button
+              onClick={addItem}
+              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-md border border-border/60 text-xs font-medium hover:bg-accent transition-colors"
+            >
+              <Plus className="h-3 w-3" />
+              Add
+            </button>
+          </div>
+          {saveMutation.isError && (
+            <p className="text-xs text-destructive">{(saveMutation.error as Error).message}</p>
+          )}
+          <div className="flex gap-2 pt-1">
+            <button
+              onClick={() => saveMutation.mutate(draft)}
+              disabled={saveMutation.isPending}
+              className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 disabled:opacity-60 transition-all"
+            >
+              {saveMutation.isPending ? <RefreshCw className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
+              Save
+            </button>
+            <button
+              onClick={cancelEdit}
+              className="px-4 py-1.5 rounded-lg border border-border/60 text-xs font-medium text-muted-foreground hover:bg-accent transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : (
+        <ul className="space-y-1.5">
+          {items.map((item, i) => (
+            <li key={i} className="flex items-center gap-2 text-sm text-foreground">
+              <span className="h-1.5 w-1.5 rounded-full bg-primary shrink-0" />
+              {item}
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   )
 }
@@ -414,7 +655,7 @@ export default function SettingsPage() {
       {errorParam && (
         <div className="flex items-center gap-2 rounded-lg border border-destructive/20 bg-destructive/8 px-4 py-3 text-sm text-destructive">
           <AlertCircle className="h-4 w-4 shrink-0" />
-          <span>Connection failed: <span className="font-semibold">{errorParam}</span>. Please try again.</span>
+          <span>{OAUTH_ERROR_MESSAGES[errorParam] ?? `Connection failed: ${errorParam}`}</span>
         </div>
       )}
 
@@ -422,6 +663,8 @@ export default function SettingsPage() {
         <span className="font-semibold text-amber-200">Implementation Status:</span>{' '}
         Google Calendar is live. Other OAuth flows pending backend implementation.
       </div>
+
+      <GoogleCalendarSetupGuide supabaseUrl={import.meta.env.VITE_SUPABASE_URL} />
 
       <div className="flex gap-2 flex-wrap">
         {categories.map(c => (
@@ -446,6 +689,8 @@ export default function SettingsPage() {
             key={c.id}
             connector={c}
             connectedEmail={tokenMap[c.id]}
+            userId={user?.id}
+            onDisconnect={() => qc.invalidateQueries({ queryKey: ['connector-tokens'] })}
           />
         ))}
       </div>
@@ -459,6 +704,8 @@ export default function SettingsPage() {
           No integrations connected yet
         </div>
       </div>
+
+      <WeeklyNonNegotiables />
 
       <DeveloperGuide />
     </div>

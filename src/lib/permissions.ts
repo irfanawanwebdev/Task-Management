@@ -10,6 +10,7 @@ import type { AppRole, Profile } from './types'
 
 /** All configurable page keys (matches profiles.page_access values) */
 export const PAGE_KEYS = {
+  SPECIALIST:      'specialist',
   OWNER_DASHBOARD: 'owner_dashboard',
   PM_DASHBOARD:    'pm_dashboard',
   CLIENTS:         'clients',
@@ -25,6 +26,7 @@ export const PAGE_KEYS = {
 
 /** Maps route paths → page key (for access checks) */
 const ROUTE_TO_PAGE_KEY: Record<string, string> = {
+  '/specialist':   PAGE_KEYS.SPECIALIST,
   '/owner':        PAGE_KEYS.OWNER_DASHBOARD,
   '/':             PAGE_KEYS.PM_DASHBOARD,
   '/clients':      PAGE_KEYS.CLIENTS,
@@ -48,16 +50,17 @@ export interface NavItem {
 }
 
 const ALL_NAV_ITEMS: NavItem[] = [
+  { label: 'My Dashboard',        path: '/specialist',   icon: 'LayoutDashboard',pageKey: PAGE_KEYS.SPECIALIST },
   { label: 'Executive Dashboard', path: '/owner',        icon: 'TrendingUp',     pageKey: PAGE_KEYS.OWNER_DASHBOARD },
   { label: 'PM Dashboard',        path: '/',             icon: 'LayoutDashboard',pageKey: PAGE_KEYS.PM_DASHBOARD },
   { label: 'Clients',             path: '/clients',      icon: 'Users',          pageKey: PAGE_KEYS.CLIENTS },
   { label: 'Tasks',               path: '/tasks',        icon: 'CheckSquare',    pageKey: PAGE_KEYS.TASKS },
-  { label: 'RACI Matrix',         path: '/raci',         icon: 'Grid',           pageKey: PAGE_KEYS.RACI },
   { label: 'Meetings & Reports',  path: '/meetings',     icon: 'Calendar',       pageKey: PAGE_KEYS.MEETINGS },
   { label: 'Blockers',            path: '/blockers',     icon: 'AlertTriangle',  pageKey: PAGE_KEYS.BLOCKERS },
   { label: 'Team Workload',       path: '/workload',     icon: 'BarChart2',      pageKey: PAGE_KEYS.WORKLOAD },
   { label: 'Internal Workspace',  path: '/instructions', icon: 'BookOpen',       pageKey: PAGE_KEYS.INSTRUCTIONS },
   { label: 'User Management',     path: '/admin',        icon: 'UserCog',        pageKey: PAGE_KEYS.ADMIN },
+  { label: 'RACI Matrix',         path: '/raci',         icon: 'Grid',           pageKey: PAGE_KEYS.RACI },
   { label: 'Settings',            path: '/settings',     icon: 'Settings',       pageKey: PAGE_KEYS.SETTINGS },
 ]
 
@@ -106,7 +109,12 @@ function getPageKeyForPath(path: string): string | null {
 export function getNavForProfile(profile: Profile | null, role: AppRole | null): NavItem[] {
   const pageAccess = profile?.page_access ?? []
   if (profile && pageAccess.length > 0) {
-    return ALL_NAV_ITEMS.filter(item => pageAccess.includes(item.pageKey))
+    // Always include My Dashboard (accessible to all authenticated users)
+    const specialistItem = ALL_NAV_ITEMS.find(item => item.pageKey === PAGE_KEYS.SPECIALIST)!
+    const rest = ALL_NAV_ITEMS.filter(item =>
+      item.pageKey !== PAGE_KEYS.SPECIALIST && pageAccess.includes(item.pageKey)
+    )
+    return [specialistItem, ...rest]
   }
   // Fallback to role-based
   return getNavForRole(role ?? 'viewer')
@@ -173,17 +181,17 @@ export function getNavForRole(role: AppRole): NavItem[] {
     { label: 'PM Dashboard',        path: '/',             icon: 'LayoutDashboard', pageKey: PAGE_KEYS.PM_DASHBOARD },
     { label: 'Clients',             path: '/clients',      icon: 'Users',           pageKey: PAGE_KEYS.CLIENTS },
     { label: 'Tasks',               path: '/tasks',        icon: 'CheckSquare',     pageKey: PAGE_KEYS.TASKS },
-    { label: 'RACI Matrix',         path: '/raci',         icon: 'Grid',            pageKey: PAGE_KEYS.RACI },
     { label: 'Meetings & Reports',  path: '/meetings',     icon: 'Calendar',        pageKey: PAGE_KEYS.MEETINGS },
     { label: 'Blockers',            path: '/blockers',     icon: 'AlertTriangle',   pageKey: PAGE_KEYS.BLOCKERS },
     { label: 'Team Workload',       path: '/workload',     icon: 'BarChart2',       pageKey: PAGE_KEYS.WORKLOAD },
     { label: 'Internal Workspace',  path: '/instructions', icon: 'BookOpen',        pageKey: PAGE_KEYS.INSTRUCTIONS },
     { label: 'User Management',     path: '/admin',        icon: 'UserCog',         pageKey: PAGE_KEYS.ADMIN },
+    { label: 'RACI Matrix',         path: '/raci',         icon: 'Grid',            pageKey: PAGE_KEYS.RACI },
     { label: 'Settings',            path: '/settings',     icon: 'Settings',        pageKey: PAGE_KEYS.SETTINGS },
   ]
 
   const specialistNav: NavItem[] = [
-    { label: 'My Dashboard', path: '/specialist', icon: 'LayoutDashboard', pageKey: '' },
+    { label: 'My Dashboard', path: '/specialist', icon: 'LayoutDashboard', pageKey: PAGE_KEYS.SPECIALIST },
     { label: 'My Tasks',     path: '/tasks',      icon: 'CheckSquare',     pageKey: PAGE_KEYS.TASKS },
     { label: 'Meetings',     path: '/meetings',   icon: 'Calendar',        pageKey: PAGE_KEYS.MEETINGS },
     { label: 'Blockers',     path: '/blockers',   icon: 'AlertTriangle',   pageKey: PAGE_KEYS.BLOCKERS },

@@ -9,7 +9,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   ArrowLeft, Plus, Loader2, CheckCircle2, AlertTriangle,
-  Calendar, KeyRound, FileText, Star, BarChart2, ExternalLink,
+  Calendar, KeyRound, FileText, Star, BarChart2, ExternalLink, Pencil, X, ChevronRight,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import type {
@@ -20,6 +20,7 @@ import { calcRiskScore } from '@/lib/riskEngine'
 import { getCompletionClass } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import { CreateTaskDialog } from '@/features/tasks/CreateTaskDialog'
+import { useAuth } from '@/features/auth/AuthContext'
 
 // ─── Data Hook ────────────────────────────────────────────────────────────────
 
@@ -38,14 +39,25 @@ function useClientDetail(id: string) {
         ])
 
       if (clientRes.error) throw clientRes.error
+      const client = clientRes.data as Client
+
+      // Fetch children (for parent) or parent info (for child)
+      const [childrenRes, parentRes] = await Promise.all([
+        supabase.from('clients').select('id, name, location_name, status, health').eq('parent_client_id', id),
+        client.parent_client_id
+          ? supabase.from('clients').select('id, name').eq('id', client.parent_client_id).single()
+          : Promise.resolve({ data: null, error: null }),
+      ])
 
       return {
-        client:   clientRes.data as Client,
+        client,
         tasks:    (tasksRes.data    ?? []) as unknown as DeliveryTask[],
         blockers: (blockersRes.data ?? []) as unknown as Blocker[],
         meetings: (meetingsRes.data ?? []) as unknown as Meeting[],
         reports:  (reportsRes.data  ?? []) as unknown as Report[],
         reviews:  (reviewsRes.data  ?? []) as WeeklyReview[],
+        children: (childrenRes.data ?? []) as unknown as { id: string; name: string; location_name: string | null; status: string; health: string }[],
+        parentClient: parentRes.data as { id: string; name: string } | null,
       }
     },
   })
@@ -183,41 +195,177 @@ function BlockersTab({ blockers }: { blockers: Blocker[] }) {
 
 // ─── Credentials Tab ─────────────────────────────────────────────────────────
 
+function CredLink({ href, label, sub }: { href: string; label: string; sub: string }) {
+  return (
+    <a href={href} target="_blank" rel="noopener noreferrer"
+      className="flex items-center gap-3 p-4 bg-card border border-border rounded-lg hover:bg-accent transition-colors">
+      <ExternalLink className="h-4 w-4 text-primary shrink-0" />
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-medium">{label}</p>
+        <p className="text-xs text-muted-foreground truncate">{sub}</p>
+      </div>
+      <ExternalLink className="h-4 w-4 text-muted-foreground ml-auto shrink-0" />
+    </a>
+  )
+}
+
 function CredentialsTab({ client }: { client: Client }) {
+  const links = [
+    client.credentials_sheet_url && { href: client.credentials_sheet_url, label: 'Credentials Sheet', sub: 'Google Sheets · Client credentials' },
+    client.drive_folder_url      && { href: client.drive_folder_url,      label: 'Google Drive Folder', sub: 'Client files and documents' },
+    client.website_url           && { href: client.website_url,           label: 'Website', sub: client.website_url },
+    client.gbp_url               && { href: client.gbp_url,               label: 'Google Business Profile', sub: 'GBP listing' },
+    client.ad_accounts_url       && { href: client.ad_accounts_url,       label: 'Ad Accounts', sub: 'Advertising dashboard' },
+    client.facebook_url          && { href: client.facebook_url,          label: 'Facebook', sub: 'Facebook page / profile' },
+    client.instagram_url         && { href: client.instagram_url,         label: 'Instagram', sub: 'Instagram profile' },
+    client.linkedin_url          && { href: client.linkedin_url,          label: 'LinkedIn', sub: 'LinkedIn page' },
+    client.youtube_url           && { href: client.youtube_url,           label: 'YouTube', sub: 'YouTube channel' },
+  ].filter(Boolean) as { href: string; label: string; sub: string }[]
+
+  if (links.length === 0) return <p className="text-sm text-muted-foreground">No credentials or links added yet.</p>
   return (
     <div className="space-y-3">
-      {client.credentials_sheet_url ? (
-        <a
-          href={client.credentials_sheet_url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-center gap-3 p-4 bg-card border border-border rounded-lg hover:bg-accent transition-colors"
-        >
-          <KeyRound className="h-5 w-5 text-primary" />
-          <div>
-            <p className="text-sm font-medium">Open Credentials Sheet</p>
-            <p className="text-xs text-muted-foreground">Google Sheets · Client credentials</p>
+      {links.map(l => <CredLink key={l.label} {...l} />)}
+    </div>
+  )
+}
+
+// ─── Edit Client Dialog ───────────────────────────────────────────────────────
+
+import type { ClientStatus } from '@/lib/types'
+
+function EditClientDialog({ client, onClose }: { client: Client; onClose: () => void }) {
+  const qc = useQueryClient()
+  const [form, setForm] = useState({
+    name:                  client.name,
+    status:                client.status as ClientStatus,
+    start_date:            client.start_date,
+    notes:                 client.notes ?? '',
+    website_url:           client.website_url ?? '',
+    drive_folder_url:      client.drive_folder_url ?? '',
+    credentials_sheet_url: client.credentials_sheet_url ?? '',
+    gbp_url:               client.gbp_url ?? '',
+    ad_accounts_url:       client.ad_accounts_url ?? '',
+    facebook_url:          client.facebook_url ?? '',
+    instagram_url:         client.instagram_url ?? '',
+    linkedin_url:          client.linkedin_url ?? '',
+    youtube_url:           client.youtube_url ?? '',
+  })
+
+  const mutation = useMutation({
+    mutationFn: async () => {
+      const { error } = await supabase.from('clients').update({
+        name:                  form.name.trim(),
+        status:                form.status,
+        start_date:            form.start_date,
+        notes:                 form.notes.trim() || null,
+        website_url:           form.website_url.trim() || null,
+        drive_folder_url:      form.drive_folder_url.trim() || null,
+        credentials_sheet_url: form.credentials_sheet_url.trim() || null,
+        gbp_url:               form.gbp_url.trim() || null,
+        ad_accounts_url:       form.ad_accounts_url.trim() || null,
+        facebook_url:          form.facebook_url.trim() || null,
+        instagram_url:         form.instagram_url.trim() || null,
+        linkedin_url:          form.linkedin_url.trim() || null,
+        youtube_url:           form.youtube_url.trim() || null,
+      } as never).eq('id', client.id)
+      if (error) throw error
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['client-detail', client.id] })
+      qc.invalidateQueries({ queryKey: ['clients-page'] })
+      onClose()
+    },
+  })
+
+  function field(key: keyof typeof form, label: string, type: 'text' | 'url' | 'date' = 'text') {
+    return (
+      <div className="space-y-1">
+        <label className="text-xs font-medium text-muted-foreground">{label}</label>
+        <input
+          type={type}
+          value={form[key] as string}
+          onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))}
+          className="w-full px-3 py-1.5 bg-background border border-input rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+        />
+      </div>
+    )
+  }
+
+  const STATUS_OPTIONS: ClientStatus[] = ['Active', 'Onboarding', 'At Risk', 'Paused', 'Offboarding']
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm p-4">
+      <div className="w-full max-w-lg bg-card border border-border rounded-xl shadow-xl overflow-y-auto max-h-[90vh]">
+        <div className="sticky top-0 bg-card border-b border-border px-5 py-4 flex items-center justify-between">
+          <h3 className="font-semibold text-sm">Edit Client — {client.name}</h3>
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="p-5 space-y-5">
+          {/* Basic */}
+          <div className="space-y-3">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Basic Info</p>
+            {field('name', 'Client Name')}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-muted-foreground">Status</label>
+                <select value={form.status}
+                  onChange={e => setForm(f => ({ ...f, status: e.target.value as ClientStatus }))}
+                  className="w-full px-3 py-1.5 bg-background border border-input rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-primary">
+                  {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </div>
+              {field('start_date', 'Start Date', 'date')}
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-muted-foreground">Notes</label>
+              <textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
+                rows={2} className="w-full px-3 py-1.5 bg-background border border-input rounded-md text-sm resize-none focus:outline-none focus:ring-1 focus:ring-primary" />
+            </div>
           </div>
-          <ExternalLink className="h-4 w-4 text-muted-foreground ml-auto" />
-        </a>
-      ) : (
-        <p className="text-sm text-muted-foreground">No credentials sheet linked.</p>
-      )}
-      {client.drive_folder_url && (
-        <a
-          href={client.drive_folder_url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-center gap-3 p-4 bg-card border border-border rounded-lg hover:bg-accent transition-colors"
-        >
-          <FileText className="h-5 w-5 text-muted-foreground" />
-          <div>
-            <p className="text-sm font-medium">Open Google Drive Folder</p>
-            <p className="text-xs text-muted-foreground">Client files and documents</p>
+
+          {/* Links */}
+          <div className="space-y-3">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Links</p>
+            {field('website_url', 'Website URL', 'url')}
+            {field('drive_folder_url', 'Google Drive Folder URL', 'url')}
+            {field('credentials_sheet_url', 'Credentials Sheet URL', 'url')}
+            {field('gbp_url', 'Google Business Profile URL', 'url')}
+            {field('ad_accounts_url', 'Ad Accounts URL', 'url')}
           </div>
-          <ExternalLink className="h-4 w-4 text-muted-foreground ml-auto" />
-        </a>
-      )}
+
+          {/* Social */}
+          <div className="space-y-3">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Social Media</p>
+            {field('facebook_url', 'Facebook URL', 'url')}
+            {field('instagram_url', 'Instagram URL', 'url')}
+            {field('linkedin_url', 'LinkedIn URL', 'url')}
+            {field('youtube_url', 'YouTube URL', 'url')}
+          </div>
+
+          {mutation.isError && (
+            <p className="text-xs text-destructive">{(mutation.error as Error).message}</p>
+          )}
+        </div>
+
+        <div className="sticky bottom-0 bg-card border-t border-border px-5 py-3 flex gap-2">
+          <button
+            onClick={() => mutation.mutate()}
+            disabled={mutation.isPending || !form.name.trim()}
+            className="flex-1 inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 disabled:opacity-60 transition-all"
+          >
+            {mutation.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+            Save Changes
+          </button>
+          <button onClick={onClose}
+            className="px-4 py-2 rounded-lg border border-border/60 text-sm font-medium text-muted-foreground hover:bg-accent transition-colors">
+            Cancel
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
@@ -609,9 +757,14 @@ function RiskLogTab({
 export default function ClientDetailPage() {
   const { clientId } = useParams<{ clientId: string }>()
   const navigate = useNavigate()
-  const [activeTab, setActiveTab] = useState<TabId>('onboarding')
+  const [activeTab, setActiveTab]   = useState<TabId>('onboarding')
   const [showNewTask, setShowNewTask] = useState(false)
-  const { data, isLoading, error } = useClientDetail(clientId!)
+  const [showEdit, setShowEdit]       = useState(false)
+  const { data, isLoading, error }    = useClientDetail(clientId!)
+  const { role, profile } = useAuth()
+  // Show Edit to PM/Owner roles, OR any user explicitly granted clients page access
+  const canEdit = role === 'owner' || role === 'project_manager'
+    || (profile?.page_access?.includes('clients') ?? false)
 
   if (isLoading) {
     return (
@@ -629,7 +782,7 @@ export default function ClientDetailPage() {
     )
   }
 
-  const { client, tasks, blockers, meetings, reports, reviews } = data
+  const { client, tasks, blockers, meetings, reports, reviews, children, parentClient } = data
 
   // Quick stats
   const withDue   = tasks.filter(t => t.due_date)
@@ -655,6 +808,9 @@ export default function ClientDetailPage() {
         onClose={() => setShowNewTask(false)}
         presetClientId={clientId}
       />
+      {showEdit && (
+        <EditClientDialog client={client} onClose={() => setShowEdit(false)} />
+      )}
 
       {/* Back + Header */}
       <div className="flex items-start gap-4">
@@ -665,6 +821,16 @@ export default function ClientDetailPage() {
           <ArrowLeft className="h-5 w-5" />
         </button>
         <div className="flex-1">
+          {/* Breadcrumb for child clients */}
+          {client.parent_client_id && parentClient && (
+            <button
+              onClick={() => navigate(`/clients/${client.parent_client_id}`)}
+              className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground mb-2 transition-colors"
+            >
+              <ArrowLeft className="h-3 w-3" />
+              {parentClient.name}
+            </button>
+          )}
           <div className="flex items-center gap-3 flex-wrap">
             <h1 className="text-2xl font-bold">{client.name}</h1>
             <span className={healthClass}>{client.health}</span>
@@ -676,13 +842,47 @@ export default function ClientDetailPage() {
               <> · {client.primary_workstreams.join(', ')}</>
             )}
           </p>
+
+          {/* Locations grid for parent clients */}
+          {children.length > 0 && (
+            <div className="mt-3">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Locations</p>
+              <div className="flex flex-wrap gap-2">
+                {children.map(child => {
+                  const hClass = child.health === 'Green' ? 'health-green'
+                    : child.health === 'Yellow' ? 'health-yellow' : 'health-red'
+                  return (
+                    <button
+                      key={child.id}
+                      onClick={() => navigate(`/clients/${child.id}`)}
+                      className="flex items-center gap-2 px-3 py-1.5 bg-card border border-border rounded-lg hover:bg-accent text-sm transition-colors"
+                    >
+                      <span className={hClass}>{child.health}</span>
+                      <span className="font-medium">{child.location_name ?? child.name}</span>
+                      <ChevronRight className="h-3 w-3 text-muted-foreground" />
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          )}
         </div>
-        <button
-          onClick={() => setShowNewTask(true)}
-          className="flex items-center gap-2 px-3 py-1.5 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:opacity-90 shrink-0"
-        >
-          <Plus className="h-4 w-4" /> New Task
-        </button>
+        <div className="flex items-center gap-2 shrink-0">
+          {canEdit && (
+            <button
+              onClick={() => setShowEdit(true)}
+              className="flex items-center gap-2 px-3 py-1.5 border border-border/60 rounded-lg text-sm font-medium hover:bg-accent transition-colors"
+            >
+              <Pencil className="h-4 w-4" /> Edit
+            </button>
+          )}
+          <button
+            onClick={() => setShowNewTask(true)}
+            className="flex items-center gap-2 px-3 py-1.5 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:opacity-90"
+          >
+            <Plus className="h-4 w-4" /> New Task
+          </button>
+        </div>
       </div>
 
       {/* Quick Stats */}

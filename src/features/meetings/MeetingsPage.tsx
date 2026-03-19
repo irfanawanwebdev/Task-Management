@@ -464,6 +464,211 @@ const REPORT_TABS: { id: ReportTab; label: string }[] = [
   { id: 'by-client',     label: 'By Client' },
 ]
 
+// ─── Bi-Weekly Compliance Grid ────────────────────────────────────────────────
+
+function BiweeklyComplianceGrid({ meetings, clients }: { meetings: Meeting[]; clients: Client[] }) {
+  const now = new Date()
+  const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
+  const activeClients = clients.filter(c => c.status === 'Active' || c.status === 'Onboarding')
+
+  if (activeClients.length === 0) return null
+
+  return (
+    <div className="bg-card border border-border rounded-lg p-4">
+      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
+        Bi-Weekly Completion by Client — This Month
+      </p>
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-3">
+        {activeClients.map(client => {
+          const biweekly = meetings.filter(m =>
+            m.client_id === client.id &&
+            (m.type === 'Mid-Month Review' || m.type === 'End-of-Month Review') &&
+            m.date >= monthStart,
+          )
+          const completed = biweekly.filter(m => m.status === 'Completed').length
+          const colorClass = completed >= 2
+            ? 'text-[hsl(var(--success))]'
+            : completed === 1
+            ? 'text-[hsl(var(--warning))]'
+            : 'text-destructive'
+          return (
+            <div key={client.id} className="text-center p-2 bg-background rounded-lg border border-border/50">
+              <p className="text-xs text-muted-foreground truncate mb-1">{client.name}</p>
+              <p className={cn('text-lg font-bold tabular-nums', colorClass)}>{completed}/2</p>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+// ─── Weekly Strategic Review Section ─────────────────────────────────────────
+
+function getISOWeek(d: Date): number {
+  const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()))
+  date.setUTCDate(date.getUTCDate() + 4 - (date.getUTCDay() || 7))
+  const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1))
+  return Math.ceil((((date.getTime() - yearStart.getTime()) / 86400000) + 1) / 7)
+}
+
+function WeeklyStrategicReviewSection({ clients }: { clients: Client[] }) {
+  const { role } = useAuth()
+  const qc = useQueryClient()
+  if (role !== 'owner' && role !== 'project_manager') return null
+
+  const todayEST = todayDateEST()
+  const todayJS  = new Date(todayEST + 'T12:00:00')
+  const isFriday = todayJS.getDay() === 5
+  const weekNumber = getISOWeek(todayJS)
+  const yearNumber = todayJS.getFullYear()
+
+  const [selectedClientId, setSelectedClientId] = useState('')
+  const [sentiment, setSentiment]               = useState('Neutral')
+  const [adjustment, setAdjustment]             = useState(0)
+  const [engagement, setEngagement]             = useState('High')
+  const [retention, setRetention]               = useState('Strong')
+  const [notes, setNotes]                       = useState('')
+  const [submitting, setSubmitting]             = useState(false)
+  const [error, setError]                       = useState<string | null>(null)
+  const [justSubmitted, setJustSubmitted]       = useState(false)
+
+  const { data: existingReview, isLoading: checkLoading } = useQuery({
+    queryKey: ['weekly-review-check', selectedClientId, yearNumber, weekNumber],
+    queryFn: async () => {
+      if (!selectedClientId) return null
+      const { data } = await supabase
+        .from('weekly_reviews')
+        .select('id')
+        .eq('client_id', selectedClientId)
+        .eq('year_number', yearNumber)
+        .eq('week_number', weekNumber)
+        .maybeSingle()
+      return data
+    },
+    enabled: !!selectedClientId,
+  })
+  const alreadySubmitted = !!existingReview || justSubmitted
+
+  async function handleSubmit() {
+    if (!selectedClientId) return
+    setSubmitting(true); setError(null)
+    const { error: err } = await supabase.from('weekly_reviews').insert({
+      client_id:                selectedClientId,
+      review_date:              todayEST,
+      week_number:              weekNumber,
+      year_number:              yearNumber,
+      sentiment_observed:       sentiment,
+      engagement_level:         engagement,
+      confidence_in_retention:  retention,
+      adjustment_score:         adjustment,
+      strategic_notes:          notes.trim() || null,
+    } as never)
+    if (err) { setError(err.message); setSubmitting(false); return }
+    qc.invalidateQueries({ queryKey: ['weekly-review-check'] })
+    qc.invalidateQueries({ queryKey: ['weekly-reviews-risk'] })
+    setJustSubmitted(true)
+    setSubmitting(false)
+    setNotes(''); setAdjustment(0)
+  }
+
+  return (
+    <div className="bg-card border border-border rounded-lg p-5 space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-sm font-semibold">Weekly Strategic Review</p>
+          <p className="text-xs text-muted-foreground mt-0.5">Friday-only · once per client per week · feeds into health scores</p>
+        </div>
+        {!isFriday && (
+          <span className="text-xs bg-muted text-muted-foreground px-2 py-1 rounded-md">
+            Fridays only
+          </span>
+        )}
+      </div>
+
+      {!isFriday ? (
+        <p className="text-sm text-muted-foreground">
+          Reviews can only be submitted on Fridays. Today is {formatDateEST(todayEST)}.
+        </p>
+      ) : (
+        <div className="space-y-4">
+          <select
+            value={selectedClientId}
+            onChange={e => { setSelectedClientId(e.target.value); setJustSubmitted(false) }}
+            className="w-full px-3 py-2 bg-background border border-input rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+          >
+            <option value="">Select a client…</option>
+            {clients.filter(c => c.status === 'Active' || c.status === 'Onboarding').map(c => (
+              <option key={c.id} value={c.id}>{c.name}</option>
+            ))}
+          </select>
+
+          {selectedClientId && (
+            checkLoading ? (
+              <div className="text-sm text-muted-foreground flex items-center gap-2">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" /> Checking…
+              </div>
+            ) : alreadySubmitted ? (
+              <div className="p-3 bg-[hsl(var(--success))]/10 border border-[hsl(var(--success))]/30 rounded-lg text-sm text-[hsl(var(--success))]">
+                <CheckCircle2 className="h-4 w-4 inline mr-1.5" />
+                Review submitted for this client this week. Locked until next Friday.
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium">Sentiment</label>
+                    <select value={sentiment} onChange={e => setSentiment(e.target.value)}
+                      className="w-full px-3 py-1.5 bg-background border border-input rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-primary">
+                      {['Positive', 'Neutral', 'Concerned', 'Negative'].map(v =>
+                        <option key={v} value={v}>{v}</option>)}
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium">Engagement</label>
+                    <select value={engagement} onChange={e => setEngagement(e.target.value)}
+                      className="w-full px-3 py-1.5 bg-background border border-input rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-primary">
+                      {['High', 'Medium', 'Low', 'Disengaged'].map(v =>
+                        <option key={v} value={v}>{v}</option>)}
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium">Retention Confidence</label>
+                    <select value={retention} onChange={e => setRetention(e.target.value)}
+                      className="w-full px-3 py-1.5 bg-background border border-input rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-primary">
+                      {['Strong', 'Moderate', 'At Risk', 'Critical'].map(v =>
+                        <option key={v} value={v}>{v}</option>)}
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium">Adj. Score (−10 to +20)</label>
+                    <input type="number" min={-10} max={20} value={adjustment}
+                      onChange={e => setAdjustment(Number(e.target.value))}
+                      className="w-full px-3 py-1.5 bg-background border border-input rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-primary" />
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium">Strategic Notes (optional)</label>
+                  <textarea value={notes} onChange={e => setNotes(e.target.value)}
+                    rows={2} className="w-full px-3 py-1.5 bg-background border border-input rounded-md text-sm resize-none focus:outline-none focus:ring-1 focus:ring-primary" />
+                </div>
+                {error && <p className="text-xs text-destructive">{error}</p>}
+                <button onClick={handleSubmit} disabled={submitting}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:bg-primary/90 disabled:opacity-50 transition-colors">
+                  {submitting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                  Submit Review
+                </button>
+              </div>
+            )
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Main Page ────────────────────────────────────────────────────────────────
+
 export default function MeetingsPage() {
   const { role } = useAuth()
   const canEdit = isPMOrOwner(role!)
@@ -744,6 +949,16 @@ export default function MeetingsPage() {
           <ChevronDown className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
         </div>
       </div>
+
+      {/* Bi-Weekly Compliance Grid (PM/Owner only) */}
+      {canEdit && (
+        <BiweeklyComplianceGrid meetings={meetings} clients={clients} />
+      )}
+
+      {/* Weekly Strategic Review (PM/Owner only) */}
+      {canEdit && (
+        <WeeklyStrategicReviewSection clients={clients} />
+      )}
 
       {/* Kickoff Reminders */}
       {kickoffReminders.length > 0 && (

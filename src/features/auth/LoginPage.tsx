@@ -1,17 +1,16 @@
-import { useState } from 'react'
-import { useNavigate, useLocation } from 'react-router-dom'
-import { Eye, EyeOff, Loader2 } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { Eye, EyeOff, Loader2, CheckCircle2 } from 'lucide-react'
 import { useAuth } from './AuthContext'
 import { getDefaultRoute } from '@/lib/permissions'
 import { supabase } from '@/lib/supabase'
 import { cn } from '@/lib/utils'
 
 export default function LoginPage() {
-  const { signIn, role } = useAuth()
+  const { signIn, role, isAuthenticated } = useAuth()
   const navigate = useNavigate()
-  const location = useLocation()
 
-  const [mode, setMode] = useState<'login' | 'setup'>('login')
+  const [mode, setMode] = useState<'login' | 'setup' | 'forgot'>('login')
   const [showPassword, setShowPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -25,7 +24,19 @@ export default function LoginPage() {
   const [setupEmail, setSetupEmail] = useState('')
   const [setupPassword, setSetupPassword] = useState('')
 
-  const from = (location.state as { from?: Location })?.from?.pathname ?? '/'
+  // Forgot password form
+  const [forgotEmail, setForgotEmail] = useState('')
+  const [forgotSent, setForgotSent] = useState(false)
+
+
+  // Navigate once auth state resolves after sign-in
+  // (fixes double-click bug: signIn() resolves before loadProfile() completes)
+  useEffect(() => {
+    if (isAuthenticated && role) {
+      const dest = getDefaultRoute(role)
+      navigate(dest, { replace: true })
+    }
+  }, [isAuthenticated, role, navigate])
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -38,9 +49,20 @@ export default function LoginPage() {
       setIsLoading(false)
       return
     }
+    // Navigation is handled by the useEffect above once role loads
+    // Keep isLoading: true to show spinner while profile loads
+  }
 
-    const dest = role ? getDefaultRoute(role) : from
-    navigate(dest, { replace: true })
+  const handleForgotPassword = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setError(null)
+    setIsLoading(true)
+    const { error } = await supabase.auth.resetPasswordForEmail(forgotEmail.trim(), {
+      redirectTo: `${window.location.origin}/login`,
+    })
+    setIsLoading(false)
+    if (error) { setError(error.message); return }
+    setForgotSent(true)
   }
 
   const handleSetup = async (e: React.FormEvent) => {
@@ -89,7 +111,9 @@ export default function LoginPage() {
           </div>
           <h1 className="text-2xl font-bold">Operations Hub</h1>
           <p className="text-muted-foreground text-sm">
-            {mode === 'login' ? 'Sign in to your account' : 'Create the first admin account'}
+            {mode === 'login' ? 'Sign in to your account'
+              : mode === 'forgot' ? 'Reset your password'
+              : 'Create the first admin account'}
           </p>
         </div>
 
@@ -102,7 +126,59 @@ export default function LoginPage() {
             </div>
           )}
 
-          {mode === 'login' ? (
+          {mode === 'forgot' ? (
+            forgotSent ? (
+              <div className="flex flex-col items-center gap-3 py-2 text-center">
+                <CheckCircle2 className="h-10 w-10 text-[hsl(var(--success))]" />
+                <p className="text-sm font-medium">Check your inbox</p>
+                <p className="text-sm text-muted-foreground">
+                  A password reset link was sent to <span className="font-medium text-foreground">{forgotEmail}</span>.
+                  Follow the link in the email to set a new password.
+                </p>
+                <button
+                  onClick={() => { setMode('login'); setForgotSent(false); setForgotEmail('') }}
+                  className="mt-2 text-sm text-primary hover:underline"
+                >
+                  ← Back to sign in
+                </button>
+              </div>
+            ) : (
+              <form onSubmit={handleForgotPassword} className="space-y-4">
+                <p className="text-sm text-muted-foreground">
+                  Enter your account email and we'll send you a password reset link.
+                </p>
+                <div className="space-y-2">
+                  <label htmlFor="forgot-email" className="text-sm font-medium">Email</label>
+                  <input
+                    id="forgot-email"
+                    type="email"
+                    value={forgotEmail}
+                    onChange={e => setForgotEmail(e.target.value)}
+                    placeholder="you@jzsmartmedia.com"
+                    required
+                    className={cn(
+                      "w-full px-3 py-2 bg-background border border-input rounded-md text-sm",
+                      "focus:outline-none focus:ring-2 focus:ring-ring",
+                      "placeholder:text-muted-foreground"
+                    )}
+                  />
+                </div>
+                <button
+                  type="submit"
+                  disabled={isLoading}
+                  className={cn(
+                    "w-full py-2 px-4 bg-primary text-primary-foreground rounded-md",
+                    "text-sm font-medium transition-opacity hover:opacity-90",
+                    "disabled:opacity-50 disabled:cursor-not-allowed",
+                    "flex items-center justify-center gap-2"
+                  )}
+                >
+                  {isLoading && <Loader2 className="h-4 w-4 animate-spin" />}
+                  Send Reset Link
+                </button>
+              </form>
+            )
+          ) : mode === 'login' ? (
             <form onSubmit={handleLogin} className="space-y-4">
               <div className="space-y-2">
                 <label htmlFor="email" className="text-sm font-medium">Email</label>
@@ -121,7 +197,16 @@ export default function LoginPage() {
                 />
               </div>
               <div className="space-y-2">
-                <label htmlFor="password" className="text-sm font-medium">Password</label>
+                <div className="flex items-center justify-between">
+                  <label htmlFor="password" className="text-sm font-medium">Password</label>
+                  <button
+                    type="button"
+                    onClick={() => { setMode('forgot'); setForgotEmail(email); setError(null) }}
+                    className="text-xs text-muted-foreground hover:text-primary transition-colors"
+                  >
+                    Forgot password?
+                  </button>
+                </div>
                 <div className="relative">
                   <input
                     id="password"
@@ -235,23 +320,25 @@ export default function LoginPage() {
             </form>
           )}
 
-          <div className="text-center">
-            {mode === 'login' ? (
-              <button
-                onClick={() => { setMode('setup'); setError(null) }}
-                className="text-xs text-muted-foreground hover:text-foreground transition-colors"
-              >
-                First time? Set up admin account
-              </button>
-            ) : (
-              <button
-                onClick={() => { setMode('login'); setError(null) }}
-                className="text-xs text-muted-foreground hover:text-foreground transition-colors"
-              >
-                ← Back to sign in
-              </button>
-            )}
-          </div>
+          {mode !== 'forgot' && (
+            <div className="text-center">
+              {mode === 'login' ? (
+                <button
+                  onClick={() => { setMode('setup'); setError(null) }}
+                  className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  First time? Set up admin account
+                </button>
+              ) : (
+                <button
+                  onClick={() => { setMode('login'); setError(null) }}
+                  className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  ← Back to sign in
+                </button>
+              )}
+            </div>
+          )}
         </div>
 
         <p className="text-center text-xs text-muted-foreground">
