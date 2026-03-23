@@ -44,12 +44,14 @@ CREATE INDEX IF NOT EXISTS notifications_created_at_idx ON notifications (create
 ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
 
 -- Users can only see their own notifications
+DROP POLICY IF EXISTS "notifications_select_own" ON notifications;
 CREATE POLICY "notifications_select_own"
   ON notifications FOR SELECT
   TO authenticated
   USING (auth.uid() = user_id);
 
 -- Users can update (mark read) their own notifications
+DROP POLICY IF EXISTS "notifications_update_own" ON notifications;
 CREATE POLICY "notifications_update_own"
   ON notifications FOR UPDATE
   TO authenticated
@@ -57,6 +59,7 @@ CREATE POLICY "notifications_update_own"
   WITH CHECK (auth.uid() = user_id);
 
 -- Service role inserts (from Edge Functions using service_role key)
+DROP POLICY IF EXISTS "notifications_insert_service" ON notifications;
 CREATE POLICY "notifications_insert_service"
   ON notifications FOR INSERT
   TO authenticated
