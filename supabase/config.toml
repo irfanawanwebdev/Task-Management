@@ -29,8 +29,8 @@ file_size_limit = "50MiB"
 
 [auth]
 enabled = true
-site_url = "http://127.0.0.1:5173"
-additional_redirect_urls = ["https://127.0.0.1:5173"]
+site_url = "https://task-management-nine-gules.vercel.app"
+additional_redirect_urls = ["http://127.0.0.1:5173", "https://127.0.0.1:5173"]
 jwt_expiry = 3600
 enable_refresh_token_rotation = true
 refresh_token_reuse_interval = 10
@@ -45,3 +45,13 @@ enable_confirmations = false
 
 [analytics]
 enabled = false
+
+[functions.google-calendar-auth]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/google-calendar-auth/index.ts"
+
+[functions.google-calendar-callback]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/google-calendar-callback/index.ts"

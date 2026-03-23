@@ -1,4 +1,26 @@
-# Logs
+# ── Dependencies ──────────────────────────────────────────────────────────────
+node_modules
+
+# ── Build output ──────────────────────────────────────────────────────────────
+dist
+dist-ssr
+
+# ── Environment / secrets ─────────────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+# *.local covers .env.local, vite.config.local, etc.
+*.local
+
+# ── Supabase ──────────────────────────────────────────────────────────────────
+# Local CLI state — contains DB connection strings and version pins, not for VCS
+supabase/.temp
+
+# ── Claude Code ───────────────────────────────────────────────────────────────
+# Machine-specific permission settings — not for VCS
+.claude/settings.local.json
+
+# ── Logs ──────────────────────────────────────────────────────────────────────
 logs
 *.log
 npm-debug.log*
@@ -7,18 +29,16 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-node_modules
-dist
-dist-ssr
-*.local
-
-# Editor directories and files
-.vscode/*
-!.vscode/extensions.json
-.idea
+# ── OS / editor artifacts ─────────────────────────────────────────────────────
 .DS_Store
+Thumbs.db
+.idea
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
 *.sw?
+
+# ── VSCode ────────────────────────────────────────────────────────────────────
+.vscode/*
+!.vscode/extensions.json

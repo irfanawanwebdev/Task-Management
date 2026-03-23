@@ -120,6 +120,9 @@ interface Connector {
   Icon: React.ComponentType<{ className?: string }>
 }
 
+// Google OAuth connectors that share a single token (google-calendar row)
+const GOOGLE_OAUTH_IDS = new Set(['google-calendar', 'google-meet', 'google-drive'])
+
 const CONNECTORS: Connector[] = [
   {
     id: 'google-calendar',
@@ -142,6 +145,16 @@ const CONNECTORS: Connector[] = [
     Icon: GoogleMeetIcon,
   },
   {
+    id: 'google-drive',
+    name: 'Google Drive',
+    category: 'Communication',
+    description: 'Attach documents, link agendas and reports from Google Drive to meeting and task records.',
+    docsUrl: 'https://developers.google.com/drive',
+    accentColor: 'border-t-amber-500',
+    iconBg: 'bg-white/5 ring-1 ring-amber-500/20',
+    Icon: GoogleDriveIcon,
+  },
+  {
     id: 'zoom',
     name: 'Zoom',
     category: 'Communication',
@@ -162,16 +175,6 @@ const CONNECTORS: Connector[] = [
     Icon: CalendlyIcon,
   },
   {
-    id: 'google-drive',
-    name: 'Google Drive',
-    category: 'Storage',
-    description: 'Attach documents, link agendas and reports from Google Drive to meeting and task records.',
-    docsUrl: 'https://developers.google.com/drive',
-    accentColor: 'border-t-amber-500',
-    iconBg: 'bg-white/5 ring-1 ring-amber-500/20',
-    Icon: GoogleDriveIcon,
-  },
-  {
     id: 'notion',
     name: 'Notion',
     category: 'Productivity',
@@ -186,7 +189,6 @@ const CONNECTORS: Connector[] = [
 const CATEGORY_COLORS: Record<string, string> = {
   Calendar:      'bg-blue-500/10 text-blue-400 ring-1 ring-blue-500/20',
   Communication: 'bg-emerald-500/10 text-emerald-400 ring-1 ring-emerald-500/20',
-  Storage:       'bg-amber-500/10 text-amber-400 ring-1 ring-amber-500/20',
   Productivity:  'bg-violet-500/10 text-violet-400 ring-1 ring-violet-500/20',
 }
 
@@ -211,11 +213,19 @@ function ConnectorCard({
 
   async function handleConnect() {
     setConnectError(null)
-    // Only Google Calendar has a live OAuth flow right now
-    if (connector.id === 'google-calendar') {
+    // Google Calendar, Meet, and Drive all share the same Google OAuth flow
+    if (GOOGLE_OAUTH_IDS.has(connector.id)) {
       setConnecting(true)
       try {
-        const res = await supabase.functions.invoke('google-calendar-auth')
+        const { data: { session } } = await supabase.auth.getSession()
+        if (!session) {
+          setConnectError('Session expired. Please sign out and sign back in.')
+          setConnecting(false)
+          return
+        }
+        const res = await supabase.functions.invoke('google-calendar-auth', {
+          headers: { Authorization: `Bearer ${session.access_token}` },
+        })
         if (res.error) {
           setConnectError(res.error.message ?? 'Edge function error. Check Supabase logs.')
           setConnecting(false)
@@ -245,11 +255,13 @@ function ConnectorCard({
 
   async function handleDisconnect() {
     if (!userId) return
+    // All Google connectors share one token row keyed to 'google-calendar'
+    const tokenId = GOOGLE_OAUTH_IDS.has(connector.id) ? 'google-calendar' : connector.id
     await supabase
       .from('connector_tokens')
       .delete()
       .eq('user_id', userId)
-      .eq('connector_id', connector.id)
+      .eq('connector_id', tokenId)
     onDisconnect?.()
   }
 
@@ -327,7 +339,7 @@ function ConnectorCard({
               <Check className="h-3 w-3" />
               Connected
             </div>
-            {connector.id === 'google-calendar' && (
+            {GOOGLE_OAUTH_IDS.has(connector.id) && (
               <button
                 onClick={handleDisconnect}
                 className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium border border-destructive/30 text-destructive hover:bg-destructive/10 transition-colors"
@@ -361,56 +373,6 @@ function ConnectorCard({
   )
 }
 
-// ─── Google Calendar Setup Guide ─────────────────────────────────────────────
-
-function GoogleCalendarSetupGuide({ supabaseUrl }: { supabaseUrl?: string }) {
-  const [open, setOpen] = useState(false)
-  const redirectUri = supabaseUrl
-    ? `${supabaseUrl}/functions/v1/google-calendar-callback`
-    : '{SUPABASE_URL}/functions/v1/google-calendar-callback'
-
-  const steps = [
-    { done: false, label: 'Deploy google-calendar-auth edge function', code: 'npx supabase functions deploy google-calendar-auth --project-ref <ref>' },
-    { done: false, label: 'Deploy google-calendar-callback (no-verify-jwt)', code: 'npx supabase functions deploy google-calendar-callback --project-ref <ref> --no-verify-jwt' },
-    { done: false, label: 'Set GOOGLE_CLIENT_ID secret in Supabase', code: 'npx supabase secrets set GOOGLE_CLIENT_ID=<your-id> --project-ref <ref>' },
-    { done: false, label: 'Set GOOGLE_CLIENT_SECRET secret in Supabase', code: 'npx supabase secrets set GOOGLE_CLIENT_SECRET=<your-secret> --project-ref <ref>' },
-    { done: false, label: 'Set APP_URL secret (your deployment URL)', code: 'npx supabase secrets set APP_URL=https://your-app.vercel.app --project-ref <ref>' },
-    { done: false, label: 'Add redirect URI in Google Console:', code: redirectUri },
-  ]
-
-  return (
-    <div className="rounded-xl border border-blue-500/20 bg-blue-500/5 overflow-hidden">
-      <button
-        onClick={() => setOpen(o => !o)}
-        className="w-full flex items-center justify-between p-4 text-left hover:bg-blue-500/8 transition-colors"
-      >
-        <div className="flex items-center gap-2">
-          <GoogleCalendarIcon className="h-5 w-5" />
-          <span className="font-semibold text-sm">Google Calendar OAuth Setup Requirements</span>
-        </div>
-        <span className="text-xs text-muted-foreground">{open ? '▲ Hide' : '▼ Show'}</span>
-      </button>
-
-      {open && (
-        <div className="border-t border-blue-500/20 px-4 pb-4 pt-3 space-y-2.5">
-          {steps.map((step, i) => (
-            <div key={i} className="flex items-start gap-3">
-              <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground text-xs font-bold mt-0.5">
-                {i + 1}
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-xs font-medium text-foreground">{step.label}</p>
-                <code className="block mt-1 text-xs bg-muted/60 px-2 py-1 rounded text-muted-foreground break-all font-mono">
-                  {step.code}
-                </code>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}
 
 // ─── Weekly Non-Negotiables ───────────────────────────────────────────────────
 
@@ -598,7 +560,7 @@ function DeveloperGuide() {
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function SettingsPage() {
-  const categories = ['All', 'Calendar', 'Communication', 'Storage', 'Productivity'] as const
+  const categories = ['All', 'Calendar', 'Communication', 'Productivity'] as const
   const [activeCategory, setActiveCategory] = useState<typeof categories[number]>('All')
   const [searchParams, setSearchParams] = useSearchParams()
   const { user } = useAuth()
@@ -629,6 +591,11 @@ export default function SettingsPage() {
   })
 
   const tokenMap = Object.fromEntries(tokens.map(t => [t.connector_id, t.account_email]))
+  // Google Calendar, Meet, and Drive share one OAuth token — if Calendar is connected, all three are
+  if ('google-calendar' in tokenMap) {
+    tokenMap['google-meet']  = tokenMap['google-calendar']
+    tokenMap['google-drive'] = tokenMap['google-calendar']
+  }
 
   const filtered = CONNECTORS.filter(
     c => activeCategory === 'All' || c.category === activeCategory,
@@ -642,7 +609,7 @@ export default function SettingsPage() {
           Settings & Connectors
         </h1>
         <p className="text-sm text-muted-foreground mt-0.5">
-          External service integrations — OAuth flows pending backend implementation
+          External service integrations — connect your tools to the Operations Hub
         </p>
       </div>
 
@@ -661,10 +628,8 @@ export default function SettingsPage() {
 
       <div className="rounded-lg border border-amber-500/20 bg-amber-500/8 px-4 py-3 text-sm text-amber-300">
         <span className="font-semibold text-amber-200">Implementation Status:</span>{' '}
-        Google Calendar is live. Other OAuth flows pending backend implementation.
+        Google Calendar, Meet &amp; Drive share one Google OAuth connection. Zoom, Calendly, and Notion pending.
       </div>
-
-      <GoogleCalendarSetupGuide supabaseUrl={import.meta.env.VITE_SUPABASE_URL} />
 
       <div className="flex gap-2 flex-wrap">
         {categories.map(c => (
