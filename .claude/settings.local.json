@@ -1,8 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(cd \"E:\\\\JZ Smart Media\\\\Task Management\" && npm run build 2>&1)",
-      "Bash(cd \"E:\\\\JZ Smart Media\\\\Task Management\" && timeout 15 npm run dev 2>&1 || true)"
-    ]
-  }
-}
