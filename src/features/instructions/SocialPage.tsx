@@ -5,12 +5,13 @@
 
 import { Link } from 'react-router-dom'
 import { ArrowLeft, Image, Calendar, Share2, CheckCircle2 } from 'lucide-react'
+import { cn } from '@/lib/utils'
 
 export default function SocialPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-3">
-        <Link to="/instructions" className="text-muted-foreground hover:text-foreground">
+        <Link to="/instructions" className="text-muted-foreground hover:text-foreground transition-colors">
           <ArrowLeft className="h-5 w-5" />
         </Link>
         <div>
@@ -20,10 +21,10 @@ export default function SocialPage() {
       </div>
 
       {/* Section 1: Content System */}
-      <div className="rounded-xl border bg-card shadow-sm overflow-hidden">
-        <div className="flex items-center gap-3 p-4 border-b bg-purple-50">
-          <div className="rounded-lg bg-purple-100 p-2">
-            <Calendar className="h-5 w-5 text-purple-600" />
+      <div className="rounded-xl border border-border/60 bg-card overflow-hidden border-t-2 border-t-purple-500 shadow-md">
+        <div className="flex items-center gap-3 p-4 border-b border-border/40 bg-muted/20">
+          <div className="rounded-lg bg-purple-500/10 ring-1 ring-purple-500/20 p-2">
+            <Calendar className="h-5 w-5 text-purple-400" />
           </div>
           <div>
             <h2 className="font-semibold">1. Content System</h2>
@@ -34,10 +35,10 @@ export default function SocialPage() {
           <div>
             <h3 className="text-sm font-semibold mb-2">1-Month Content Calendar</h3>
             <ul className="space-y-2 text-sm">
-              <li className="flex items-start gap-2"><CheckCircle2 className="h-3.5 w-3.5 shrink-0 mt-0.5 text-purple-500" /> Plan 4 weeks of content at the start of each month</li>
-              <li className="flex items-start gap-2"><CheckCircle2 className="h-3.5 w-3.5 shrink-0 mt-0.5 text-purple-500" /> Mix of service spotlights, before/after, local proof, and educational content</li>
-              <li className="flex items-start gap-2"><CheckCircle2 className="h-3.5 w-3.5 shrink-0 mt-0.5 text-purple-500" /> Align with local events, seasons, and promotions</li>
-              <li className="flex items-start gap-2"><CheckCircle2 className="h-3.5 w-3.5 shrink-0 mt-0.5 text-purple-500" /> Client approval required before scheduling</li>
+              <li className="flex items-start gap-2"><CheckCircle2 className="h-3.5 w-3.5 shrink-0 mt-0.5 text-purple-400" /> Plan 4 weeks of content at the start of each month</li>
+              <li className="flex items-start gap-2"><CheckCircle2 className="h-3.5 w-3.5 shrink-0 mt-0.5 text-purple-400" /> Mix of service spotlights, before/after, local proof, and educational content</li>
+              <li className="flex items-start gap-2"><CheckCircle2 className="h-3.5 w-3.5 shrink-0 mt-0.5 text-purple-400" /> Align with local events, seasons, and promotions</li>
+              <li className="flex items-start gap-2"><CheckCircle2 className="h-3.5 w-3.5 shrink-0 mt-0.5 text-purple-400" /> Client approval required before scheduling</li>
             </ul>
           </div>
           <div>
@@ -49,9 +50,9 @@ export default function SocialPage() {
               <li className="flex items-start gap-2"><Image className="h-3.5 w-3.5 shrink-0 mt-0.5 text-muted-foreground" /> Repurpose across FB, IG, GBP posts, and YouTube Shorts</li>
             </ul>
           </div>
-          <div className="rounded-lg bg-muted/50 p-3">
-            <p className="text-xs font-semibold text-muted-foreground mb-1">Posting SOP</p>
-            <ol className="space-y-1 text-sm list-decimal list-inside">
+          <div className="rounded-lg bg-muted/30 border border-border/40 p-3">
+            <p className="text-xs font-semibold text-muted-foreground mb-1.5">Posting SOP</p>
+            <ol className="space-y-1.5 text-sm list-decimal list-inside text-foreground/80">
               <li>Draft caption with local keywords and call-to-action</li>
               <li>Select and optimize image(s) for platform dimensions</li>
               <li>Schedule via approved social tool (minimum 2 days before post date)</li>
@@ -63,10 +64,10 @@ export default function SocialPage() {
       </div>
 
       {/* Section 2: Weekly Posts */}
-      <div className="rounded-xl border bg-card shadow-sm overflow-hidden">
-        <div className="flex items-center gap-3 p-4 border-b bg-blue-50">
-          <div className="rounded-lg bg-blue-100 p-2">
-            <Share2 className="h-5 w-5 text-blue-600" />
+      <div className="rounded-xl border border-border/60 bg-card overflow-hidden border-t-2 border-t-blue-500 shadow-md">
+        <div className="flex items-center gap-3 p-4 border-b border-border/40 bg-muted/20">
+          <div className="rounded-lg bg-blue-500/10 ring-1 ring-blue-500/20 p-2">
+            <Share2 className="h-5 w-5 text-blue-400" />
           </div>
           <div>
             <h2 className="font-semibold">2. Weekly Posts</h2>
@@ -74,16 +75,16 @@ export default function SocialPage() {
           </div>
         </div>
         <div className="p-5 space-y-4">
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             {[
-              { day: 'Monday', type: 'Service Spotlight', color: 'bg-blue-50 border-blue-200' },
-              { day: 'Wednesday', type: 'Before/After or Local Proof', color: 'bg-green-50 border-green-200' },
-              { day: 'Friday', type: 'Educational or Tip', color: 'bg-amber-50 border-amber-200' },
-              { day: 'Weekend (Optional)', type: 'Community or Promotional', color: 'bg-purple-50 border-purple-200' },
+              { day: 'Monday',          type: 'Service Spotlight',         accent: 'border-blue-500/30 bg-blue-500/8 text-blue-300' },
+              { day: 'Wednesday',       type: 'Before/After or Local Proof',accent: 'border-emerald-500/30 bg-emerald-500/8 text-emerald-300' },
+              { day: 'Friday',          type: 'Educational or Tip',         accent: 'border-amber-500/30 bg-amber-500/8 text-amber-300' },
+              { day: 'Weekend (Opt.)',  type: 'Community or Promo',         accent: 'border-purple-500/30 bg-purple-500/8 text-purple-300' },
             ].map(d => (
-              <div key={d.day} className={`rounded-lg border ${d.color} p-3 text-center`}>
-                <p className="text-xs font-bold text-muted-foreground">{d.day}</p>
-                <p className="text-sm mt-1">{d.type}</p>
+              <div key={d.day} className={cn('rounded-lg border p-3 text-center', d.accent)}>
+                <p className="text-xs font-bold opacity-70">{d.day}</p>
+                <p className="text-sm mt-1 font-medium">{d.type}</p>
               </div>
             ))}
           </div>
@@ -101,8 +102,8 @@ export default function SocialPage() {
                 'Community involvement / local news',
               ].map(c => (
                 <div key={c} className="flex items-start gap-2">
-                  <CheckCircle2 className="h-3.5 w-3.5 shrink-0 mt-0.5 text-blue-500" />
-                  {c}
+                  <CheckCircle2 className="h-3.5 w-3.5 shrink-0 mt-0.5 text-blue-400" />
+                  <span className="text-foreground/80">{c}</span>
                 </div>
               ))}
             </div>
@@ -111,10 +112,10 @@ export default function SocialPage() {
       </div>
 
       {/* Section 3: Social Setup */}
-      <div className="rounded-xl border bg-card shadow-sm overflow-hidden">
-        <div className="flex items-center gap-3 p-4 border-b bg-green-50">
-          <div className="rounded-lg bg-green-100 p-2">
-            <CheckCircle2 className="h-5 w-5 text-green-600" />
+      <div className="rounded-xl border border-border/60 bg-card overflow-hidden border-t-2 border-t-emerald-500 shadow-md">
+        <div className="flex items-center gap-3 p-4 border-b border-border/40 bg-muted/20">
+          <div className="rounded-lg bg-emerald-500/10 ring-1 ring-emerald-500/20 p-2">
+            <CheckCircle2 className="h-5 w-5 text-emerald-400" />
           </div>
           <div>
             <h2 className="font-semibold">3. Social Setup Checklist</h2>
@@ -125,7 +126,8 @@ export default function SocialPage() {
           {[
             {
               platform: 'Facebook Business Page',
-              color: 'border-blue-200',
+              accent: 'border-blue-500/25 bg-blue-500/5',
+              labelColor: 'text-blue-400',
               items: [
                 'Business name + category + description',
                 'Profile photo (logo) and cover photo (1640×924)',
@@ -138,7 +140,8 @@ export default function SocialPage() {
             },
             {
               platform: 'Instagram Business Account',
-              color: 'border-purple-200',
+              accent: 'border-purple-500/25 bg-purple-500/5',
+              labelColor: 'text-purple-400',
               items: [
                 'Business account (not personal)',
                 'Bio with location and service keywords (150 chars)',
@@ -150,7 +153,8 @@ export default function SocialPage() {
             },
             {
               platform: 'YouTube Channel',
-              color: 'border-red-200',
+              accent: 'border-red-500/25 bg-red-500/5',
+              labelColor: 'text-red-400',
               items: [
                 'Channel name matches business name',
                 'Channel description with service keywords',
@@ -161,7 +165,8 @@ export default function SocialPage() {
             },
             {
               platform: 'LinkedIn Company Page',
-              color: 'border-blue-300',
+              accent: 'border-sky-500/25 bg-sky-500/5',
+              labelColor: 'text-sky-400',
               items: [
                 'Company page (not personal)',
                 'Logo + cover image uploaded',
@@ -171,12 +176,12 @@ export default function SocialPage() {
               ],
             },
           ].map(p => (
-            <div key={p.platform} className={`rounded-lg border ${p.color} p-4`}>
-              <h3 className="font-semibold text-sm mb-2">{p.platform}</h3>
+            <div key={p.platform} className={cn('rounded-lg border p-4', p.accent)}>
+              <h3 className={cn('font-semibold text-sm mb-2', p.labelColor)}>{p.platform}</h3>
               <ul className="space-y-1.5 text-sm">
                 {p.items.map(item => (
-                  <li key={item} className="flex items-start gap-2">
-                    <CheckCircle2 className="h-3.5 w-3.5 shrink-0 mt-0.5 text-muted-foreground" />
+                  <li key={item} className="flex items-start gap-2 text-foreground/80">
+                    <CheckCircle2 className="h-3.5 w-3.5 shrink-0 mt-0.5 text-muted-foreground/60" />
                     {item}
                   </li>
                 ))}
@@ -185,14 +190,14 @@ export default function SocialPage() {
           ))}
 
           {/* Brand Consistency */}
-          <div className="rounded-lg bg-amber-50 border border-amber-200 p-4">
-            <h3 className="font-semibold text-sm text-amber-800 mb-2">Brand Consistency Requirements</h3>
-            <ul className="space-y-1.5 text-sm text-amber-700">
-              <li className="flex items-start gap-2"><CheckCircle2 className="h-3.5 w-3.5 shrink-0 mt-0.5" /> Same logo used across all platforms (PNG with transparent background)</li>
-              <li className="flex items-start gap-2"><CheckCircle2 className="h-3.5 w-3.5 shrink-0 mt-0.5" /> Consistent brand colors in all cover images</li>
-              <li className="flex items-start gap-2"><CheckCircle2 className="h-3.5 w-3.5 shrink-0 mt-0.5" /> Same phone number and website URL across all platforms</li>
-              <li className="flex items-start gap-2"><CheckCircle2 className="h-3.5 w-3.5 shrink-0 mt-0.5" /> NAP (Name, Address, Phone) must match GBP exactly</li>
-              <li className="flex items-start gap-2"><CheckCircle2 className="h-3.5 w-3.5 shrink-0 mt-0.5" /> Caption tone: professional, local, and trust-building</li>
+          <div className="rounded-lg bg-amber-500/10 border border-amber-500/25 p-4">
+            <h3 className="font-semibold text-sm text-amber-400 mb-2">Brand Consistency Requirements</h3>
+            <ul className="space-y-1.5 text-sm text-amber-300/80">
+              <li className="flex items-start gap-2"><CheckCircle2 className="h-3.5 w-3.5 shrink-0 mt-0.5 text-amber-500" /> Same logo used across all platforms (PNG with transparent background)</li>
+              <li className="flex items-start gap-2"><CheckCircle2 className="h-3.5 w-3.5 shrink-0 mt-0.5 text-amber-500" /> Consistent brand colors in all cover images</li>
+              <li className="flex items-start gap-2"><CheckCircle2 className="h-3.5 w-3.5 shrink-0 mt-0.5 text-amber-500" /> Same phone number and website URL across all platforms</li>
+              <li className="flex items-start gap-2"><CheckCircle2 className="h-3.5 w-3.5 shrink-0 mt-0.5 text-amber-500" /> NAP (Name, Address, Phone) must match GBP exactly</li>
+              <li className="flex items-start gap-2"><CheckCircle2 className="h-3.5 w-3.5 shrink-0 mt-0.5 text-amber-500" /> Caption tone: professional, local, and trust-building</li>
             </ul>
           </div>
         </div>

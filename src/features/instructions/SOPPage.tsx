@@ -28,6 +28,16 @@ const PHASES = [
   'Phase 6: Optimization & Scale',
 ]
 
+const PHASE_STYLES: Record<string, { accent: string; badge: string; dot: string }> = {
+  'Phase 0: Client Activation':   { accent: 'border-t-slate-400',   badge: 'bg-slate-500/15 text-slate-300 border border-slate-500/20',   dot: 'bg-slate-400' },
+  'Phase 1: Onboarding':          { accent: 'border-t-blue-500',    badge: 'bg-blue-500/15 text-blue-300 border border-blue-500/20',    dot: 'bg-blue-400' },
+  'Phase 2: Foundation':          { accent: 'border-t-indigo-500',  badge: 'bg-indigo-500/15 text-indigo-300 border border-indigo-500/20',  dot: 'bg-indigo-400' },
+  'Phase 3: Visibility Build':    { accent: 'border-t-purple-500',  badge: 'bg-purple-500/15 text-purple-300 border border-purple-500/20',  dot: 'bg-purple-400' },
+  'Phase 4: Growth Activation':   { accent: 'border-t-orange-500',  badge: 'bg-orange-500/15 text-orange-300 border border-orange-500/20',  dot: 'bg-orange-400' },
+  'Phase 5: Social & Content':    { accent: 'border-t-pink-500',    badge: 'bg-pink-500/15 text-pink-300 border border-pink-500/20',    dot: 'bg-pink-400' },
+  'Phase 6: Optimization & Scale':{ accent: 'border-t-emerald-500', badge: 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/20', dot: 'bg-emerald-400' },
+}
+
 const STEPS: Step[] = [
   {
     step: 0, name: 'Client Signs', timeline: 'Day 0', phase: PHASES[0],
@@ -245,11 +255,25 @@ const STEPS: Step[] = [
 ]
 
 function StepCard({ step }: { step: Step }) {
+  const style = PHASE_STYLES[step.phase]
   return (
-    <div id={`step-${step.step}`} className="rounded-xl border bg-card shadow-sm overflow-hidden">
+    <div id={`step-${step.step}`} className={cn(
+      'rounded-xl border border-border/60 bg-card overflow-hidden shadow-md border-t-2',
+      style.accent,
+    )}>
       {/* Header */}
-      <div className="flex items-center gap-3 p-4 border-b bg-muted/30">
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground text-sm font-bold">
+      <div className="flex items-center gap-3 p-4 border-b border-border/40 bg-muted/20">
+        <div className={cn(
+          'flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-bold ring-2',
+          'bg-card',
+          style.dot === 'bg-blue-400'    && 'ring-blue-500/40 text-blue-400',
+          style.dot === 'bg-indigo-400'  && 'ring-indigo-500/40 text-indigo-400',
+          style.dot === 'bg-purple-400'  && 'ring-purple-500/40 text-purple-400',
+          style.dot === 'bg-orange-400'  && 'ring-orange-500/40 text-orange-400',
+          style.dot === 'bg-pink-400'    && 'ring-pink-500/40 text-pink-400',
+          style.dot === 'bg-emerald-400' && 'ring-emerald-500/40 text-emerald-400',
+          style.dot === 'bg-slate-400'   && 'ring-slate-500/40 text-slate-400',
+        )}>
           {step.step}
         </div>
         <div>
@@ -271,7 +295,7 @@ function StepCard({ step }: { step: Step }) {
           <ul className="space-y-1.5">
             {step.actions.map((a, i) => (
               <li key={i} className="flex items-start gap-2 text-sm">
-                <CheckCircle2 className="h-3.5 w-3.5 shrink-0 mt-0.5 text-muted-foreground" />
+                <CheckCircle2 className="h-3.5 w-3.5 shrink-0 mt-0.5 text-muted-foreground/60" />
                 {a}
               </li>
             ))}
@@ -279,19 +303,19 @@ function StepCard({ step }: { step: Step }) {
         </div>
 
         {/* Required Output */}
-        <div className="rounded-lg bg-blue-50 border border-blue-200 px-3 py-2">
-          <p className="text-xs font-semibold text-blue-700 mb-0.5 flex items-center gap-1">
+        <div className="rounded-lg bg-blue-500/10 border border-blue-500/20 px-3 py-2.5">
+          <p className="text-xs font-semibold text-blue-400 mb-0.5 flex items-center gap-1">
             <Zap className="h-3 w-3" /> Required Output
           </p>
-          <p className="text-sm text-blue-800">{step.requiredOutput}</p>
+          <p className="text-sm text-blue-300/90">{step.requiredOutput}</p>
         </div>
 
         {/* QA Gate */}
-        <div className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2">
-          <p className="text-xs font-semibold text-amber-700 mb-0.5 flex items-center gap-1">
+        <div className="rounded-lg bg-amber-500/10 border border-amber-500/20 px-3 py-2.5">
+          <p className="text-xs font-semibold text-amber-400 mb-0.5 flex items-center gap-1">
             <AlertCircle className="h-3 w-3" /> QA Gate
           </p>
-          <p className="text-sm text-amber-800">{step.qaGate}</p>
+          <p className="text-sm text-amber-300/90">{step.qaGate}</p>
         </div>
       </div>
     </div>
@@ -308,7 +332,7 @@ export default function SOPPage() {
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center gap-3">
-        <Link to="/instructions" className="text-muted-foreground hover:text-foreground">
+        <Link to="/instructions" className="text-muted-foreground hover:text-foreground transition-colors">
           <ArrowLeft className="h-5 w-5" />
         </Link>
         <div>
@@ -318,51 +342,61 @@ export default function SOPPage() {
       </div>
 
       {/* QA Gate Rule */}
-      <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-        <span className="font-semibold">QA Gate Rule:</span> If a step's A/R output isn't completed and logged,
+      <div className="rounded-lg border border-amber-500/25 bg-amber-500/10 px-4 py-3 text-sm text-amber-300">
+        <span className="font-semibold text-amber-400">QA Gate Rule:</span> If a step's A/R output isn't completed and logged,
         the next step does not start. Every step requires the "A/R output logged" checkbox before downstream steps can proceed.
       </div>
 
       {/* Jump nav */}
       <div className="flex flex-wrap gap-2">
-        {STEPS.map(s => (
-          <a key={s.step} href={`#step-${s.step}`}
-            className="inline-flex items-center rounded-full border px-3 py-1 text-xs font-medium hover:bg-muted transition-colors">
-            {s.step}: {s.name}
-          </a>
-        ))}
+        {STEPS.map(s => {
+          const style = PHASE_STYLES[s.phase]
+          return (
+            <a
+              key={s.step}
+              href={`#step-${s.step}`}
+              className={cn(
+                'inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-colors',
+                'border-border/50 hover:border-border bg-card/50 hover:bg-muted/40',
+              )}
+            >
+              <span className={cn('h-1.5 w-1.5 rounded-full shrink-0', style.dot)} />
+              {s.step}: {s.name}
+            </a>
+          )
+        })}
       </div>
 
       {/* Steps by phase */}
-      {phaseGroups.filter(g => g.steps.length > 0).map(group => (
-        <section key={group.phase} className="space-y-4">
-          <h2 className={cn(
-            'text-base font-bold px-3 py-1.5 rounded-lg inline-block',
-            group.phase.includes('Phase 0') ? 'bg-slate-100 text-slate-700' :
-            group.phase.includes('Phase 1') ? 'bg-blue-100 text-blue-700' :
-            group.phase.includes('Phase 2') ? 'bg-indigo-100 text-indigo-700' :
-            group.phase.includes('Phase 3') ? 'bg-purple-100 text-purple-700' :
-            group.phase.includes('Phase 4') ? 'bg-orange-100 text-orange-700' :
-            group.phase.includes('Phase 5') ? 'bg-pink-100 text-pink-700' :
-            'bg-green-100 text-green-700',
-          )}>
-            {group.phase}
-          </h2>
-          <div className="grid gap-4 md:grid-cols-1 lg:grid-cols-2">
-            {group.steps.map(s => <StepCard key={s.step} step={s} />)}
-          </div>
-        </section>
-      ))}
+      {phaseGroups.filter(g => g.steps.length > 0).map(group => {
+        const style = PHASE_STYLES[group.phase]
+        return (
+          <section key={group.phase} className="space-y-4">
+            <div className="flex items-center gap-2">
+              <span className={cn('h-2 w-2 rounded-full shrink-0', style.dot)} />
+              <h2 className={cn('text-sm font-bold px-3 py-1 rounded-full', style.badge)}>
+                {group.phase}
+              </h2>
+            </div>
+            <div className="grid gap-4 md:grid-cols-1 lg:grid-cols-2">
+              {group.steps.map(s => <StepCard key={s.step} step={s} />)}
+            </div>
+          </section>
+        )
+      })}
 
       {/* Continuous Delivery note */}
-      <div className="rounded-xl border bg-green-50 p-5">
-        <h3 className="font-semibold text-green-800 mb-2">Beyond Week 8: Continuous Delivery Loop</h3>
-        <ul className="space-y-1.5 text-sm text-green-700">
-          <li className="flex items-start gap-2"><CheckCircle2 className="h-3.5 w-3.5 shrink-0 mt-0.5" /> Weekly performance review and report</li>
-          <li className="flex items-start gap-2"><CheckCircle2 className="h-3.5 w-3.5 shrink-0 mt-0.5" /> Bi-weekly client meetings (Mid-Month + End-of-Month)</li>
-          <li className="flex items-start gap-2"><CheckCircle2 className="h-3.5 w-3.5 shrink-0 mt-0.5" /> Monthly comprehensive report (last Friday of month)</li>
-          <li className="flex items-start gap-2"><CheckCircle2 className="h-3.5 w-3.5 shrink-0 mt-0.5" /> Continuous SEO improvements and content creation</li>
-          <li className="flex items-start gap-2"><CheckCircle2 className="h-3.5 w-3.5 shrink-0 mt-0.5" /> Quarterly strategy reviews and roadmap updates</li>
+      <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/8 p-5">
+        <h3 className="font-semibold text-emerald-400 mb-3 flex items-center gap-2">
+          <CheckCircle2 className="h-4 w-4" />
+          Beyond Week 8: Continuous Delivery Loop
+        </h3>
+        <ul className="space-y-1.5 text-sm text-emerald-300/80">
+          <li className="flex items-start gap-2"><CheckCircle2 className="h-3.5 w-3.5 shrink-0 mt-0.5 text-emerald-500" /> Weekly performance review and report</li>
+          <li className="flex items-start gap-2"><CheckCircle2 className="h-3.5 w-3.5 shrink-0 mt-0.5 text-emerald-500" /> Bi-weekly client meetings (Mid-Month + End-of-Month)</li>
+          <li className="flex items-start gap-2"><CheckCircle2 className="h-3.5 w-3.5 shrink-0 mt-0.5 text-emerald-500" /> Monthly comprehensive report (last Friday of month)</li>
+          <li className="flex items-start gap-2"><CheckCircle2 className="h-3.5 w-3.5 shrink-0 mt-0.5 text-emerald-500" /> Continuous SEO improvements and content creation</li>
+          <li className="flex items-start gap-2"><CheckCircle2 className="h-3.5 w-3.5 shrink-0 mt-0.5 text-emerald-500" /> Quarterly strategy reviews and roadmap updates</li>
         </ul>
       </div>
     </div>

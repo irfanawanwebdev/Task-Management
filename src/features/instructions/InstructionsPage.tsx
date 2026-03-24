@@ -143,20 +143,60 @@ export default function InstructionsPage() {
         </div>
       </div>
 
-      {/* Reference Doc Quick Links */}
-      <div className="flex flex-wrap gap-2">
+      {/* Reference Doc Quick Links — dark connector-style cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         {[
-          { label: '16-Step SOP',      href: '/instructions/sops',    icon: BookOpen,  color: 'text-primary' },
-          { label: 'Social Guidelines',href: '/instructions/social',   icon: Share2,    color: 'text-purple-500' },
-          { label: 'Report Checklist', href: '/instructions/reports',  icon: FileText,  color: 'text-amber-500' },
+          {
+            label: '16-Step SOP',
+            href: '/instructions/sops',
+            icon: BookOpen,
+            accent: 'border-t-primary',
+            iconBg: 'bg-primary/10 ring-1 ring-primary/20',
+            iconColor: 'text-primary',
+            desc: 'Full client delivery lifecycle — steps 0 through 15 with RACI assignments.',
+          },
+          {
+            label: 'Social Guidelines',
+            href: '/instructions/social',
+            icon: Share2,
+            accent: 'border-t-purple-500',
+            iconBg: 'bg-purple-500/10 ring-1 ring-purple-500/20',
+            iconColor: 'text-purple-400',
+            desc: 'Brand voice, platform rules, and content standards for all social channels.',
+          },
+          {
+            label: 'Report Checklist',
+            href: '/instructions/reports',
+            icon: FileText,
+            accent: 'border-t-amber-500',
+            iconBg: 'bg-amber-500/10 ring-1 ring-amber-500/20',
+            iconColor: 'text-amber-400',
+            desc: 'Weekly & monthly report quality checklist — items to verify before sending.',
+          },
         ].map(doc => (
           <Link
             key={doc.href}
             to={doc.href}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border bg-card text-xs font-medium hover:bg-accent transition-colors"
+            className={cn(
+              'group flex flex-col rounded-xl border border-border/60 bg-card overflow-hidden',
+              'border-t-2 shadow-md transition-all duration-200',
+              'hover:border-border hover:shadow-lg hover:-translate-y-0.5',
+              doc.accent,
+            )}
           >
-            <doc.icon className={cn('h-3.5 w-3.5', doc.color)} />
-            {doc.label}
+            <div className="flex items-center gap-3 p-4 pb-2">
+              <div className={cn('flex h-9 w-9 items-center justify-center rounded-lg shrink-0', doc.iconBg)}>
+                <doc.icon className={cn('h-4.5 w-4.5', doc.iconColor)} />
+              </div>
+              <span className="text-sm font-semibold text-foreground group-hover:text-primary transition-colors">
+                {doc.label}
+              </span>
+            </div>
+            <p className="px-4 pb-4 text-xs text-muted-foreground leading-relaxed">{doc.desc}</p>
+            <div className="border-t border-border/40 px-4 py-2.5 flex items-center justify-between">
+              <span className="text-xs text-muted-foreground">Reference</span>
+              <ChevronRight className="h-3.5 w-3.5 text-muted-foreground group-hover:text-primary transition-colors" />
+            </div>
           </Link>
         ))}
       </div>

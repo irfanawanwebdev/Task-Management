@@ -4,7 +4,7 @@
  * Wraps the entire app; all role-gating reads from this context.
  */
 
-import React, { createContext, useContext, useEffect, useState, useCallback } from 'react'
+import React, { createContext, useContext, useEffect, useRef, useState, useCallback } from 'react'
 import type { Session, User } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase'
 import type { AppRole, Profile } from '@/lib/types'
@@ -29,7 +29,15 @@ type AuthContextValue = AuthState & AuthActions
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined)
 
+async function pingLastSeen(userId: string) {
+  await supabase
+    .from('profiles')
+    .update({ last_seen_at: new Date().toISOString() } as never)
+    .eq('user_id', userId)
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const [state, setState] = useState<AuthState>({
     user: null,
     session: null,
@@ -64,6 +72,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       isLoading: false,
       isAuthenticated: true,
     }))
+
+    // Ping last_seen_at on load, then every 2 minutes
+    await pingLastSeen(userId)
+    if (heartbeatRef.current) clearInterval(heartbeatRef.current)
+    heartbeatRef.current = setInterval(() => pingLastSeen(userId), 2 * 60 * 1000)
   }, [])
 
   const refreshProfile = useCallback(async () => {
@@ -89,6 +102,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setState(prev => ({ ...prev, session, user: session.user }))
         loadProfile(session.user.id)
       } else {
+        if (heartbeatRef.current) clearInterval(heartbeatRef.current)
         setState({
           user: null, session: null, profile: null,
           role: null, roles: [], isLoading: false, isAuthenticated: false,
@@ -96,7 +110,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     })
 
-    return () => subscription.unsubscribe()
+    return () => {
+      subscription.unsubscribe()
+      if (heartbeatRef.current) clearInterval(heartbeatRef.current)
+    }
   }, [loadProfile])
 
   const signIn = async (email: string, password: string) => {

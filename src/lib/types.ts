@@ -95,6 +95,7 @@ export interface Profile {
   is_active: boolean
   page_access: string[]
   can_create_users: boolean
+  last_seen_at: string | null
   created_at: string
   updated_at: string
 }

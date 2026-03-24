@@ -7,7 +7,7 @@
 
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { UserPlus, X, Loader2, ShieldCheck, Users, ChevronDown, ChevronUp, Pencil, Check } from 'lucide-react'
+import { UserPlus, X, Loader2, ShieldCheck, Users, ChevronDown, ChevronUp, Pencil, Check, Activity } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import type { AppDepartment, AppRole, Profile } from '@/lib/types'
 import { ALL_ROLES } from '@/lib/types'
@@ -602,6 +602,109 @@ function MemberCard({ member, canEdit }: { member: TeamMember; canEdit: boolean 
   )
 }
 
+// ─── User Activity Panel ──────────────────────────────────────────────────────
+
+function getActivityStatus(lastSeen: string | null): 'online' | 'away' | 'offline' {
+  if (!lastSeen) return 'offline'
+  const diffMin = (Date.now() - new Date(lastSeen).getTime()) / 60_000
+  if (diffMin < 5)  return 'online'
+  if (diffMin < 60) return 'away'
+  return 'offline'
+}
+
+function getLastSeenLabel(lastSeen: string | null): string {
+  if (!lastSeen) return 'Never'
+  const diffMs  = Date.now() - new Date(lastSeen).getTime()
+  const diffMin = Math.floor(diffMs / 60_000)
+  if (diffMin < 1)  return 'Online now'
+  if (diffMin < 60) return `${diffMin}m ago`
+  const diffHr = Math.floor(diffMin / 60)
+  if (diffHr < 24)  return `${diffHr}h ago`
+  return `${Math.floor(diffHr / 24)}d ago`
+}
+
+function UserActivityPanel({ members }: { members: TeamMember[] }) {
+  const active = members.filter(m => m.is_active)
+  const onlineCount = active.filter(m => getActivityStatus(m.last_seen_at) === 'online').length
+  const awayCount   = active.filter(m => getActivityStatus(m.last_seen_at) === 'away').length
+
+  // Sort: online first, then away, then offline — alphabetically within each group
+  const sorted = [...active].sort((a, b) => {
+    const order = { online: 0, away: 1, offline: 2 }
+    const diff  = order[getActivityStatus(a.last_seen_at)] - order[getActivityStatus(b.last_seen_at)]
+    return diff !== 0 ? diff : a.full_name.localeCompare(b.full_name)
+  })
+
+  return (
+    <div className="rounded-xl border border-border/60 bg-card overflow-hidden border-t-2 border-t-emerald-500 shadow-md">
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 py-3 border-b border-border/40">
+        <div className="flex items-center gap-2">
+          <Activity className="h-4 w-4 text-emerald-400" />
+          <span className="text-sm font-semibold">Team Activity</span>
+        </div>
+        <div className="flex items-center gap-3">
+          {onlineCount > 0 && (
+            <span className="flex items-center gap-1.5 text-xs text-emerald-400 font-medium">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              {onlineCount} online
+            </span>
+          )}
+          {awayCount > 0 && (
+            <span className="flex items-center gap-1.5 text-xs text-amber-400 font-medium">
+              <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
+              {awayCount} away
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* Member list */}
+      <div className="divide-y divide-border/30">
+        {sorted.map(m => {
+          const status   = getActivityStatus(m.last_seen_at)
+          const label    = getLastSeenLabel(m.last_seen_at)
+          const initials = m.full_name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()
+          return (
+            <div key={m.user_id} className="flex items-center gap-3 px-4 py-2.5">
+              {/* Avatar with status dot */}
+              <div className="relative shrink-0">
+                <div className="h-8 w-8 rounded-full bg-primary/15 flex items-center justify-center">
+                  <span className="text-primary text-xs font-semibold">{initials}</span>
+                </div>
+                <span className={cn(
+                  'absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full ring-2 ring-card',
+                  status === 'online'  && 'bg-emerald-400',
+                  status === 'away'    && 'bg-amber-400',
+                  status === 'offline' && 'bg-muted-foreground/40',
+                )} />
+              </div>
+
+              {/* Name + role */}
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium leading-tight truncate">{m.full_name}</p>
+                <p className="text-xs text-muted-foreground truncate">
+                  {m.department ?? (m.roles?.[0] ? ROLE_LABELS[m.roles[0]] : 'No role')}
+                </p>
+              </div>
+
+              {/* Status label */}
+              <span className={cn(
+                'text-xs font-medium shrink-0',
+                status === 'online'  && 'text-emerald-400',
+                status === 'away'    && 'text-amber-400',
+                status === 'offline' && 'text-muted-foreground/60',
+              )}>
+                {label}
+              </span>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 // ─── Main Page ───────────────────────────────────────────────────────────────
 
 export default function AdminPage() {
@@ -611,7 +714,8 @@ export default function AdminPage() {
   const { data: members, isLoading, error } = useTeamMembers()
 
   // Owners always have edit rights; others need can_create_users flag (§7.2)
-  const canEdit = role === 'owner' || profile?.can_create_users === true
+  const canEdit       = role === 'owner' || profile?.can_create_users === true
+  const canSeeActivity = role === 'owner' || role === 'project_manager' || role === 'account_manager'
 
   const activeCount   = members?.filter(m => m.is_active).length ?? 0
   const inactiveCount = members?.filter(m => !m.is_active).length ?? 0
@@ -665,6 +769,11 @@ export default function AdminPage() {
             </div>
           )}
         </div>
+      )}
+
+      {/* User Activity Panel */}
+      {canSeeActivity && members && members.length > 0 && (
+        <UserActivityPanel members={members} />
       )}
 
       {/* Team grid */}
