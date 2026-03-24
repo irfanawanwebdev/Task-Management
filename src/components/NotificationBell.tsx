@@ -123,7 +123,7 @@ export function NotificationBell() {
 
       {/* Dropdown */}
       {open && (
-        <div className="absolute bottom-full left-0 mb-2 w-80 rounded-xl border bg-card shadow-lg overflow-hidden z-50">
+        <div className="absolute top-full right-0 mt-2 w-80 rounded-xl border bg-card shadow-lg overflow-hidden z-50">
           {/* Header */}
           <div className="flex items-center justify-between px-4 py-2.5 border-b bg-muted/30">
             <span className="text-xs font-semibold">Notifications</span>

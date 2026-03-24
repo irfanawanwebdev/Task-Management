@@ -27,22 +27,37 @@ function useClientPlan(clientId: string) {
   return useQuery<ClientPlanData>({
     queryKey: ['client-sop-plan', clientId],
     queryFn: async () => {
-      const [clientRes, tasksRes] = await Promise.all([
+      const [clientRes, tasksRes, profilesRes] = await Promise.all([
         supabase.from('clients').select('*').eq('id', clientId).single(),
         supabase
           .from('delivery_tasks')
-          .select('*, task_assignments(id, task_id, user_id, workstream, role_type, profiles(full_name))')
+          .select('*, task_assignments(id, task_id, user_id, workstream, role_type)')
           .eq('client_id', clientId)
           .order('step')
           .order('due_date'),
+        supabase.from('profiles').select('user_id, full_name').eq('is_active', true),
       ])
       if (clientRes.error) throw clientRes.error
       if (tasksRes.error) throw tasksRes.error
 
       const client = clientRes.data as unknown as Client
+      const profileMap = new Map<string, string>(
+        (profilesRes.data ?? []).map(p => [p.user_id as string, p.full_name as string])
+      )
+
       const tasks = (tasksRes.data ?? []).map(t => ({
         ...(t as unknown as DeliveryTask),
-        assignments: ((t as unknown as { task_assignments: unknown[] }).task_assignments ?? []) as (TaskAssignment & { profiles?: Pick<Profile, 'full_name'> })[],
+        assignments: ((t as unknown as { task_assignments: unknown[] }).task_assignments ?? []).map(
+          (a: unknown) => {
+            const aTyped = a as TaskAssignment
+            return {
+              ...aTyped,
+              profiles: aTyped.user_id
+                ? { full_name: profileMap.get(aTyped.user_id) ?? '' }
+                : undefined,
+            } as TaskAssignment & { profiles?: Pick<Profile, 'full_name'> }
+          }
+        ),
       }))
       return { client, tasks }
     },

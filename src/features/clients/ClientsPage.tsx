@@ -7,8 +7,9 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Users, Loader2, Search, Plus, X, ChevronRight } from 'lucide-react'
+import { Users, Loader2, Search, Plus, X, ChevronRight, Trash2 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
+import { useAuth } from '@/features/auth/AuthContext'
 import type { Client, DeliveryTask, Meeting, ClientStatus } from '@/lib/types'
 import { isOverdueEST, formatDateEST } from '@/lib/timezone'
 import { getCompletionClass } from '@/lib/types'
@@ -329,10 +330,26 @@ function WorkstreamChips({ streams }: { streams: string[] }) {
 
 export default function ClientsPage() {
   const navigate = useNavigate()
+  const qc = useQueryClient()
+  const { role } = useAuth()
+  const canDelete = role === 'owner' || role === 'project_manager' || role === 'account_manager'
+
   const { data, isLoading, error } = useClientsPageData()
   const [search, setSearch] = useState('')
   const [filterHealth, setFilterHealth] = useState<string>('All')
   const [showAdd, setShowAdd] = useState(false)
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
+
+  const deleteClient = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from('clients').delete().eq('id', id)
+      if (error) throw error
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['clients-page'] })
+      setConfirmDeleteId(null)
+    },
+  })
 
   const clients  = data?.clients  ?? []
   const tasks    = data?.tasks    ?? []
@@ -446,12 +463,13 @@ export default function ClientsPage() {
                   <th>Blocked</th>
                   <th>Next Meeting</th>
                   <th>Workstreams</th>
+                  {canDelete && <th></th>}
                 </tr>
               </thead>
               <tbody>
                 {filtered.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="text-center py-12">
+                    <td colSpan={canDelete ? 9 : 8} className="text-center py-12">
                       <Users className="h-8 w-8 text-muted-foreground/30 mx-auto mb-2" />
                       <p className="text-sm text-muted-foreground">
                         {search ? 'No clients match your search.' : 'No clients yet.'}
@@ -515,6 +533,30 @@ export default function ClientsPage() {
                         <td className="px-4 py-3">
                           <WorkstreamChips streams={c.primary_workstreams ?? []} />
                         </td>
+                        {canDelete && (
+                          <td className="px-3 py-3" onClick={e => e.stopPropagation()}>
+                            {confirmDeleteId === c.id ? (
+                              <div className="flex items-center gap-1.5">
+                                <button
+                                  onClick={() => deleteClient.mutate(c.id)}
+                                  disabled={deleteClient.isPending}
+                                  className="px-2 py-0.5 rounded text-xs font-medium bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                >
+                                  {deleteClient.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Confirm'}
+                                </button>
+                                <button onClick={() => setConfirmDeleteId(null)} className="text-xs text-muted-foreground hover:text-foreground">Cancel</button>
+                              </div>
+                            ) : (
+                              <button
+                                onClick={() => setConfirmDeleteId(c.id)}
+                                className="p-1 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                                title="Delete client"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            )}
+                          </td>
+                        )}
                       </tr>,
                       // Child location rows
                       ...children.map(child => {
@@ -538,7 +580,7 @@ export default function ClientsPage() {
                             <td className="px-4 py-2.5">
                               <span className={childHealth}>{child.health}</span>
                             </td>
-                            <td colSpan={5} className="px-4 py-2.5 text-xs text-muted-foreground">
+                            <td colSpan={canDelete ? 6 : 5} className="px-4 py-2.5 text-xs text-muted-foreground">
                               View location dashboard →
                             </td>
                           </tr>

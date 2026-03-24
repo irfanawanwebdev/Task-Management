@@ -7,7 +7,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
-  Loader2, AlertTriangle, CheckCircle2, X, ExternalLink, Plus, Copy,
+  Loader2, AlertTriangle, CheckCircle2, X, ExternalLink, Plus, Copy, Trash2,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import type { Client, DeliveryTask } from '@/lib/types'
@@ -54,7 +54,7 @@ function useTasks(clientFilter: string, assignedUserId?: string) {
       // PM/Owner: all tasks with full join
       let q = supabase
         .from('delivery_tasks')
-        .select('*, clients(name), task_assignments(role_type, workstream, user_id, profiles(full_name))')
+        .select('*, clients(name), task_assignments(role_type, workstream, user_id)')
         .order('step')
         .order('due_date')
 
@@ -273,17 +273,36 @@ function DuplicateTaskDialog({
 function TaskDetailDialog({
   task,
   clients,
+  profilesList,
+  canDelete,
   onClose,
+  onDeleted,
 }: {
   task: DeliveryTask
   clients: Client[]
+  profilesList: { user_id: string; full_name: string }[]
+  canDelete: boolean
   onClose: () => void
+  onDeleted: () => void
 }) {
   const queryClient = useQueryClient()
-  const [qaWarning, setQaWarning]       = useState(false)
-  const [outputUrl, setOutputUrl]       = useState(task.output_link ?? '')
-  const [savingUrl, setSavingUrl]       = useState(false)
+  const [qaWarning, setQaWarning]         = useState(false)
+  const [outputUrl, setOutputUrl]         = useState(task.output_link ?? '')
+  const [savingUrl, setSavingUrl]         = useState(false)
   const [showDuplicate, setShowDuplicate] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
+
+  const deleteTask = useMutation({
+    mutationFn: async () => {
+      const { error } = await supabase.from('delivery_tasks').delete().eq('id', task.id)
+      if (error) throw error
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tasks'] })
+      queryClient.invalidateQueries({ queryKey: ['client-detail'] })
+      onDeleted()
+    },
+  })
 
   const updateStatus = useMutation({
     mutationFn: async (status: DeliveryTask['status']) => {
@@ -441,7 +460,7 @@ function TaskDetailDialog({
                     ) : (
                       members.map((m, i) => (
                         <p key={i} className="text-xs">
-                          {m.profiles?.full_name ?? m.workstream ?? '—'}
+                          {(m.user_id ? profilesList.find(p => p.user_id === m.user_id)?.full_name : null) ?? m.workstream ?? '—'}
                         </p>
                       ))
                     )}
@@ -487,13 +506,37 @@ function TaskDetailDialog({
           {/* Duplicate / Move */}
           <div className="flex items-center justify-between">
             <p className="section-header mb-0">Actions</p>
-            <button
-              onClick={() => setShowDuplicate(true)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border/60 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
-            >
-              <Copy className="h-3 w-3" />
-              Duplicate / Move
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setShowDuplicate(true)}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border/60 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+              >
+                <Copy className="h-3 w-3" />
+                Duplicate / Move
+              </button>
+              {canDelete && !confirmDelete && (
+                <button
+                  onClick={() => setConfirmDelete(true)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-destructive/40 text-xs font-medium text-destructive hover:bg-destructive/10 transition-colors"
+                >
+                  <Trash2 className="h-3 w-3" />
+                  Delete
+                </button>
+              )}
+              {canDelete && confirmDelete && (
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs text-destructive">Confirm?</span>
+                  <button
+                    onClick={() => deleteTask.mutate()}
+                    disabled={deleteTask.isPending}
+                    className="px-2.5 py-1 rounded text-xs font-medium bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  >
+                    {deleteTask.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Yes, Delete'}
+                  </button>
+                  <button onClick={() => setConfirmDelete(false)} className="px-2.5 py-1 rounded text-xs text-muted-foreground hover:text-foreground">Cancel</button>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Status Update */}
@@ -584,14 +627,15 @@ function TaskDetailDialog({
 
 // ─── Task Row ─────────────────────────────────────────────────────────────────
 
-function TaskRow({ task, onClick }: { task: DeliveryTask; onClick: () => void }) {
+function TaskRow({ task, profilesList, onClick }: { task: DeliveryTask; profilesList: { user_id: string; full_name: string }[]; onClick: () => void }) {
   const isOverdue = task.due_date && isOverdueEST(task.due_date) && task.status !== 'Done'
   const isToday   = task.due_date && isDateTodayEST(task.due_date)
 
-  const rAssign = task.task_assignments?.filter(a => a.role_type === 'R')
-    .map(a => a.profiles?.full_name ?? a.workstream ?? '—').join(', ')
-  const aAssign = task.task_assignments?.filter(a => a.role_type === 'A')
-    .map(a => a.profiles?.full_name ?? a.workstream ?? '—').join(', ')
+  const resolveName = (a: { user_id?: string | null; workstream?: string | null }) =>
+    (a.user_id ? profilesList.find(p => p.user_id === a.user_id)?.full_name : null) ?? a.workstream ?? '—'
+
+  const rAssign = task.task_assignments?.filter(a => a.role_type === 'R').map(resolveName).join(', ')
+  const aAssign = task.task_assignments?.filter(a => a.role_type === 'A').map(resolveName).join(', ')
 
   return (
     <tr onClick={onClick} className={cn(isOverdue && 'bg-destructive/5')}>
@@ -652,12 +696,20 @@ export default function TasksPage() {
 
   const { role, profile } = useAuth()
   const isPMOrOwner = role === 'owner' || role === 'project_manager'
+  const canDelete = role === 'owner' || role === 'project_manager' || role === 'account_manager'
 
   const { data: tasks = [], isLoading, isError } = useTasks(
     clientFilter,
     isPMOrOwner ? undefined : profile?.user_id,
   )
   const { data: clients = [] } = useClientList()
+  const { data: profilesList = [] } = useQuery<{ user_id: string; full_name: string }[]>({
+    queryKey: ['profiles-simple'],
+    queryFn: async () => {
+      const { data } = await supabase.from('profiles').select('user_id, full_name').eq('is_active', true)
+      return (data ?? []) as { user_id: string; full_name: string }[]
+    },
+  })
 
   // ── Date filtering ──────────────────────────────────────────────────────────
   const dateTasks = (() => {
@@ -854,7 +906,7 @@ export default function TasksPage() {
                 </thead>
                 <tbody>
                   {groupTasks.map(t => (
-                    <TaskRow key={t.id} task={t} onClick={() => setSelectedTask(t)} />
+                    <TaskRow key={t.id} task={t} profilesList={profilesList} onClick={() => setSelectedTask(t)} />
                   ))}
                 </tbody>
               </table>
@@ -868,7 +920,10 @@ export default function TasksPage() {
         <TaskDetailDialog
           task={selectedTask}
           clients={clients}
+          profilesList={profilesList}
+          canDelete={canDelete}
           onClose={() => setSelectedTask(null)}
+          onDeleted={() => setSelectedTask(null)}
         />
       )}
     </div>
