@@ -5,7 +5,7 @@
  */
 
 import { useState, useRef, useEffect } from 'react'
-import { Bot, X, Send, Paperclip, Loader2, Database, AlertCircle, ChevronDown } from 'lucide-react'
+import { Bot, Send, Paperclip, Loader2, Database, AlertCircle, ChevronDown } from 'lucide-react'
 import { useAuth } from '@/features/auth/AuthContext'
 import { supabase } from '@/lib/supabase'
 import { cn } from '@/lib/utils'
