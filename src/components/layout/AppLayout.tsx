@@ -4,6 +4,7 @@ import Sidebar from './Sidebar'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { useAuth } from '@/features/auth/AuthContext'
 import { NotificationBell } from '@/components/NotificationBell'
+import { AIChat } from '@/features/ai/AIChat'
 import { LogOut } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 
@@ -88,6 +89,7 @@ export default function AppLayout() {
           </div>
         </main>
       </div>
+      <AIChat />
     </div>
   )
 }
