@@ -158,7 +158,7 @@ const CONNECTORS: Connector[] = [
     id: 'zoom',
     name: 'Zoom',
     category: 'Communication',
-    description: 'Detect Zoom meeting links from calendar events and display them on meeting records.',
+    description: 'Detect Zoom meeting links from calendar events and display them on meeting records. Clicking Connect redirects you to Zoom\'s consent screen directly — no Marketplace setup needed.',
     docsUrl: 'https://developers.zoom.us',
     accentColor: 'border-t-sky-500',
     iconBg: 'bg-white/5 ring-1 ring-sky-500/20',
