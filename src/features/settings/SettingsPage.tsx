@@ -244,6 +244,37 @@ function ConnectorCard({
       return
     }
 
+    // Zoom OAuth flow
+    if (connector.id === 'zoom') {
+      setConnecting(true)
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        if (!session) {
+          setConnectError('Session expired. Please sign out and sign back in.')
+          setConnecting(false)
+          return
+        }
+        const res = await supabase.functions.invoke('zoom-auth', {
+          headers: { Authorization: `Bearer ${session.access_token}` },
+        })
+        if (res.error) {
+          setConnectError(res.error.message ?? 'Edge function error. Check Supabase logs.')
+          setConnecting(false)
+          return
+        }
+        if (res.data?.url) {
+          window.location.href = res.data.url
+        } else {
+          setConnectError('Edge function returned no redirect URL. Ensure ZOOM_CLIENT_ID secret is set in Supabase.')
+          setConnecting(false)
+        }
+      } catch (err) {
+        setConnectError(err instanceof Error ? err.message : 'Unexpected error.')
+        setConnecting(false)
+      }
+      return
+    }
+
     // Other connectors — not yet implemented
     setConnecting(true)
     setTimeout(() => {
@@ -628,7 +659,7 @@ export default function SettingsPage() {
 
       <div className="rounded-lg border border-amber-500/20 bg-amber-500/8 px-4 py-3 text-sm text-amber-300">
         <span className="font-semibold text-amber-200">Implementation Status:</span>{' '}
-        Google Calendar, Meet &amp; Drive share one Google OAuth connection. Zoom, Calendly, and Notion pending.
+        Google Calendar, Meet &amp; Drive share one Google OAuth connection. Zoom is live. Calendly and Notion pending.
       </div>
 
       <div className="flex gap-2 flex-wrap">

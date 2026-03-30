@@ -99,8 +99,8 @@ function OnboardingTab({ tasks }: { tasks: DeliveryTask[] }) {
             {t.step}
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium">{t.step_name}</p>
-            <p className="text-xs text-muted-foreground">{t.workstream} · {t.timeline}</p>
+            <p className="text-sm font-medium">{t.task_name}</p>
+            {t.timeline && <p className="text-xs text-muted-foreground">{t.timeline}</p>}
           </div>
           <div className="flex items-center gap-2 shrink-0">
             {t.ar_output_logged && (
@@ -137,7 +137,7 @@ function OverdueTab({ tasks }: { tasks: DeliveryTask[] }) {
             <div className="flex items-start justify-between gap-2">
               <div>
                 <p className="text-sm font-medium">{t.task_name}</p>
-                <p className="text-xs text-muted-foreground mt-0.5">{t.workstream} · Step {t.step}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Step {t.step}</p>
               </div>
               <span className="text-xs text-destructive font-medium shrink-0">
                 Due {t.due_date && formatDateEST(t.due_date)}
