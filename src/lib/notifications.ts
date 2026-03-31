@@ -14,6 +14,8 @@ export type NotificationType =
   | 'blocker_aged'
   | 'meeting_generated'
   | 'report_compiled'
+  | 'personal_task_due'
+  | 'task_deadline_approaching'
 
 export interface Notification {
   id:         string

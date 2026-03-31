@@ -6,7 +6,7 @@
 
 import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Bell, CheckCheck, AlertTriangle, Calendar, FileText, ShieldAlert, Zap, Loader2 } from 'lucide-react'
+import { Bell, CheckCheck, AlertTriangle, Calendar, FileText, ShieldAlert, Zap, Loader2, ListTodo, Clock } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
 import {
   useNotifications, useUnreadCount, markNotificationRead, markAllRead,
@@ -23,9 +23,11 @@ function NotifIcon({ type }: { type: NotificationType }) {
     case 'upcoming_meeting':   return <Calendar      className={cn(cls, 'text-blue-500')} />
     case 'report_due':         return <FileText      className={cn(cls, 'text-amber-500')} />
     case 'blocker_aged':       return <ShieldAlert   className={cn(cls, 'text-orange-500')} />
-    case 'meeting_generated':  return <Zap           className={cn(cls, 'text-green-500')} />
-    case 'report_compiled':    return <CheckCheck    className={cn(cls, 'text-primary')} />
-    default:                   return <Bell          className={cn(cls, 'text-muted-foreground')} />
+    case 'meeting_generated':         return <Zap      className={cn(cls, 'text-green-500')} />
+    case 'report_compiled':           return <CheckCheck className={cn(cls, 'text-primary')} />
+    case 'personal_task_due':         return <ListTodo className={cn(cls, 'text-violet-500')} />
+    case 'task_deadline_approaching': return <Clock    className={cn(cls, 'text-amber-400')} />
+    default:                          return <Bell     className={cn(cls, 'text-muted-foreground')} />
   }
 }
 

@@ -5,10 +5,12 @@
  * issues and fans out in-app notifications to all PM/owner users.
  *
  * Scans for:
- *   1. Overdue tasks (status != Done, due_date < today)
- *   2. Reports due within 3 days (status != Sent)
- *   3. Blockers aged > 3 days (status != Resolved)
- *   4. Meetings scheduled for tomorrow (status = Scheduled)
+ *   1. Overdue tasks (bulk summary → PM/owner users)
+ *   2. Reports due within 3 days (bulk summary → PM/owner users)
+ *   3. Blockers aged > 3 days (bulk summary → PM/owner users)
+ *   4. Meetings scheduled for tomorrow (bulk summary → PM/owner users)
+ *   5. Personal tasks overdue or due today/tomorrow (per user → all roles)
+ *   6. Assigned delivery tasks due today/tomorrow (per user → all roles)
  *
  * Each notification type is deduplicated: only one notification per type is
  * sent per day (checked via created_at > yesterday).
@@ -157,6 +159,83 @@ serve(async (req: Request) => {
       }
     }
 
+    // ── 5. Per-user: Personal tasks overdue or due today/tomorrow ─────────
+    const { data: personalDue } = await admin
+      .from('personal_tasks')
+      .select('id, title, user_id, due_date')
+      .lte('due_date', tomorrowEST)
+      .neq('status', 'Done')
+
+    // Group by user
+    const personalByUser = new Map<string, { overdue: number; today: number; tomorrow: number }>()
+    for (const t of (personalDue ?? []) as { user_id: string; due_date: string }[]) {
+      if (!personalByUser.has(t.user_id))
+        personalByUser.set(t.user_id, { overdue: 0, today: 0, tomorrow: 0 })
+      const e = personalByUser.get(t.user_id)!
+      if (t.due_date < todayEST)        e.overdue++
+      else if (t.due_date === todayEST) e.today++
+      else                              e.tomorrow++
+    }
+
+    for (const [userId, counts] of personalByUser) {
+      const parts: string[] = []
+      if (counts.overdue  > 0) parts.push(`${counts.overdue} overdue`)
+      if (counts.today    > 0) parts.push(`${counts.today} due today`)
+      if (counts.tomorrow > 0) parts.push(`${counts.tomorrow} due tomorrow`)
+      notifications.push({
+        user_id: userId,
+        type:    'personal_task_due',
+        title:   'Personal tasks need attention',
+        message: `You have ${parts.join(', ')} in your personal task list.`,
+        link:    '/my-tasks',
+      })
+    }
+
+    // ── 6. Per-user: Assigned company tasks due today or tomorrow ─────────
+    const { data: upcomingDelivery } = await admin
+      .from('delivery_tasks')
+      .select('id, task_name, due_date')
+      .gte('due_date', todayEST)
+      .lte('due_date', tomorrowEST)
+      .neq('status', 'Done')
+      .neq('status', 'Blocked')
+
+    const upcomingIds = (upcomingDelivery ?? []).map((t: { id: string }) => t.id)
+
+    if (upcomingIds.length > 0) {
+      const { data: assignments } = await admin
+        .from('task_assignments')
+        .select('user_id, task_id')
+        .in('task_id', upcomingIds)
+        .not('user_id', 'is', null)
+
+      // Map task_id → task_name for lookup
+      const taskNameMap = new Map<string, string>(
+        (upcomingDelivery ?? []).map((t: { id: string; task_name: string }) => [t.id, t.task_name])
+      )
+
+      // Group by user_id
+      const assignedByUser = new Map<string, string[]>()
+      for (const a of (assignments ?? []) as { user_id: string; task_id: string }[]) {
+        if (!assignedByUser.has(a.user_id)) assignedByUser.set(a.user_id, [])
+        const names = assignedByUser.get(a.user_id)!
+        const name  = taskNameMap.get(a.task_id)
+        if (name && !names.includes(name)) names.push(name)
+      }
+
+      for (const [userId, taskNames] of assignedByUser) {
+        const count   = taskNames.length
+        const preview = taskNames.slice(0, 2).join(', ') + (count > 2 ? ` +${count - 2} more` : '')
+        notifications.push({
+          user_id: userId,
+          type:    'task_deadline_approaching',
+          title:   `${count} assigned task${count > 1 ? 's' : ''} due soon`,
+          message: `Tasks due today or tomorrow: ${preview}. Stay on track!`,
+          link:    '/tasks',
+        })
+      }
+    }
+
     // ── Insert all notifications ──────────────────────────────────────────
     if (notifications.length > 0) {
       const { error: insertError } = await admin.from('notifications').insert(notifications)
@@ -171,10 +250,12 @@ serve(async (req: Request) => {
       sent:     notifications.length,
       targets:  targetUsers.length,
       checks: {
-        overdue_tasks:    overdueCount,
-        reports_due:      reportsDueCount,
-        aged_blockers:    blockerCount,
-        tomorrow_meetings: meetingCount,
+        overdue_tasks:           overdueCount,
+        reports_due:             reportsDueCount,
+        aged_blockers:           blockerCount,
+        tomorrow_meetings:       meetingCount,
+        personal_task_reminders: personalByUser.size,
+        assigned_task_reminders: upcomingIds.length,
       },
     }, 200)
 
