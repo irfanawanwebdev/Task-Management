@@ -26,6 +26,10 @@ const ClientsDirectoryPage = lazy(() => import('@/features/instructions/ClientsD
 const ClientSOPPage        = lazy(() => import('@/features/instructions/ClientSOPPage'))
 const SettingsPage         = lazy(() => import('@/features/settings/SettingsPage'))
 const MyTasksPage          = lazy(() => import('@/features/mytasks/MyTasksPage'))
+const PrivacyPolicyPage    = lazy(() => import('@/features/public/PrivacyPolicyPage'))
+const TermsPage            = lazy(() => import('@/features/public/TermsPage'))
+const SupportPage          = lazy(() => import('@/features/public/SupportPage'))
+const DocsPage             = lazy(() => import('@/features/public/DocsPage'))
 
 // ── Suspense fallback ──────────────────────────────────────────────────────────
 const PageLoader = () => (
@@ -46,8 +50,12 @@ const NotFound = () => (
 // ── Data router (required for useBlocker / navigation guards) ─────────────────
 const router = createBrowserRouter(
   [
-    // Public
-    { path: '/login', element: <LoginPage /> },
+    // Public (no login required)
+    { path: '/login',          element: <LoginPage /> },
+    { path: '/privacy-policy', element: <Suspense fallback={<PageLoader />}><PrivacyPolicyPage /></Suspense> },
+    { path: '/terms',          element: <Suspense fallback={<PageLoader />}><TermsPage /></Suspense> },
+    { path: '/support',        element: <Suspense fallback={<PageLoader />}><SupportPage /></Suspense> },
+    { path: '/docs',           element: <Suspense fallback={<PageLoader />}><DocsPage /></Suspense> },
 
     // Protected — inside AppLayout
     {
