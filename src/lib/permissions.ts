@@ -113,12 +113,14 @@ function getPageKeyForPath(path: string): string | null {
 export function getNavForProfile(profile: Profile | null, role: AppRole | null): NavItem[] {
   const pageAccess = profile?.page_access ?? []
   if (profile && pageAccess.length > 0) {
-    // Always include My Dashboard (accessible to all authenticated users)
+    // Always include My Dashboard + My Tasks (accessible to all authenticated users)
+    const alwaysIncluded = new Set<string>([PAGE_KEYS.SPECIALIST, PAGE_KEYS.MY_TASKS])
     const specialistItem = ALL_NAV_ITEMS.find(item => item.pageKey === PAGE_KEYS.SPECIALIST)!
+    const myTasksItem = ALL_NAV_ITEMS.find(item => item.pageKey === PAGE_KEYS.MY_TASKS)!
     const rest = ALL_NAV_ITEMS.filter(item =>
-      item.pageKey !== PAGE_KEYS.SPECIALIST && pageAccess.includes(item.pageKey)
+      !alwaysIncluded.has(item.pageKey) && pageAccess.includes(item.pageKey)
     )
-    return [specialistItem, ...rest]
+    return [specialistItem, ...rest, myTasksItem]
   }
   // Fallback to role-based
   return getNavForRole(role ?? 'viewer')
