@@ -22,6 +22,7 @@ export const PAGE_KEYS = {
   INSTRUCTIONS:    'instructions',
   ADMIN:           'admin',
   SETTINGS:        'settings',
+  MY_TASKS:        'my_tasks',
 } as const
 
 /** Maps route paths → page key (for access checks) */
@@ -38,6 +39,7 @@ const ROUTE_TO_PAGE_KEY: Record<string, string> = {
   '/instructions': PAGE_KEYS.INSTRUCTIONS,
   '/admin':        PAGE_KEYS.ADMIN,
   '/settings':     PAGE_KEYS.SETTINGS,
+  '/my-tasks':     PAGE_KEYS.MY_TASKS,
 }
 
 // ─── All Nav Items (full catalogue) ───────────────────────────────────────
@@ -62,6 +64,7 @@ const ALL_NAV_ITEMS: NavItem[] = [
   { label: 'User Management',     path: '/admin',        icon: 'UserCog',        pageKey: PAGE_KEYS.ADMIN },
   { label: 'RACI Matrix',         path: '/raci',         icon: 'Grid',           pageKey: PAGE_KEYS.RACI },
   { label: 'Settings',            path: '/settings',     icon: 'Settings',       pageKey: PAGE_KEYS.SETTINGS },
+  { label: 'My Tasks',            path: '/my-tasks',     icon: 'ListTodo',       pageKey: PAGE_KEYS.MY_TASKS },
 ]
 
 // ─── Per-User Page Access ──────────────────────────────────────────────────
@@ -77,8 +80,9 @@ export function hasPageAccess(
   role: AppRole | null,
   path: string,
 ): boolean {
-  // Specialist dashboard is always accessible
+  // Always accessible to all authenticated users
   if (path === '/specialist' || path.startsWith('/specialist/')) return true
+  if (path === '/my-tasks') return true
 
   const pageAccess = profile?.page_access ?? []
   if (profile && pageAccess.length > 0) {
@@ -143,6 +147,7 @@ export function canAccessRoute(role: AppRole, path: string): boolean {
     '/instructions':  pmOwner,
     '/admin':         pmOwner,
     '/settings':      pmOwner,
+    '/my-tasks':      allAuth,
   }
 
   for (const [route, roles] of Object.entries(routeMap)) {
@@ -188,11 +193,13 @@ export function getNavForRole(role: AppRole): NavItem[] {
     { label: 'User Management',     path: '/admin',        icon: 'UserCog',         pageKey: PAGE_KEYS.ADMIN },
     { label: 'RACI Matrix',         path: '/raci',         icon: 'Grid',            pageKey: PAGE_KEYS.RACI },
     { label: 'Settings',            path: '/settings',     icon: 'Settings',        pageKey: PAGE_KEYS.SETTINGS },
+    { label: 'My Tasks',            path: '/my-tasks',     icon: 'ListTodo',        pageKey: PAGE_KEYS.MY_TASKS },
   ]
 
   const specialistNav: NavItem[] = [
     { label: 'My Dashboard', path: '/specialist', icon: 'LayoutDashboard', pageKey: PAGE_KEYS.SPECIALIST },
-    { label: 'My Tasks',     path: '/tasks',      icon: 'CheckSquare',     pageKey: PAGE_KEYS.TASKS },
+    { label: 'Tasks',        path: '/tasks',      icon: 'CheckSquare',     pageKey: PAGE_KEYS.TASKS },
+    { label: 'My Tasks',     path: '/my-tasks',   icon: 'ListTodo',        pageKey: PAGE_KEYS.MY_TASKS },
     { label: 'Meetings',     path: '/meetings',   icon: 'Calendar',        pageKey: PAGE_KEYS.MEETINGS },
     { label: 'Blockers',     path: '/blockers',   icon: 'AlertTriangle',   pageKey: PAGE_KEYS.BLOCKERS },
   ]

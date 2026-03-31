@@ -25,6 +25,7 @@ const ReportsChecklistPage = lazy(() => import('@/features/instructions/ReportsC
 const ClientsDirectoryPage = lazy(() => import('@/features/instructions/ClientsDirectoryPage'))
 const ClientSOPPage        = lazy(() => import('@/features/instructions/ClientSOPPage'))
 const SettingsPage         = lazy(() => import('@/features/settings/SettingsPage'))
+const MyTasksPage          = lazy(() => import('@/features/mytasks/MyTasksPage'))
 
 // ── Suspense fallback ──────────────────────────────────────────────────────────
 const PageLoader = () => (
@@ -123,6 +124,10 @@ const router = createBrowserRouter(
         {
           path: '/settings',
           element: <Suspense fallback={<PageLoader />}><SettingsPage /></Suspense>,
+        },
+        {
+          path: '/my-tasks',
+          element: <Suspense fallback={<PageLoader />}><MyTasksPage /></Suspense>,
         },
       ],
     },
