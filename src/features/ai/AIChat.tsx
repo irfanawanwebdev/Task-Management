@@ -37,6 +37,31 @@ const TOOL_LABELS: Record<string, string> = {
   bulk_create_tasks: 'bulk tasks',
 }
 
+const HISTORY_LIMIT = 50
+
+function storageKey(userId: string) {
+  return `ai-chat-history:${userId}`
+}
+
+function loadHistory(userId: string): Message[] {
+  try {
+    const raw = localStorage.getItem(storageKey(userId))
+    if (!raw) return []
+    return (JSON.parse(raw) as Message[]).filter(m => !m.isLoading && !m.isError)
+  } catch {
+    return []
+  }
+}
+
+function saveHistory(userId: string, msgs: Message[]) {
+  try {
+    const toSave = msgs
+      .filter(m => !m.isLoading && !m.isError)
+      .slice(-HISTORY_LIMIT)
+    localStorage.setItem(storageKey(userId), JSON.stringify(toSave))
+  } catch { /* quota exceeded — ignore */ }
+}
+
 export function AIChat() {
   const [open, setOpen] = useState(false)
   const [messages, setMessages] = useState<Message[]>([])
@@ -47,6 +72,23 @@ export function AIChat() {
   const bottomRef = useRef<HTMLDivElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  // Load history when user is known; clear when user switches
+  useEffect(() => {
+    if (profile?.id) {
+      setMessages(loadHistory(profile.id))
+    } else {
+      setMessages([])
+      setOpen(false)
+    }
+  }, [profile?.id])
+
+  // Persist history to localStorage whenever messages change
+  useEffect(() => {
+    if (profile?.id && messages.length > 0) {
+      saveHistory(profile.id, messages)
+    }
+  }, [messages, profile?.id])
 
   // Auto-scroll on new messages
   useEffect(() => {
@@ -177,7 +219,10 @@ export function AIChat() {
           <div className="flex items-center gap-1">
             {messages.length > 0 && (
               <button
-                onClick={() => setMessages([])}
+                onClick={() => {
+                  setMessages([])
+                  if (profile?.id) localStorage.removeItem(storageKey(profile.id))
+                }}
                 className="rounded-md px-2 py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
               >
                 Clear

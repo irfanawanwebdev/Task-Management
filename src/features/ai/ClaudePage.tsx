@@ -137,6 +137,29 @@ function FileBanner({
   )
 }
 
+// ─── localStorage helpers (mirrors AIChat) ───────────────────────────────────
+
+const HISTORY_LIMIT = 50
+
+function storageKey(userId: string) { return `ai-chat-history:${userId}` }
+
+function loadHistory(userId: string): Message[] {
+  try {
+    const raw = localStorage.getItem(storageKey(userId))
+    if (!raw) return []
+    return (JSON.parse(raw) as Message[]).filter(m => !m.isLoading && !m.isError)
+  } catch { return [] }
+}
+
+function saveHistory(userId: string, msgs: Message[]) {
+  try {
+    localStorage.setItem(
+      storageKey(userId),
+      JSON.stringify(msgs.filter(m => !m.isLoading && !m.isError).slice(-HISTORY_LIMIT)),
+    )
+  } catch { /* quota exceeded */ }
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function ClaudePage() {
@@ -148,6 +171,17 @@ export default function ClaudePage() {
   const bottomRef   = useRef<HTMLDivElement>(null)
   const fileRef     = useRef<HTMLInputElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  // Load history for the current user on mount / user change
+  useEffect(() => {
+    if (profile?.id) setMessages(loadHistory(profile.id))
+    else setMessages([])
+  }, [profile?.id])
+
+  // Persist history whenever messages update
+  useEffect(() => {
+    if (profile?.id && messages.length > 0) saveHistory(profile.id, messages)
+  }, [messages, profile?.id])
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -268,7 +302,10 @@ export default function ClaudePage() {
         </div>
         {messages.length > 0 && (
           <button
-            onClick={() => setMessages([])}
+            onClick={() => {
+              setMessages([])
+              if (profile?.id) localStorage.removeItem(storageKey(profile.id))
+            }}
             className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground
                        px-3 py-1.5 rounded-lg border border-border/60 hover:bg-accent transition-colors"
           >

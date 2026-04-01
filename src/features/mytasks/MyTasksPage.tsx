@@ -174,7 +174,7 @@ function AddTaskForm({ userId, onAdded }: { userId: string; onAdded: () => void 
   async function handleSubmit(v: TaskFormValues) {
     if (!v.title.trim()) return
     setSaving(true)
-    await supabase.from('personal_tasks').insert({
+    const { error } = await supabase.from('personal_tasks').insert({
       user_id:       userId,
       title:         v.title.trim(),
       description:   v.description.trim() || null,
@@ -185,6 +185,7 @@ function AddTaskForm({ userId, onAdded }: { userId: string; onAdded: () => void 
       status:        'To Do',
     } as never)
     setSaving(false)
+    if (error) { alert(error.message); return }
     setOpen(false)
     onAdded()
   }
@@ -310,10 +311,12 @@ function EditTaskOverlay({
   task,
   onSave,
   onCancel,
+  error,
 }: {
   task: PersonalTask
   onSave: (v: TaskFormValues) => void
   onCancel: () => void
+  error: string | null
 }) {
   const [saving, setSaving] = useState(false)
 
@@ -332,6 +335,11 @@ function EditTaskOverlay({
             <X className="h-4 w-4" />
           </button>
         </div>
+        {error && (
+          <p className="mx-4 mt-3 text-xs text-destructive bg-destructive/10 border border-destructive/20 rounded-lg px-3 py-2">
+            {error}
+          </p>
+        )}
         <div className="p-4">
           <TaskForm
             initial={{
@@ -393,7 +401,7 @@ export default function MyTasksPage() {
 
   const editTask = useMutation({
     mutationFn: async ({ id, v }: { id: string; v: TaskFormValues }) => {
-      await supabase.from('personal_tasks').update({
+      const { error } = await supabase.from('personal_tasks').update({
         title:         v.title.trim(),
         description:   v.description.trim() || null,
         priority:      v.priority,
@@ -401,6 +409,7 @@ export default function MyTasksPage() {
         company:       v.company.trim() || null,
         assignee_note: v.assignee_note.trim() || null,
       } as never).eq('id', id)
+      if (error) throw new Error(error.message)
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['personal-tasks', user?.id] })
@@ -533,6 +542,7 @@ export default function MyTasksPage() {
           task={editingTask}
           onSave={v => editTask.mutate({ id: editingTask.id, v })}
           onCancel={() => setEditing(null)}
+          error={editTask.error ? (editTask.error as Error).message : null}
         />
       )}
     </div>
