@@ -5,7 +5,7 @@ export default function DocsPage() {
     <PublicLayout title="Documentation" updated="April 1, 2026">
       <Section title="Overview">
         <p>
-          The JZ Smart Media Operations Hub is an internal platform for managing client delivery,
+          JZ Smart Media Operations Hub is an internal platform for managing client delivery,
           team coordination, meetings, and reporting across all active accounts. It is used exclusively
           by JZ Smart Media employees.
         </p>
