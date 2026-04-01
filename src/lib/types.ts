@@ -151,6 +151,8 @@ export interface DeliveryTask {
   recurrence?: 'none' | 'weekly' | 'biweekly' | 'monthly'
   recurrence_group_id?: string | null
   recurrence_anchor_date?: string | null
+  notes?: string | null
+  links?: { label: string; url: string }[]
   created_at: string
   updated_at: string
   // Joined fields

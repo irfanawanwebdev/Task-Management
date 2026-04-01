@@ -43,7 +43,10 @@ Deno.serve(async (req) => {
     // 2. Fall back to ?user_id query param
     if (!userId) userId = url.searchParams.get('user_id')
 
-    const redirectUri = `${Deno.env.get('SUPABASE_URL')}/functions/v1/zoom-callback`
+    // Use APP_URL proxy so the redirect URI is on your own verified domain
+    // e.g. https://ops.jzsmartmedia.com/functions/zoom-callback
+    const appUrl = Deno.env.get('APP_URL') ?? Deno.env.get('SUPABASE_URL')
+    const redirectUri = `${appUrl}/functions/zoom-callback`
     const state = btoa(JSON.stringify({ user_id: userId, ts: Date.now() }))
 
     const params = new URLSearchParams({

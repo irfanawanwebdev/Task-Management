@@ -16,7 +16,7 @@ import { cn } from '@/lib/utils'
 interface CreateTaskForm {
   task_name: string
   client_id: string
-  assignee_user_id: string
+  assignee_user_ids: string[]   // supports multiple assignees
   due_date: string
   impact_level: string
   workstream: Workstream
@@ -33,7 +33,7 @@ interface CreateTaskForm {
 }
 
 const BLANK: CreateTaskForm = {
-  task_name: '', client_id: '', assignee_user_id: '', due_date: '',
+  task_name: '', client_id: '', assignee_user_ids: [], due_date: '',
   impact_level: 'Medium', workstream: 'Ops/PM',
   description: '', blocker_text: '', client_facing_risk: false,
   recurrence: 'none',
@@ -132,15 +132,14 @@ export function CreateTaskDialog({ open, onClose, presetClientId, clients = [] }
 
       if (taskErr) throw new Error(taskErr.message)
 
-      // 2. Insert task assignment for the assignee
-      if (data.assignee_user_id && inserted?.id) {
+      // 2. Insert task assignments for all assignees
+      if (data.assignee_user_ids.length > 0 && inserted?.id) {
+        const rows = data.assignee_user_ids.map(uid => ({
+          task_id: inserted.id, user_id: uid, role_type: 'R',
+        }))
         const { error: assignErr } = await supabase
           .from('task_assignments')
-          .insert({
-            task_id: inserted.id,
-            user_id: data.assignee_user_id,
-            role_type: 'R',
-          } as never)
+          .insert(rows as never)
         if (assignErr) throw new Error(assignErr.message)
       }
 
@@ -181,14 +180,13 @@ export function CreateTaskDialog({ open, onClose, presetClientId, clients = [] }
 
         if (nextErr) throw new Error(nextErr.message)
 
-        if (nextTask?.id && data.assignee_user_id) {
+        if (nextTask?.id && data.assignee_user_ids.length > 0) {
+          const nextRows = data.assignee_user_ids.map(uid => ({
+            task_id: nextTask.id, user_id: uid, role_type: 'R',
+          }))
           const { error: nextAssignErr } = await supabase
             .from('task_assignments')
-            .insert({
-              task_id:   nextTask.id,
-              user_id:   data.assignee_user_id,
-              role_type: 'R',
-            } as never)
+            .insert(nextRows as never)
           if (nextAssignErr) throw new Error(nextAssignErr.message)
         }
       }
@@ -208,7 +206,7 @@ export function CreateTaskDialog({ open, onClose, presetClientId, clients = [] }
     e.preventDefault()
     if (!form.task_name.trim()) { setError('Task name is required.'); return }
     if (!form.client_id) { setError('Client is required.'); return }
-    if (!form.assignee_user_id) { setError('Assignee is required.'); return }
+    if (form.assignee_user_ids.length === 0) { setError('At least one assignee is required.'); return }
     if (!form.due_date) { setError('Due date is required.'); return }
     setError(null)
     mutation.mutate(form)
@@ -259,21 +257,46 @@ export function CreateTaskDialog({ open, onClose, presetClientId, clients = [] }
             </div>
           )}
 
-          {/* Assignee (person name — required) */}
+          {/* Assignees — multi-select checkboxes */}
           <div>
-            <label className="block text-xs font-medium mb-1">
-              Assignee <span className="text-destructive">*</span>
+            <label className="block text-xs font-medium mb-1.5">
+              Assignees <span className="text-destructive">*</span>
+              {form.assignee_user_ids.length > 0 && (
+                <span className="ml-1.5 text-primary font-normal">({form.assignee_user_ids.length} selected)</span>
+              )}
             </label>
-            <select
-              value={form.assignee_user_id}
-              onChange={e => setForm(f => ({ ...f, assignee_user_id: e.target.value }))}
-              className="w-full px-3 py-1.5 bg-background border border-input rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-            >
-              <option value="">Assign to person…</option>
-              {profiles.map(p => (
-                <option key={p.user_id} value={p.user_id}>{p.full_name}</option>
-              ))}
-            </select>
+            <div className="max-h-36 overflow-y-auto rounded-md border border-input bg-background divide-y divide-border/40">
+              {profiles.map(p => {
+                const checked = form.assignee_user_ids.includes(p.user_id)
+                return (
+                  <label
+                    key={p.user_id}
+                    className={cn(
+                      'flex items-center gap-2.5 px-3 py-2 cursor-pointer text-sm hover:bg-accent/50 transition-colors',
+                      checked && 'bg-primary/5',
+                    )}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => {
+                        setForm(f => ({
+                          ...f,
+                          assignee_user_ids: checked
+                            ? f.assignee_user_ids.filter(id => id !== p.user_id)
+                            : [...f.assignee_user_ids, p.user_id],
+                        }))
+                      }}
+                      className="rounded border-input accent-primary"
+                    />
+                    <span className={cn('flex-1', checked && 'font-medium text-foreground')}>{p.full_name}</span>
+                  </label>
+                )
+              })}
+              {profiles.length === 0 && (
+                <p className="text-xs text-muted-foreground px-3 py-2">No team members found.</p>
+              )}
+            </div>
           </div>
 
           {/* Due Date + Impact */}

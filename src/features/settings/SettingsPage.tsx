@@ -67,16 +67,34 @@ function ZoomIcon({ className }: { className?: string }) {
   )
 }
 
-function CalendlyIcon({ className }: { className?: string }) {
+function ClaudeIcon({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <rect width="48" height="48" rx="10" fill="#006BFF"/>
-      <circle cx="24" cy="24" r="13" fill="white"/>
-      <path d="M24 13C18.477 13 14 17.477 14 23C14 28.523 18.477 33 24 33" stroke="#006BFF" strokeWidth="2.5" strokeLinecap="round"/>
-      <path d="M28 17.5C30.5 19 32 21.3 32 24C32 28.418 28.418 32 24 32" stroke="#006BFF" strokeWidth="2.5" strokeLinecap="round"/>
-      <circle cx="24" cy="24" r="2.5" fill="#006BFF"/>
-      <line x1="24" y1="16" x2="24" y2="22" stroke="#006BFF" strokeWidth="2" strokeLinecap="round"/>
-      <line x1="24" y1="24" x2="28" y2="24" stroke="#006BFF" strokeWidth="2" strokeLinecap="round"/>
+      <rect width="48" height="48" rx="10" fill="#D97757"/>
+      <path d="M28.5 10L19 26H28L19.5 38L35 20H25.5L28.5 10Z" fill="white"/>
+    </svg>
+  )
+}
+
+function OtterIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect width="48" height="48" rx="10" fill="#2563EB"/>
+      <rect x="10" y="14" width="28" height="4" rx="2" fill="white"/>
+      <rect x="10" y="22" width="22" height="4" rx="2" fill="white"/>
+      <rect x="10" y="30" width="18" height="4" rx="2" fill="white"/>
+      <circle cx="38" cy="32" r="5" fill="#60A5FA"/>
+      <path d="M36 32L38 34L41 30" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
+  )
+}
+
+function VictorIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect width="48" height="48" rx="10" fill="#7C3AED"/>
+      <path d="M12 14L24 36L36 14" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+      <circle cx="24" cy="24" r="3" fill="white"/>
     </svg>
   )
 }
@@ -93,26 +111,13 @@ function GoogleDriveIcon({ className }: { className?: string }) {
   )
 }
 
-function NotionIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <rect width="48" height="48" rx="8" fill="#191919"/>
-      <path fillRule="evenodd" clipRule="evenodd" d="M13 12.5C13 11.119 14.119 10 15.5 10H34.5C35.881 10 37 11.119 37 12.5V35.5C37 36.881 35.881 38 34.5 38H15.5C14.119 38 13 36.881 13 35.5V12.5Z" fill="white"/>
-      <rect x="17" y="15" width="14" height="2.5" rx="1.25" fill="#191919"/>
-      <rect x="17" y="20" width="10" height="2" rx="1" fill="#555"/>
-      <rect x="17" y="24" width="12" height="2" rx="1" fill="#555"/>
-      <rect x="17" y="28" width="8" height="2" rx="1" fill="#555"/>
-      <path d="M33 14L30 18H36L33 14Z" fill="#191919"/>
-    </svg>
-  )
-}
 
 // ─── Connector definitions ────────────────────────────────────────────────────
 
 interface Connector {
   id: string
   name: string
-  category: 'Calendar' | 'Communication' | 'Storage' | 'Productivity'
+  category: 'Calendar' | 'Communication' | 'Storage' | 'AI'
   description: string
   docsUrl: string
   accentColor: string
@@ -165,31 +170,42 @@ const CONNECTORS: Connector[] = [
     Icon: ZoomIcon,
   },
   {
-    id: 'calendly',
-    name: 'Calendly',
-    category: 'Calendar',
-    description: 'Import client-booked meetings from Calendly and automatically create meeting records.',
-    docsUrl: 'https://developer.calendly.com',
-    accentColor: 'border-t-blue-400',
-    iconBg: 'bg-white/5 ring-1 ring-blue-400/20',
-    Icon: CalendlyIcon,
+    id: 'claude',
+    name: 'Claude AI',
+    category: 'AI',
+    description: 'Built-in Claude AI assistant for the Operations Hub. Upload meeting transcripts, generate tasks from action items, and query your data with natural language.',
+    docsUrl: 'https://docs.anthropic.com',
+    accentColor: 'border-t-orange-400',
+    iconBg: 'bg-white/5 ring-1 ring-orange-400/20',
+    Icon: ClaudeIcon,
   },
   {
-    id: 'notion',
-    name: 'Notion',
-    category: 'Productivity',
-    description: 'Sync Notion databases and import task lists into the Operations Hub task engine.',
-    docsUrl: 'https://developers.notion.com',
+    id: 'otter',
+    name: 'Otter.ai',
+    category: 'AI',
+    description: 'Import meeting transcripts from Otter.ai directly into the Claude assistant to auto-generate tasks and meeting summaries.',
+    docsUrl: 'https://otter.ai',
+    accentColor: 'border-t-blue-400',
+    iconBg: 'bg-white/5 ring-1 ring-blue-400/20',
+    Icon: OtterIcon,
+  },
+  {
+    id: 'victor',
+    name: 'Victor AI',
+    category: 'AI',
+    description: 'Victor AI integration for advanced workflow automation and intelligent task routing.',
+    docsUrl: 'https://victorai.com',
     accentColor: 'border-t-violet-500',
     iconBg: 'bg-white/5 ring-1 ring-violet-500/20',
-    Icon: NotionIcon,
+    Icon: VictorIcon,
   },
 ]
 
 const CATEGORY_COLORS: Record<string, string> = {
   Calendar:      'bg-blue-500/10 text-blue-400 ring-1 ring-blue-500/20',
   Communication: 'bg-emerald-500/10 text-emerald-400 ring-1 ring-emerald-500/20',
-  Productivity:  'bg-violet-500/10 text-violet-400 ring-1 ring-violet-500/20',
+  Storage:       'bg-amber-500/10 text-amber-400 ring-1 ring-amber-500/20',
+  AI:            'bg-orange-500/10 text-orange-400 ring-1 ring-orange-500/20',
 }
 
 // ─── Connector Card ───────────────────────────────────────────────────────────
@@ -272,6 +288,12 @@ function ConnectorCard({
         setConnectError(err instanceof Error ? err.message : 'Unexpected error.')
         setConnecting(false)
       }
+      return
+    }
+
+    // Claude is built-in — navigate to the Claude page
+    if (connector.id === 'claude') {
+      window.location.href = '/claude'
       return
     }
 
@@ -591,7 +613,7 @@ function DeveloperGuide() {
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function SettingsPage() {
-  const categories = ['All', 'Calendar', 'Communication', 'Productivity'] as const
+  const categories = ['All', 'Calendar', 'Communication', 'Storage', 'AI'] as const
   const [activeCategory, setActiveCategory] = useState<typeof categories[number]>('All')
   const [searchParams, setSearchParams] = useSearchParams()
   const { user } = useAuth()

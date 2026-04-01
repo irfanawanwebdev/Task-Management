@@ -10,6 +10,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   ArrowLeft, Plus, Loader2, CheckCircle2, AlertTriangle,
   Calendar, KeyRound, FileText, Star, BarChart2, ExternalLink, Pencil, X, ChevronRight,
+  Save, Link2,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import type {
@@ -80,7 +81,7 @@ type TabId = typeof TABS[number]['id']
 
 // ─── Onboarding Tab ───────────────────────────────────────────────────────────
 
-function OnboardingTab({ tasks }: { tasks: DeliveryTask[] }) {
+function OnboardingTab({ tasks, onClickTask }: { tasks: DeliveryTask[]; onClickTask: (t: DeliveryTask) => void }) {
   const onboardingTasks = tasks.filter(t => t.step <= 3)
   return (
     <div className="space-y-2">
@@ -88,7 +89,11 @@ function OnboardingTab({ tasks }: { tasks: DeliveryTask[] }) {
         <p className="text-sm text-muted-foreground">No onboarding tasks.</p>
       )}
       {onboardingTasks.map(t => (
-        <div key={t.id} className="flex items-center gap-3 p-3 bg-card border border-border rounded-lg">
+        <div
+          key={t.id}
+          onClick={() => onClickTask(t)}
+          className="flex items-center gap-3 p-3 bg-card border border-border rounded-lg cursor-pointer hover:bg-accent transition-colors"
+        >
           <div className={cn(
             'h-7 w-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0',
             t.status === 'Done' ? 'bg-[hsl(var(--success))]/20 text-[hsl(var(--success))]' :
@@ -113,6 +118,7 @@ function OnboardingTab({ tasks }: { tasks: DeliveryTask[] }) {
             )}>
               {t.status}
             </span>
+            <Pencil className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
           </div>
         </div>
       ))}
@@ -122,7 +128,7 @@ function OnboardingTab({ tasks }: { tasks: DeliveryTask[] }) {
 
 // ─── Overdue Tab ──────────────────────────────────────────────────────────────
 
-function OverdueTab({ tasks }: { tasks: DeliveryTask[] }) {
+function OverdueTab({ tasks, onClickTask }: { tasks: DeliveryTask[]; onClickTask: (t: DeliveryTask) => void }) {
   const overdue = tasks.filter(t => t.due_date && isOverdueEST(t.due_date) && t.status !== 'Done')
   return (
     <div className="space-y-2">
@@ -133,15 +139,22 @@ function OverdueTab({ tasks }: { tasks: DeliveryTask[] }) {
         </div>
       ) : (
         overdue.map(t => (
-          <div key={t.id} className="p-3 bg-destructive/5 border border-destructive/20 rounded-lg">
+          <div
+            key={t.id}
+            onClick={() => onClickTask(t)}
+            className="p-3 bg-destructive/5 border border-destructive/20 rounded-lg cursor-pointer hover:bg-destructive/10 transition-colors"
+          >
             <div className="flex items-start justify-between gap-2">
               <div>
                 <p className="text-sm font-medium">{t.task_name}</p>
                 <p className="text-xs text-muted-foreground mt-0.5">Step {t.step}</p>
               </div>
-              <span className="text-xs text-destructive font-medium shrink-0">
-                Due {t.due_date && formatDateEST(t.due_date)}
-              </span>
+              <div className="flex items-center gap-2 shrink-0">
+                <span className="text-xs text-destructive font-medium">
+                  Due {t.due_date && formatDateEST(t.due_date)}
+                </span>
+                <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
+              </div>
             </div>
           </div>
         ))
@@ -752,14 +765,190 @@ function RiskLogTab({
   )
 }
 
+// ─── Client Task Edit Drawer ─────────────────────────────────────────────────
+
+function ClientTaskEditDrawer({
+  task,
+  clientId,
+  onClose,
+}: {
+  task: DeliveryTask
+  clientId: string
+  onClose: () => void
+}) {
+  const qc = useQueryClient()
+  const [status, setStatus]         = useState(task.status)
+  const [dueDate, setDueDate]       = useState(task.due_date ?? '')
+  const [notes, setNotes]           = useState(task.notes ?? '')
+  const [links, setLinks]           = useState<{ label: string; url: string }[]>(
+    Array.isArray(task.links) ? task.links : []
+  )
+  const [newLinkLabel, setNewLinkLabel] = useState('')
+  const [newLinkUrl, setNewLinkUrl]     = useState('')
+  const [saving, setSaving]             = useState(false)
+
+  const invalidate = () => qc.invalidateQueries({ queryKey: ['client-detail', clientId] })
+
+  const saveField = async (patch: Record<string, unknown>) => {
+    setSaving(true)
+    await supabase.from('delivery_tasks').update(patch as never).eq('id', task.id)
+    await invalidate()
+    setSaving(false)
+  }
+
+  const handleStatusChange = async (val: string) => {
+    setStatus(val as DeliveryTask['status'])
+    await saveField({ status: val })
+  }
+
+  const handleDueDateBlur = async () => {
+    await saveField({ due_date: dueDate || null })
+  }
+
+  const saveNotes = async () => {
+    await saveField({ notes: notes.trim() || null })
+  }
+
+  const addLink = async () => {
+    if (!newLinkLabel.trim() || !newLinkUrl.trim()) return
+    const updated = [...links, { label: newLinkLabel.trim(), url: newLinkUrl.trim() }]
+    setLinks(updated)
+    setNewLinkLabel('')
+    setNewLinkUrl('')
+    await saveField({ links: updated })
+  }
+
+  const removeLink = async (idx: number) => {
+    const updated = links.filter((_, i) => i !== idx)
+    setLinks(updated)
+    await saveField({ links: updated })
+  }
+
+  const STATUS_OPTIONS = ['Not Started', 'In Progress', 'Done', 'Blocked']
+
+  return (
+    <div className="fixed inset-0 z-50 flex justify-end" onClick={onClose}>
+      <div
+        className="w-full max-w-md h-full bg-card border-l border-border shadow-2xl overflow-y-auto"
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="sticky top-0 bg-card border-b border-border px-5 py-4 flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-xs text-muted-foreground">Step {task.step} · {task.workstream}</p>
+            <h3 className="font-semibold text-sm truncate">{task.task_name}</h3>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            {saving && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
+            <button onClick={onClose} className="text-muted-foreground hover:text-foreground">
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+
+        <div className="p-5 space-y-5">
+          {/* Status */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-muted-foreground">Status</label>
+            <select
+              value={status}
+              onChange={e => handleStatusChange(e.target.value)}
+              className="w-full px-3 py-1.5 bg-background border border-input rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+            >
+              {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
+
+          {/* Due Date */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-muted-foreground">Due Date</label>
+            <input
+              type="date"
+              value={dueDate}
+              onChange={e => setDueDate(e.target.value)}
+              onBlur={handleDueDateBlur}
+              className="w-full px-3 py-1.5 bg-background border border-input rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+            />
+          </div>
+
+          {/* Notes */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-muted-foreground">Notes</label>
+            <textarea
+              value={notes}
+              onChange={e => setNotes(e.target.value)}
+              onBlur={saveNotes}
+              rows={5}
+              placeholder="Add notes, context, output documentation…"
+              className="w-full px-3 py-2 bg-background border border-input rounded-md text-sm resize-none focus:outline-none focus:ring-1 focus:ring-primary placeholder:text-muted-foreground"
+            />
+            <p className="text-xs text-muted-foreground">Auto-saves on blur</p>
+          </div>
+
+          {/* Links */}
+          <div className="space-y-2">
+            <label className="text-xs font-medium text-muted-foreground">Links</label>
+            {links.length > 0 && (
+              <div className="space-y-1">
+                {links.map((link, i) => (
+                  <div key={i} className="flex items-center gap-2 p-2 bg-muted/30 rounded-md">
+                    <Link2 className="h-3.5 w-3.5 text-primary shrink-0" />
+                    <a
+                      href={link.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex-1 text-xs text-primary hover:underline truncate"
+                    >
+                      {link.label}
+                    </a>
+                    <button
+                      onClick={() => removeLink(i)}
+                      className="text-muted-foreground hover:text-destructive shrink-0"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="flex gap-2">
+              <input
+                placeholder="Label"
+                value={newLinkLabel}
+                onChange={e => setNewLinkLabel(e.target.value)}
+                className="flex-1 min-w-0 px-2 py-1.5 bg-background border border-input rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-primary"
+              />
+              <input
+                placeholder="https://…"
+                value={newLinkUrl}
+                onChange={e => setNewLinkUrl(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') addLink() }}
+                className="flex-1 min-w-0 px-2 py-1.5 bg-background border border-input rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-primary"
+              />
+              <button
+                onClick={addLink}
+                disabled={!newLinkLabel.trim() || !newLinkUrl.trim()}
+                className="shrink-0 px-2 py-1.5 bg-primary text-primary-foreground rounded-md text-xs disabled:opacity-40 hover:bg-primary/90 transition-colors"
+              >
+                <Save className="h-3 w-3" />
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── Main Page ───────────────────────────────────────────────────────────────
 
 export default function ClientDetailPage() {
   const { clientId } = useParams<{ clientId: string }>()
   const navigate = useNavigate()
-  const [activeTab, setActiveTab]   = useState<TabId>('onboarding')
+  const [activeTab, setActiveTab]     = useState<TabId>('onboarding')
   const [showNewTask, setShowNewTask] = useState(false)
   const [showEdit, setShowEdit]       = useState(false)
+  const [selectedTask, setSelectedTask] = useState<DeliveryTask | null>(null)
   const { data, isLoading, error }    = useClientDetail(clientId!)
   const { role, profile } = useAuth()
   // Show Edit to PM/Owner roles, OR any user explicitly granted clients page access
@@ -810,6 +999,13 @@ export default function ClientDetailPage() {
       />
       {showEdit && (
         <EditClientDialog client={client} onClose={() => setShowEdit(false)} />
+      )}
+      {selectedTask && (
+        <ClientTaskEditDrawer
+          task={selectedTask}
+          clientId={clientId!}
+          onClose={() => setSelectedTask(null)}
+        />
       )}
 
       {/* Back + Header */}
@@ -945,8 +1141,8 @@ export default function ClientDetailPage() {
         </div>
 
         <div className="mt-4">
-          {activeTab === 'onboarding'  && <OnboardingTab  tasks={tasks} />}
-          {activeTab === 'overdue'     && <OverdueTab     tasks={tasks} />}
+          {activeTab === 'onboarding'  && <OnboardingTab  tasks={tasks} onClickTask={setSelectedTask} />}
+          {activeTab === 'overdue'     && <OverdueTab     tasks={tasks} onClickTask={setSelectedTask} />}
           {activeTab === 'blockers'    && <BlockersTab    blockers={blockers} />}
           {activeTab === 'credentials' && <CredentialsTab client={client} />}
           {activeTab === 'reports'     && <ReportsTab     reports={reports} />}

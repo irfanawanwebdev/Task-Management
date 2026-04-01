@@ -8,6 +8,7 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Loader2, AlertTriangle, CheckCircle2, X, ExternalLink, Plus, Copy, Trash2,
+  Link2, FileText, Save,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import type { Client, DeliveryTask } from '@/lib/types'
@@ -291,6 +292,12 @@ function TaskDetailDialog({
   const [savingUrl, setSavingUrl]         = useState(false)
   const [showDuplicate, setShowDuplicate] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [notes, setNotes]                 = useState(task.notes ?? '')
+  const [savingNotes, setSavingNotes]     = useState(false)
+  const [links, setLinks]                 = useState<{ label: string; url: string }[]>(task.links ?? [])
+  const [newLinkLabel, setNewLinkLabel]   = useState('')
+  const [newLinkUrl, setNewLinkUrl]       = useState('')
+  const [savingLinks, setSavingLinks]     = useState(false)
 
   const deleteTask = useMutation({
     mutationFn: async () => {
@@ -331,17 +338,6 @@ function TaskDetailDialog({
     }
   }
 
-  const toggleAR = useMutation({
-    mutationFn: async () => {
-      const { error } = await supabase
-        .from('delivery_tasks')
-        .update({ ar_output_logged: !task.ar_output_logged } as never)
-        .eq('id', task.id)
-      if (error) throw error
-    },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['tasks'] }),
-  })
-
   const saveOutputUrl = async () => {
     setSavingUrl(true)
     await supabase.from('delivery_tasks').update({ output_link: outputUrl.trim() || null } as never).eq('id', task.id)
@@ -349,10 +345,32 @@ function TaskDetailDialog({
     setSavingUrl(false)
   }
 
-  const raciR = task.task_assignments?.filter(a => a.role_type === 'R') ?? []
-  const raciA = task.task_assignments?.filter(a => a.role_type === 'A') ?? []
-  const raciC = task.task_assignments?.filter(a => a.role_type === 'C') ?? []
-  const raciI = task.task_assignments?.filter(a => a.role_type === 'I') ?? []
+  const saveNotes = async () => {
+    setSavingNotes(true)
+    await supabase.from('delivery_tasks').update({ notes: notes.trim() || null } as never).eq('id', task.id)
+    queryClient.invalidateQueries({ queryKey: ['tasks'] })
+    setSavingNotes(false)
+  }
+
+  const addLink = async () => {
+    const url = newLinkUrl.trim()
+    if (!url) return
+    const updated = [...links, { label: newLinkLabel.trim() || url, url }]
+    setSavingLinks(true)
+    await supabase.from('delivery_tasks').update({ links: updated } as never).eq('id', task.id)
+    setLinks(updated)
+    setNewLinkLabel('')
+    setNewLinkUrl('')
+    queryClient.invalidateQueries({ queryKey: ['tasks'] })
+    setSavingLinks(false)
+  }
+
+  const removeLink = async (idx: number) => {
+    const updated = links.filter((_, i) => i !== idx)
+    await supabase.from('delivery_tasks').update({ links: updated } as never).eq('id', task.id)
+    setLinks(updated)
+    queryClient.invalidateQueries({ queryKey: ['tasks'] })
+  }
 
   const isOverdue = task.due_date && isOverdueEST(task.due_date) && task.status !== 'Done'
 
@@ -406,14 +424,6 @@ function TaskDetailDialog({
                 <span className="font-medium">{task.workstream}</span>
               </div>
               <div className="flex justify-between border-b border-border/40 py-1.5">
-                <span className="text-muted-foreground">Timeline</span>
-                <span className="font-medium">{task.timeline}</span>
-              </div>
-              <div className="flex justify-between border-b border-border/40 py-1.5">
-                <span className="text-muted-foreground">Step</span>
-                <span className="font-medium">{task.step} — {task.step_name}</span>
-              </div>
-              <div className="flex justify-between border-b border-border/40 py-1.5">
                 <span className="text-muted-foreground">Impact</span>
                 <span className="font-medium">{task.impact_level}</span>
               </div>
@@ -429,43 +439,22 @@ function TaskDetailDialog({
                   {task.completed_date ? formatDateEST(task.completed_date) : '—'}
                 </span>
               </div>
-              <div className="flex justify-between border-b border-border/40 py-1.5 col-span-2">
-                <span className="text-muted-foreground">A/R Output Logged</span>
-                <button
-                  onClick={() => toggleAR.mutate()}
-                  disabled={toggleAR.isPending}
-                  className={cn(
-                    'text-xs font-medium px-2 py-0.5 rounded transition-colors',
-                    task.ar_output_logged
-                      ? 'bg-[hsl(var(--success))]/20 text-[hsl(var(--success))]'
-                      : 'bg-muted text-muted-foreground hover:bg-accent'
-                  )}
-                >
-                  {task.ar_output_logged ? '✓ Logged' : '✗ Not Logged — Click to log'}
-                </button>
-              </div>
             </div>
           </div>
 
-          {/* RACI */}
+          {/* Assignees */}
           {task.task_assignments && task.task_assignments.length > 0 && (
             <div>
-              <p className="section-header">RACI Assignments</p>
-              <div className="grid grid-cols-4 gap-3">
-                {([['R', raciR], ['A', raciA], ['C', raciC], ['I', raciI]] as const).map(([role, members]) => (
-                  <div key={role} className="bg-background/50 rounded-lg p-2">
-                    <p className="text-xs font-semibold text-muted-foreground mb-1.5">{role}</p>
-                    {members.length === 0 ? (
-                      <p className="text-xs text-muted-foreground/50">—</p>
-                    ) : (
-                      members.map((m, i) => (
-                        <p key={i} className="text-xs">
-                          {(m.user_id ? profilesList.find(p => p.user_id === m.user_id)?.full_name : null) ?? m.workstream ?? '—'}
-                        </p>
-                      ))
-                    )}
-                  </div>
-                ))}
+              <p className="section-header">Assignees</p>
+              <div className="flex flex-wrap gap-2">
+                {task.task_assignments.map((a, i) => {
+                  const name = (a.user_id ? profilesList.find(p => p.user_id === a.user_id)?.full_name : null) ?? a.workstream ?? '—'
+                  return (
+                    <span key={i} className="text-xs px-2 py-1 rounded-md bg-primary/10 text-primary border border-primary/20">
+                      {name}
+                    </span>
+                  )
+                })}
               </div>
             </div>
           )}
@@ -500,6 +489,80 @@ function TaskDetailDialog({
                 </a>
               )}
               {savingUrl && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
+            </div>
+          </div>
+
+          {/* Notes */}
+          <div>
+            <p className="section-header flex items-center gap-1.5">
+              <FileText className="h-3.5 w-3.5" /> Notes
+            </p>
+            <textarea
+              value={notes}
+              onChange={e => setNotes(e.target.value)}
+              onBlur={saveNotes}
+              rows={4}
+              placeholder="Add notes, output documentation, or context…"
+              className="w-full px-3 py-2 bg-background border border-input rounded-md text-sm
+                         focus:outline-none focus:ring-2 focus:ring-ring resize-none placeholder:text-muted-foreground"
+            />
+            {savingNotes && (
+              <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
+                <Save className="h-3 w-3 animate-pulse" /> Saving…
+              </p>
+            )}
+          </div>
+
+          {/* Links */}
+          <div>
+            <p className="section-header flex items-center gap-1.5">
+              <Link2 className="h-3.5 w-3.5" /> Links
+            </p>
+            {links.length > 0 && (
+              <div className="space-y-1.5 mb-3">
+                {links.map((l, i) => (
+                  <div key={i} className="flex items-center gap-2 text-sm">
+                    <a
+                      href={l.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1.5 text-primary hover:underline flex-1 min-w-0 truncate"
+                    >
+                      <ExternalLink className="h-3 w-3 shrink-0" />
+                      {l.label}
+                    </a>
+                    <button
+                      onClick={() => removeLink(i)}
+                      className="text-muted-foreground hover:text-destructive shrink-0"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="flex gap-2">
+              <input
+                value={newLinkLabel}
+                onChange={e => setNewLinkLabel(e.target.value)}
+                placeholder="Label (optional)"
+                className="w-32 px-2 py-1.5 bg-background border border-input rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-primary"
+              />
+              <input
+                value={newLinkUrl}
+                onChange={e => setNewLinkUrl(e.target.value)}
+                placeholder="https://…"
+                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addLink() } }}
+                className="flex-1 px-2 py-1.5 bg-background border border-input rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-primary"
+              />
+              <button
+                onClick={addLink}
+                disabled={!newLinkUrl.trim() || savingLinks}
+                className="px-2.5 py-1.5 rounded-md bg-primary/10 text-primary border border-primary/20
+                           text-xs font-medium hover:bg-primary/20 disabled:opacity-50 transition-colors"
+              >
+                {savingLinks ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />}
+              </button>
             </div>
           </div>
 
@@ -554,13 +617,6 @@ function TaskDetailDialog({
                     Log the output before marking Done, or override to proceed anyway.
                   </p>
                   <div className="flex gap-2 mt-2">
-                    <button
-                      onClick={() => { toggleAR.mutate(); setQaWarning(false) }}
-                      disabled={toggleAR.isPending}
-                      className="px-3 py-1 rounded text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90"
-                    >
-                      Log Output First
-                    </button>
                     <button
                       onClick={() => updateStatus.mutate('Done')}
                       disabled={updateStatus.isPending}

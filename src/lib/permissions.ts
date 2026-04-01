@@ -23,6 +23,7 @@ export const PAGE_KEYS = {
   ADMIN:           'admin',
   SETTINGS:        'settings',
   MY_TASKS:        'my_tasks',
+  CLAUDE:          'claude',
 } as const
 
 /** Maps route paths → page key (for access checks) */
@@ -40,6 +41,7 @@ const ROUTE_TO_PAGE_KEY: Record<string, string> = {
   '/admin':        PAGE_KEYS.ADMIN,
   '/settings':     PAGE_KEYS.SETTINGS,
   '/my-tasks':     PAGE_KEYS.MY_TASKS,
+  '/claude':       PAGE_KEYS.CLAUDE,
 }
 
 // ─── All Nav Items (full catalogue) ───────────────────────────────────────
@@ -65,6 +67,7 @@ const ALL_NAV_ITEMS: NavItem[] = [
   { label: 'RACI Matrix',         path: '/raci',         icon: 'Grid',           pageKey: PAGE_KEYS.RACI },
   { label: 'Settings',            path: '/settings',     icon: 'Settings',       pageKey: PAGE_KEYS.SETTINGS },
   { label: 'My Tasks',            path: '/my-tasks',     icon: 'ListTodo',       pageKey: PAGE_KEYS.MY_TASKS },
+  { label: 'Claude AI',           path: '/claude',       icon: 'Bot',            pageKey: PAGE_KEYS.CLAUDE },
 ]
 
 // ─── Per-User Page Access ──────────────────────────────────────────────────
@@ -83,6 +86,7 @@ export function hasPageAccess(
   // Always accessible to all authenticated users
   if (path === '/specialist' || path.startsWith('/specialist/')) return true
   if (path === '/my-tasks') return true
+  if (path === '/claude') return true
 
   const pageAccess = profile?.page_access ?? []
   if (profile && pageAccess.length > 0) {
@@ -114,7 +118,7 @@ export function getNavForProfile(profile: Profile | null, role: AppRole | null):
   const pageAccess = profile?.page_access ?? []
   if (profile && pageAccess.length > 0) {
     // Always include My Dashboard + My Tasks (accessible to all authenticated users)
-    const alwaysIncluded = new Set<string>([PAGE_KEYS.SPECIALIST, PAGE_KEYS.MY_TASKS])
+    const alwaysIncluded = new Set<string>([PAGE_KEYS.SPECIALIST, PAGE_KEYS.MY_TASKS, PAGE_KEYS.CLAUDE])
     const specialistItem = ALL_NAV_ITEMS.find(item => item.pageKey === PAGE_KEYS.SPECIALIST)!
     const myTasksItem = ALL_NAV_ITEMS.find(item => item.pageKey === PAGE_KEYS.MY_TASKS)!
     const rest = ALL_NAV_ITEMS.filter(item =>
@@ -150,6 +154,7 @@ export function canAccessRoute(role: AppRole, path: string): boolean {
     '/admin':         pmOwner,
     '/settings':      pmOwner,
     '/my-tasks':      allAuth,
+    '/claude':        allAuth,
   }
 
   for (const [route, roles] of Object.entries(routeMap)) {
@@ -196,12 +201,14 @@ export function getNavForRole(role: AppRole): NavItem[] {
     { label: 'RACI Matrix',         path: '/raci',         icon: 'Grid',            pageKey: PAGE_KEYS.RACI },
     { label: 'Settings',            path: '/settings',     icon: 'Settings',        pageKey: PAGE_KEYS.SETTINGS },
     { label: 'My Tasks',            path: '/my-tasks',     icon: 'ListTodo',        pageKey: PAGE_KEYS.MY_TASKS },
+    { label: 'Claude AI',           path: '/claude',       icon: 'Bot',             pageKey: PAGE_KEYS.CLAUDE },
   ]
 
   const specialistNav: NavItem[] = [
     { label: 'My Dashboard', path: '/specialist', icon: 'LayoutDashboard', pageKey: PAGE_KEYS.SPECIALIST },
     { label: 'Tasks',        path: '/tasks',      icon: 'CheckSquare',     pageKey: PAGE_KEYS.TASKS },
     { label: 'My Tasks',     path: '/my-tasks',   icon: 'ListTodo',        pageKey: PAGE_KEYS.MY_TASKS },
+    { label: 'Claude AI',    path: '/claude',     icon: 'Bot',             pageKey: PAGE_KEYS.CLAUDE },
     { label: 'Meetings',     path: '/meetings',   icon: 'Calendar',        pageKey: PAGE_KEYS.MEETINGS },
     { label: 'Blockers',     path: '/blockers',   icon: 'AlertTriangle',   pageKey: PAGE_KEYS.BLOCKERS },
   ]

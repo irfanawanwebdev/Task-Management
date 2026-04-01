@@ -5,7 +5,8 @@
  */
 
 import { useState, useRef, useEffect } from 'react'
-import { Bot, Send, Paperclip, Loader2, Database, AlertCircle, ChevronDown } from 'lucide-react'
+import { Bot, Send, Paperclip, Loader2, Database, AlertCircle, ChevronDown, Maximize2 } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 import { useAuth } from '@/features/auth/AuthContext'
 import { supabase } from '@/lib/supabase'
 import { cn } from '@/lib/utils'
@@ -42,6 +43,7 @@ export function AIChat() {
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const { profile, role } = useAuth()
+  const navigate = useNavigate()
   const bottomRef = useRef<HTMLDivElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -181,6 +183,13 @@ export function AIChat() {
                 Clear
               </button>
             )}
+            <button
+              onClick={() => { setOpen(false); navigate('/claude') }}
+              className="rounded-md p-1.5 text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+              title="Open full Claude page"
+            >
+              <Maximize2 className="h-4 w-4" />
+            </button>
             <button
               onClick={() => setOpen(false)}
               className="rounded-md p-1.5 text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"

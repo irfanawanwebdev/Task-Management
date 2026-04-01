@@ -2,7 +2,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, Users, CheckSquare, Grid3X3, Calendar,
   AlertTriangle, BarChart2, BookOpen, UserCog, Settings,
-  TrendingUp, LogOut, ChevronRight, ListTodo,
+  TrendingUp, LogOut, ChevronRight, ListTodo, Bot,
 } from 'lucide-react'
 import { useAuth } from '@/features/auth/AuthContext'
 import { getNavForProfile } from '@/lib/permissions'
@@ -11,7 +11,7 @@ import { cn } from '@/lib/utils'
 
 const ICON_MAP: Record<string, React.ElementType> = {
   LayoutDashboard, Users, CheckSquare, Grid: Grid3X3, Calendar,
-  AlertTriangle, BarChart2, BookOpen, UserCog, Settings, TrendingUp, ListTodo,
+  AlertTriangle, BarChart2, BookOpen, UserCog, Settings, TrendingUp, ListTodo, Bot,
 }
 
 export default function Sidebar() {
