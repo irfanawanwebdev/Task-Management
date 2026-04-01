@@ -73,7 +73,7 @@ export default function PrivacyPolicyPage() {
 
       <Section title="Contact">
         <p>
-          For privacy-related questions, contact us at:{' '}
+          For privacy-related questions, contact at:{' '}
           <a href="mailto:yarden@jzsmartmedia.com" className="text-primary hover:underline">
             yarden@jzsmartmedia.com
           </a>

@@ -5,7 +5,7 @@ export default function TermsPage() {
     <PublicLayout title="Terms of Use" updated="April 1, 2026">
       <Section title="Acceptance of Terms">
         <p>
-          By accessing or using the JZ Smart Media Operations Hub ("the App"), you agree to these Terms of Use.
+          By accessing or using JZ Smart Media Operations Hub ("the App"), you agree to these Terms of Use.
           This application is intended solely for use by JZ Smart Media employees and authorized personnel.
           Unauthorized use is strictly prohibited.
         </p>

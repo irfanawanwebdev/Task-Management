@@ -13,7 +13,7 @@ export function PublicLayout({ title, updated, children }: {
               <span className="text-primary-foreground font-bold text-sm">JZ</span>
             </div>
             <span className="text-sm font-medium text-muted-foreground">
-              JZ Smart Media — Operations Hub
+              JZ Smart Media - Operations Hub
             </span>
           </div>
           <h1 className="text-3xl font-bold mb-2">{title}</h1>
@@ -26,9 +26,9 @@ export function PublicLayout({ title, updated, children }: {
         {/* Footer */}
         <div className="mt-16 pt-8 border-t border-border text-sm text-muted-foreground flex flex-wrap gap-4">
           <a href="/privacy-policy" className="hover:text-foreground transition-colors">Privacy Policy</a>
-          <a href="/terms"          className="hover:text-foreground transition-colors">Terms of Use</a>
-          <a href="/support"        className="hover:text-foreground transition-colors">Support</a>
-          <a href="/docs"           className="hover:text-foreground transition-colors">Documentation</a>
+          <a href="/terms" className="hover:text-foreground transition-colors">Terms of Use</a>
+          <a href="/support" className="hover:text-foreground transition-colors">Support</a>
+          <a href="/docs" className="hover:text-foreground transition-colors">Documentation</a>
           <span className="ml-auto">© 2026 JZ Smart Media</span>
         </div>
       </div>

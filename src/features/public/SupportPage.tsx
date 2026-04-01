@@ -5,7 +5,7 @@ export default function SupportPage() {
     <PublicLayout title="Support" updated="April 1, 2026">
       <Section title="Get Help">
         <p>
-          The JZ Smart Media Operations Hub is an internal tool. If you are experiencing issues,
+          JZ Smart Media Operations Hub is an internal tool. If you are experiencing issues,
           please reach out through one of the channels below.
         </p>
       </Section>
