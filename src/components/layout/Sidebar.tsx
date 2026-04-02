@@ -74,7 +74,7 @@ export default function Sidebar() {
               {role?.replace('_', ' ') ?? 'Viewer'}
             </p>
           </div>
-          <NotificationBell />
+          <NotificationBell placement="right" />
         </div>
         <button
           onClick={handleSignOut}

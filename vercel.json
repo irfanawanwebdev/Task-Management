@@ -4,6 +4,18 @@
       "source": "/functions/:path*",
       "destination": "https://nydtevgxpqwtvtcxuqjh.supabase.co/functions/v1/:path*"
     },
+    {
+      "source": "/api/zoom/callback",
+      "destination": "https://nydtevgxpqwtvtcxuqjh.supabase.co/functions/v1/zoom-callback"
+    },
+    {
+      "source": "/api/google/callback",
+      "destination": "https://nydtevgxpqwtvtcxuqjh.supabase.co/functions/v1/google-callback"
+    },
+    {
+      "source": "/api/calendly/callback",
+      "destination": "https://nydtevgxpqwtvtcxuqjh.supabase.co/functions/v1/calendly-callback"
+    },
     { "source": "/(.*)", "destination": "/index.html" }
   ]
 }

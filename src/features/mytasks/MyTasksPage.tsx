@@ -2,20 +2,23 @@
  * MyTasksPage — Personal private task list for every user.
  * Tasks are visible only to the owner (RLS enforced).
  * Statuses: To Do | Done (no In Progress).
- * Optional Company field for context (stays private, not tied to client dashboard).
+ * Assignees: up to 3 real users from profiles (internal visibility only, no workload impact).
+ * Company: contextual label picked from clients list or typed freely.
  */
 
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/features/auth/AuthContext'
 import { cn } from '@/lib/utils'
 import {
   Plus, Check, Trash2, ChevronDown, Loader2, ListTodo,
-  Pencil, X, Building2,
+  Pencil, X, Building2, User,
 } from 'lucide-react'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
+
+interface Assignee { id: string; name: string }  // id = profile.user_id
 
 interface PersonalTask {
   id: string
@@ -26,9 +29,11 @@ interface PersonalTask {
   priority: 'Low' | 'Medium' | 'High'
   due_date: string | null
   company: string | null
-  assignee_note: string | null
+  assignees: Assignee[]
   created_at: string
 }
+
+interface ProfileOption { id: string; name: string }  // id = user_id
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -39,9 +44,9 @@ const PRIORITY_STYLES = {
 }
 
 const STATUS_FILTERS = ['All', 'To Do', 'Done'] as const
-type Filter = typeof STATUS_FILTERS[number]
+type StatusFilter = typeof STATUS_FILTERS[number]
 
-// ─── Task Form (shared for Add + Edit) ───────────────────────────────────────
+// ─── Task Form values ─────────────────────────────────────────────────────────
 
 interface TaskFormValues {
   title: string
@@ -49,28 +54,143 @@ interface TaskFormValues {
   priority: 'Low' | 'Medium' | 'High'
   due_date: string
   company: string
-  assignee_note: string
+  assignees: Assignee[]
 }
 
 const BLANK_FORM: TaskFormValues = {
   title: '', description: '', priority: 'Medium',
-  due_date: '', company: '', assignee_note: '',
+  due_date: '', company: '', assignees: [],
 }
+
+// ─── Assignee multi-select picker ─────────────────────────────────────────────
+
+function AssigneePicker({
+  value,
+  onChange,
+  profiles,
+}: {
+  value: Assignee[]
+  onChange: (v: Assignee[]) => void
+  profiles: ProfileOption[]
+}) {
+  const [open, setOpen] = useState(false)
+
+  function toggle(p: ProfileOption) {
+    const isSelected = value.some(a => a.id === p.id)
+    if (isSelected) {
+      onChange(value.filter(a => a.id !== p.id))
+    } else if (value.length < 3) {
+      onChange([...value, { id: p.id, name: p.name }])
+    }
+  }
+
+  return (
+    <div className="relative">
+      {open && (
+        <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
+      )}
+      {/* Trigger */}
+      <div
+        onClick={() => setOpen(o => !o)}
+        className={cn(
+          'relative z-20 min-h-[34px] bg-background border border-border rounded-lg',
+          'px-2 py-1 cursor-pointer flex flex-wrap gap-1 items-center',
+          open && 'ring-1 ring-primary border-primary',
+        )}
+      >
+        {value.length === 0 ? (
+          <span className="text-sm text-muted-foreground py-0.5">Select up to 3…</span>
+        ) : (
+          value.map(a => (
+            <span
+              key={a.id}
+              className="inline-flex items-center gap-1 text-xs bg-violet-500/10 text-violet-400
+                         border border-violet-500/20 rounded-md px-1.5 py-0.5"
+            >
+              <User className="h-2.5 w-2.5" />
+              {a.name}
+              <button
+                type="button"
+                onClick={e => { e.stopPropagation(); toggle({ id: a.id, name: a.name }) }}
+                className="hover:text-violet-200 ml-0.5"
+              >
+                <X className="h-2.5 w-2.5" />
+              </button>
+            </span>
+          ))
+        )}
+        <ChevronDown className={cn(
+          'h-3.5 w-3.5 text-muted-foreground ml-auto shrink-0 transition-transform',
+          open && 'rotate-180',
+        )} />
+      </div>
+
+      {/* Dropdown */}
+      {open && (
+        <div className="absolute top-full mt-1 left-0 right-0 bg-card border border-border
+                        rounded-lg shadow-xl z-20 max-h-44 overflow-y-auto">
+          {profiles.length === 0 ? (
+            <p className="px-3 py-2 text-xs text-muted-foreground">No users found.</p>
+          ) : profiles.map(p => {
+            const selected = value.some(a => a.id === p.id)
+            const atMax    = !selected && value.length >= 3
+            return (
+              <button
+                key={p.id}
+                type="button"
+                disabled={atMax}
+                onClick={() => toggle(p)}
+                className={cn(
+                  'w-full flex items-center gap-2 px-3 py-2 text-sm transition-colors text-left',
+                  selected ? 'text-violet-400 bg-violet-500/5 hover:bg-violet-500/10'
+                           : 'hover:bg-accent',
+                  atMax && 'opacity-40 cursor-not-allowed',
+                )}
+              >
+                <div className={cn(
+                  'h-4 w-4 rounded border flex items-center justify-center shrink-0 transition-colors',
+                  selected
+                    ? 'bg-violet-500 border-violet-500'
+                    : 'border-muted-foreground/40',
+                )}>
+                  {selected && <Check className="h-2.5 w-2.5 text-white" strokeWidth={3} />}
+                </div>
+                {p.name}
+              </button>
+            )
+          })}
+          {value.length >= 3 && (
+            <p className="px-3 py-1.5 text-xs text-muted-foreground border-t border-border">
+              Max 3 assignees reached
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Task Form (shared for Add + Edit) ───────────────────────────────────────
 
 function TaskForm({
   initial,
   submitLabel,
   saving,
+  profiles,
+  companyOptions,
   onSubmit,
   onCancel,
 }: {
   initial: TaskFormValues
   submitLabel: string
   saving: boolean
+  profiles: ProfileOption[]
+  companyOptions: string[]
   onSubmit: (v: TaskFormValues) => void
   onCancel: () => void
 }) {
   const [v, setV] = useState<TaskFormValues>(initial)
+  const datalistId = useRef(`company-dl-${Math.random().toString(36).slice(2)}`).current
 
   function field(key: keyof TaskFormValues, value: string) {
     setV(prev => ({ ...prev, [key]: value }))
@@ -126,19 +246,23 @@ function TaskForm({
           <input
             value={v.company}
             onChange={e => field('company', e.target.value)}
+            list={datalistId}
             placeholder="e.g. Nike, Internal…"
             className="bg-background border border-border rounded-lg px-2 py-1.5 text-sm
                        placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
           />
+          <datalist id={datalistId}>
+            {companyOptions.map(c => <option key={c} value={c} />)}
+          </datalist>
         </div>
         <div className="flex flex-col gap-1">
-          <label className="text-xs text-muted-foreground">Assignee note (optional)</label>
-          <input
-            value={v.assignee_note}
-            onChange={e => field('assignee_note', e.target.value)}
-            placeholder="e.g. For Yarden…"
-            className="bg-background border border-border rounded-lg px-2 py-1.5 text-sm
-                       placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+          <label className="text-xs text-muted-foreground">
+            Assignees (optional · max 3)
+          </label>
+          <AssigneePicker
+            value={v.assignees}
+            onChange={assignees => setV(prev => ({ ...prev, assignees }))}
+            profiles={profiles}
           />
         </div>
       </div>
@@ -167,7 +291,17 @@ function TaskForm({
 
 // ─── Add Task button / form ───────────────────────────────────────────────────
 
-function AddTaskForm({ userId, onAdded }: { userId: string; onAdded: () => void }) {
+function AddTaskForm({
+  userId,
+  profiles,
+  companyOptions,
+  onAdded,
+}: {
+  userId: string
+  profiles: ProfileOption[]
+  companyOptions: string[]
+  onAdded: () => void
+}) {
   const [open, setOpen]   = useState(false)
   const [saving, setSaving] = useState(false)
 
@@ -175,14 +309,14 @@ function AddTaskForm({ userId, onAdded }: { userId: string; onAdded: () => void 
     if (!v.title.trim()) return
     setSaving(true)
     const { error } = await supabase.from('personal_tasks').insert({
-      user_id:       userId,
-      title:         v.title.trim(),
-      description:   v.description.trim() || null,
-      priority:      v.priority,
-      due_date:      v.due_date || null,
-      company:       v.company.trim() || null,
-      assignee_note: v.assignee_note.trim() || null,
-      status:        'To Do',
+      user_id:     userId,
+      title:       v.title.trim(),
+      description: v.description.trim() || null,
+      priority:    v.priority,
+      due_date:    v.due_date || null,
+      company:     v.company.trim() || null,
+      assignees:   v.assignees,
+      status:      'To Do',
     } as never)
     setSaving(false)
     if (error) { alert(error.message); return }
@@ -209,6 +343,8 @@ function AddTaskForm({ userId, onAdded }: { userId: string; onAdded: () => void 
       initial={BLANK_FORM}
       submitLabel="Add Task"
       saving={saving}
+      profiles={profiles}
+      companyOptions={companyOptions}
       onSubmit={handleSubmit}
       onCancel={() => setOpen(false)}
     />
@@ -231,6 +367,7 @@ function TaskRow({
   const isDone    = task.status === 'Done'
   const today     = new Date().toISOString().slice(0, 10)
   const isOverdue = task.due_date && task.due_date < today && !isDone
+  const assignees = Array.isArray(task.assignees) ? task.assignees : []
 
   return (
     <div className={cn(
@@ -265,15 +402,23 @@ function TaskRow({
           <span className={cn('text-xs px-1.5 py-0.5 rounded-md font-medium', PRIORITY_STYLES[task.priority])}>
             {task.priority}
           </span>
+          {/* Assignee badges (purple) */}
+          {assignees.map(a => (
+            <span
+              key={a.id}
+              className="inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded-md
+                         bg-violet-500/10 text-violet-400 border border-violet-500/20"
+            >
+              <User className="h-2.5 w-2.5" />
+              {a.name}
+            </span>
+          ))}
+          {/* Company — shown as muted arrow text */}
           {task.company && (
-            <span className="inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded-md
-                             bg-violet-500/10 text-violet-400 border border-violet-500/20">
+            <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
               <Building2 className="h-2.5 w-2.5" />
               {task.company}
             </span>
-          )}
-          {task.assignee_note && (
-            <span className="text-xs text-muted-foreground">→ {task.assignee_note}</span>
           )}
           {task.due_date && (
             <span className={cn('text-xs', isOverdue ? 'text-red-400 font-medium' : 'text-muted-foreground')}>
@@ -284,7 +429,7 @@ function TaskRow({
         </div>
       </div>
 
-      {/* Edit + Delete (show on hover) */}
+      {/* Edit + Delete */}
       <div className="flex items-center gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
         <button
           onClick={() => onEdit(task)}
@@ -309,11 +454,15 @@ function TaskRow({
 
 function EditTaskOverlay({
   task,
+  profiles,
+  companyOptions,
   onSave,
   onCancel,
   error,
 }: {
   task: PersonalTask
+  profiles: ProfileOption[]
+  companyOptions: string[]
   onSave: (v: TaskFormValues) => void
   onCancel: () => void
   error: string | null
@@ -343,15 +492,17 @@ function EditTaskOverlay({
         <div className="p-4">
           <TaskForm
             initial={{
-              title:         task.title,
-              description:   task.description ?? '',
-              priority:      task.priority,
-              due_date:      task.due_date ?? '',
-              company:       task.company ?? '',
-              assignee_note: task.assignee_note ?? '',
+              title:       task.title,
+              description: task.description ?? '',
+              priority:    task.priority,
+              due_date:    task.due_date ?? '',
+              company:     task.company ?? '',
+              assignees:   Array.isArray(task.assignees) ? task.assignees : [],
             }}
             submitLabel="Save Changes"
             saving={saving}
+            profiles={profiles}
+            companyOptions={companyOptions}
             onSubmit={handleSubmit}
             onCancel={onCancel}
           />
@@ -366,8 +517,12 @@ function EditTaskOverlay({
 export default function MyTasksPage() {
   const { user } = useAuth()
   const qc       = useQueryClient()
-  const [filter, setFilter]       = useState<Filter>('All')
-  const [editingTask, setEditing] = useState<PersonalTask | null>(null)
+
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('All')
+  const [assigneeFilter, setAssigneeFilter] = useState<string>('')  // profile.user_id or ''
+  const [editingTask, setEditing]           = useState<PersonalTask | null>(null)
+
+  // ── Data queries ──────────────────────────────────────────────────────────
 
   const { data: tasks = [], isLoading } = useQuery({
     queryKey: ['personal-tasks', user?.id],
@@ -381,6 +536,28 @@ export default function MyTasksPage() {
     },
     enabled: !!user,
   })
+
+  const { data: profiles = [] } = useQuery({
+    queryKey: ['profiles-options'],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('profiles')
+        .select('user_id, full_name')
+        .eq('is_active', true)
+        .order('full_name')
+      return (data ?? []).map(p => ({ id: p.user_id, name: p.full_name })) as ProfileOption[]
+    },
+  })
+
+  const { data: companyOptions = [] } = useQuery({
+    queryKey: ['client-names-options'],
+    queryFn: async () => {
+      const { data } = await supabase.from('clients').select('name').order('name')
+      return (data ?? []).map(c => c.name as string)
+    },
+  })
+
+  // ── Mutations ─────────────────────────────────────────────────────────────
 
   const toggleDone = useMutation({
     mutationFn: async ({ id, done }: { id: string; done: boolean }) => {
@@ -402,12 +579,12 @@ export default function MyTasksPage() {
   const editTask = useMutation({
     mutationFn: async ({ id, v }: { id: string; v: TaskFormValues }) => {
       const { error } = await supabase.from('personal_tasks').update({
-        title:         v.title.trim(),
-        description:   v.description.trim() || null,
-        priority:      v.priority,
-        due_date:      v.due_date || null,
-        company:       v.company.trim() || null,
-        assignee_note: v.assignee_note.trim() || null,
+        title:       v.title.trim(),
+        description: v.description.trim() || null,
+        priority:    v.priority,
+        due_date:    v.due_date || null,
+        company:     v.company.trim() || null,
+        assignees:   v.assignees,
       } as never).eq('id', id)
       if (error) throw new Error(error.message)
     },
@@ -417,12 +594,21 @@ export default function MyTasksPage() {
     },
   })
 
-  const filtered = filter === 'All' ? tasks : tasks.filter(t => t.status === filter)
+  // ── Filtering ─────────────────────────────────────────────────────────────
+
+  let filtered = statusFilter === 'All' ? tasks : tasks.filter(t => t.status === statusFilter)
+  if (assigneeFilter) {
+    filtered = filtered.filter(t =>
+      Array.isArray(t.assignees) && t.assignees.some(a => a.id === assigneeFilter)
+    )
+  }
 
   const total   = tasks.length
   const done    = tasks.filter(t => t.status === 'Done').length
   const pending = total - done
   const pct     = total > 0 ? Math.round((done / total) * 100) : 0
+
+  const hasAnyFilter = statusFilter !== 'All' || assigneeFilter !== ''
 
   return (
     <div className="max-w-2xl mx-auto space-y-6">
@@ -467,15 +653,16 @@ export default function MyTasksPage() {
         </div>
       )}
 
-      {/* Filter tabs */}
-      <div className="flex gap-1.5 flex-wrap">
+      {/* Filter bar */}
+      <div className="flex gap-2 flex-wrap items-center">
+        {/* Status filters */}
         {STATUS_FILTERS.map(f => (
           <button
             key={f}
-            onClick={() => setFilter(f)}
+            onClick={() => setStatusFilter(f)}
             className={cn(
               'px-3 py-1.5 rounded-lg text-xs font-medium transition-colors',
-              filter === f
+              statusFilter === f
                 ? 'bg-primary text-primary-foreground'
                 : 'bg-muted/40 text-muted-foreground hover:text-foreground hover:bg-muted',
             )}
@@ -488,12 +675,33 @@ export default function MyTasksPage() {
             )}
           </button>
         ))}
-        {filter !== 'All' && (
+
+        {/* Assignee filter */}
+        <div className="relative ml-auto">
+          <select
+            value={assigneeFilter}
+            onChange={e => setAssigneeFilter(e.target.value)}
+            className={cn(
+              'pl-7 pr-3 py-1.5 rounded-lg text-xs font-medium transition-colors appearance-none cursor-pointer',
+              'bg-muted/40 text-muted-foreground hover:bg-muted focus:outline-none',
+              assigneeFilter && 'bg-violet-500/10 text-violet-400 border border-violet-500/20',
+            )}
+          >
+            <option value="">All people</option>
+            {profiles.map(p => (
+              <option key={p.id} value={p.id}>{p.name}</option>
+            ))}
+          </select>
+          <User className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground pointer-events-none" />
+        </div>
+
+        {/* Clear filters */}
+        {hasAnyFilter && (
           <button
-            onClick={() => setFilter('All')}
+            onClick={() => { setStatusFilter('All'); setAssigneeFilter('') }}
             className="px-2 py-1.5 rounded-lg text-xs text-muted-foreground hover:text-foreground transition-colors"
           >
-            <ChevronDown className="h-3.5 w-3.5 rotate-90 inline" /> Clear
+            <X className="h-3.5 w-3.5 inline" /> Clear
           </button>
         )}
       </div>
@@ -502,6 +710,8 @@ export default function MyTasksPage() {
       {user && (
         <AddTaskForm
           userId={user.id}
+          profiles={profiles}
+          companyOptions={companyOptions}
           onAdded={() => qc.invalidateQueries({ queryKey: ['personal-tasks', user.id] })}
         />
       )}
@@ -515,7 +725,7 @@ export default function MyTasksPage() {
         <div className="text-center py-12 text-muted-foreground">
           <ListTodo className="h-8 w-8 mx-auto mb-3 opacity-30" />
           <p className="text-sm">
-            {filter === 'All' ? 'No personal tasks yet. Add one above.' : `No "${filter}" tasks.`}
+            {!hasAnyFilter ? 'No personal tasks yet. Add one above.' : 'No tasks match the current filters.'}
           </p>
         </div>
       ) : (
@@ -540,6 +750,8 @@ export default function MyTasksPage() {
       {editingTask && (
         <EditTaskOverlay
           task={editingTask}
+          profiles={profiles}
+          companyOptions={companyOptions}
           onSave={v => editTask.mutate({ id: editingTask.id, v })}
           onCancel={() => setEditing(null)}
           error={editTask.error ? (editTask.error as Error).message : null}

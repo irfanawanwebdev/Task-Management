@@ -76,7 +76,7 @@ function NotifRow({ notif, onRead }: { notif: Notification; onRead: () => void }
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export function NotificationBell() {
+export function NotificationBell({ placement = 'down' }: { placement?: 'down' | 'right' }) {
   const [open, setOpen]       = useState(false)
   const [marking, setMarking] = useState(false)
   const wrapRef               = useRef<HTMLDivElement>(null)
@@ -125,7 +125,12 @@ export function NotificationBell() {
 
       {/* Dropdown */}
       {open && (
-        <div className="absolute top-full right-0 mt-2 w-80 rounded-xl border bg-card shadow-lg overflow-hidden z-50">
+        <div className={cn(
+          'absolute w-80 rounded-xl border bg-card shadow-lg overflow-hidden z-50',
+          placement === 'right'
+            ? 'left-full bottom-0 ml-3'
+            : 'top-full right-0 mt-2',
+        )}>
           {/* Header */}
           <div className="flex items-center justify-between px-4 py-2.5 border-b bg-muted/30">
             <span className="text-xs font-semibold">Notifications</span>
