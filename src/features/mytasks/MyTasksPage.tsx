@@ -38,9 +38,9 @@ interface ProfileOption { id: string; name: string }  // id = user_id
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const PRIORITY_STYLES = {
-  High:   'bg-red-500/10 text-red-400 border border-red-500/20',
+  High: 'bg-red-500/10 text-red-400 border border-red-500/20',
   Medium: 'bg-amber-500/10 text-amber-400 border border-amber-500/20',
-  Low:    'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20',
+  Low: 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20',
 }
 
 const STATUS_FILTERS = ['All', 'To Do', 'Done'] as const
@@ -133,7 +133,7 @@ function AssigneePicker({
             <p className="px-3 py-2 text-xs text-muted-foreground">No users found.</p>
           ) : profiles.map(p => {
             const selected = value.some(a => a.id === p.id)
-            const atMax    = !selected && value.length >= 3
+            const atMax = !selected && value.length >= 3
             return (
               <button
                 key={p.id}
@@ -143,7 +143,7 @@ function AssigneePicker({
                 className={cn(
                   'w-full flex items-center gap-2 px-3 py-2 text-sm transition-colors text-left',
                   selected ? 'text-violet-400 bg-violet-500/5 hover:bg-violet-500/10'
-                           : 'hover:bg-accent',
+                    : 'hover:bg-accent',
                   atMax && 'opacity-40 cursor-not-allowed',
                 )}
               >
@@ -302,21 +302,21 @@ function AddTaskForm({
   companyOptions: string[]
   onAdded: () => void
 }) {
-  const [open, setOpen]   = useState(false)
+  const [open, setOpen] = useState(false)
   const [saving, setSaving] = useState(false)
 
   async function handleSubmit(v: TaskFormValues) {
     if (!v.title.trim()) return
     setSaving(true)
     const { error } = await supabase.from('personal_tasks').insert({
-      user_id:     userId,
-      title:       v.title.trim(),
+      user_id: userId,
+      title: v.title.trim(),
       description: v.description.trim() || null,
-      priority:    v.priority,
-      due_date:    v.due_date || null,
-      company:     v.company.trim() || null,
-      assignees:   v.assignees,
-      status:      'To Do',
+      priority: v.priority,
+      due_date: v.due_date || null,
+      company: v.company.trim() || null,
+      assignees: v.assignees,
+      status: 'To Do',
     } as never)
     setSaving(false)
     if (error) { alert(error.message); return }
@@ -364,8 +364,8 @@ function TaskRow({
   onDelete: (id: string) => void
   onEdit: (task: PersonalTask) => void
 }) {
-  const isDone    = task.status === 'Done'
-  const today     = new Date().toISOString().slice(0, 10)
+  const isDone = task.status === 'Done'
+  const today = new Date().toISOString().slice(0, 10)
   const isOverdue = task.due_date && task.due_date < today && !isDone
   const assignees = Array.isArray(task.assignees) ? task.assignees : []
 
@@ -492,12 +492,12 @@ function EditTaskOverlay({
         <div className="p-4">
           <TaskForm
             initial={{
-              title:       task.title,
+              title: task.title,
               description: task.description ?? '',
-              priority:    task.priority,
-              due_date:    task.due_date ?? '',
-              company:     task.company ?? '',
-              assignees:   Array.isArray(task.assignees) ? task.assignees : [],
+              priority: task.priority,
+              due_date: task.due_date ?? '',
+              company: task.company ?? '',
+              assignees: Array.isArray(task.assignees) ? task.assignees : [],
             }}
             submitLabel="Save Changes"
             saving={saving}
@@ -512,15 +512,15 @@ function EditTaskOverlay({
   )
 }
 
-// ─── Main Page ────────────────────────────────────────────────────────────────
+// ─── Main Page  ────────────────────────────────────────────────────────────────
 
 export default function MyTasksPage() {
   const { user } = useAuth()
-  const qc       = useQueryClient()
+  const qc = useQueryClient()
 
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('All')
   const [assigneeFilter, setAssigneeFilter] = useState<string>('')  // profile.user_id or ''
-  const [editingTask, setEditing]           = useState<PersonalTask | null>(null)
+  const [editingTask, setEditing] = useState<PersonalTask | null>(null)
 
   // ── Data queries ──────────────────────────────────────────────────────────
 
@@ -579,12 +579,12 @@ export default function MyTasksPage() {
   const editTask = useMutation({
     mutationFn: async ({ id, v }: { id: string; v: TaskFormValues }) => {
       const { error } = await supabase.from('personal_tasks').update({
-        title:       v.title.trim(),
+        title: v.title.trim(),
         description: v.description.trim() || null,
-        priority:    v.priority,
-        due_date:    v.due_date || null,
-        company:     v.company.trim() || null,
-        assignees:   v.assignees,
+        priority: v.priority,
+        due_date: v.due_date || null,
+        company: v.company.trim() || null,
+        assignees: v.assignees,
       } as never).eq('id', id)
       if (error) throw new Error(error.message)
     },
@@ -603,10 +603,10 @@ export default function MyTasksPage() {
     )
   }
 
-  const total   = tasks.length
-  const done    = tasks.filter(t => t.status === 'Done').length
+  const total = tasks.length
+  const done = tasks.filter(t => t.status === 'Done').length
   const pending = total - done
-  const pct     = total > 0 ? Math.round((done / total) * 100) : 0
+  const pct = total > 0 ? Math.round((done / total) * 100) : 0
 
   const hasAnyFilter = statusFilter !== 'All' || assigneeFilter !== ''
 
@@ -626,9 +626,9 @@ export default function MyTasksPage() {
       {/* Stats */}
       <div className="grid grid-cols-3 gap-3">
         {[
-          { label: 'Total',     value: total,   color: 'text-foreground' },
-          { label: 'Pending',   value: pending, color: 'text-amber-400' },
-          { label: 'Completed', value: done,    color: 'text-emerald-400' },
+          { label: 'Total', value: total, color: 'text-foreground' },
+          { label: 'Pending', value: pending, color: 'text-amber-400' },
+          { label: 'Completed', value: done, color: 'text-emerald-400' },
         ].map(s => (
           <div key={s.label} className="rounded-xl border border-border bg-card p-3 text-center">
             <p className={cn('text-2xl font-bold', s.color)}>{s.value}</p>
