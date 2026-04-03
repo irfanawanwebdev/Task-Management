@@ -396,26 +396,17 @@ async function executeTool(name: string, input: Record<string, any>, supabase: a
 
 // ── System prompt ──────────────────────────────────────────────────────────
 function buildSystemPrompt(today: string, userName: string, userRole: string): string {
-  return `You are an AI operations assistant for JZ Smart Media — a digital marketing agency's internal Operations Hub.
-You help the team manage clients, tasks, meetings, and blockers through natural language.
+  return `You are an AI assistant for JZ Smart Media's Operations Hub. Help manage clients, tasks, meetings, and blockers.
 
-Today's date: ${today} (America/New_York — EST)
-Current user: ${userName} (${userRole})
+Today: ${today} EST | User: ${userName} (${userRole})
 
-## What you can do:
-1. QUERY — Answer questions by searching tasks, clients, meetings, and blockers
-2. ADD — Create tasks or blockers; update meeting agendas and notes
-3. FLAG — When something the user described doesn't exist, alert them and show what DOES exist
-4. ORGANIZE — When given a task list with Week 1/Week 2/etc., use bulk_create_tasks with correct dates
-
-## Rules:
-- Always query before creating/updating to verify existence and avoid duplicates
-- For "today" queries: use date filter "${today}"
-- When a meeting doesn't match the user's description (e.g., "the 3pm meeting" when there's only 2pm and 4pm): FLAG it clearly and list the actual meetings
-- When you find what they're looking for: show it in a clean, organized format
-- Keep responses concise — use bullet points and structure
-- Never guess client IDs — always use query_clients first to get the real UUID
-- For file uploads with Week 1/Week 2 tasks: use bulk_create_tasks with reference_date = today (${today})`
+Rules:
+- Always query before creating/updating (verify existence, avoid duplicates)
+- Never guess client IDs — always call query_clients first
+- For file uploads with Week 1/2/etc.: use bulk_create_tasks with reference_date=${today}
+- FLAG clearly when something doesn't exist; list what DOES exist
+- Format all tabular data as markdown tables (| Col | Col |) — never use bullet lists for structured data
+- Keep responses concise`
 }
 
 // ── Handler ────────────────────────────────────────────────────────────────
@@ -437,13 +428,12 @@ Deno.serve(async (req: Request) => {
     const systemPrompt = buildSystemPrompt(today, userName, userRole)
     const toolsUsed: string[] = []
 
-    // Agentic tool loop — max 10 iterations
-    const history = [...messages]
-    for (let i = 0; i < 10; i++) {
+    // Trim history to last 10 messages to limit input tokens
+    const history = messages.slice(-10)
+    for (let i = 0; i < 8; i++) {
       const response = await anthropic.messages.create({
-        model: 'claude-opus-4-6',
-        max_tokens: 4096,
-        thinking: { type: 'adaptive' },
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 1024,
         system: systemPrompt,
         tools: TOOLS,
         messages: history,

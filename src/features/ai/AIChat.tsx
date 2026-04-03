@@ -7,6 +7,8 @@
 import { useState, useRef, useEffect } from 'react'
 import { Bot, Send, Paperclip, Loader2, Database, AlertCircle, ChevronDown, Maximize2 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import { useAuth } from '@/features/auth/AuthContext'
 import { supabase } from '@/lib/supabase'
 import { cn } from '@/lib/utils'
@@ -290,7 +292,18 @@ export function AIChat() {
                     </div>
                   ) : (
                     <>
-                      <div className="whitespace-pre-wrap">{msg.content}</div>
+                      {msg.role === 'assistant' ? (
+                        <div className="prose prose-sm prose-invert max-w-none
+                          [&_table]:w-full [&_table]:border-collapse [&_table]:text-xs
+                          [&_th]:border [&_th]:border-border/40 [&_th]:px-2 [&_th]:py-1 [&_th]:bg-muted/40 [&_th]:font-medium [&_th]:text-left
+                          [&_td]:border [&_td]:border-border/40 [&_td]:px-2 [&_td]:py-1
+                          [&_tr:nth-child(even)_td]:bg-muted/20
+                          [&_p]:my-1 [&_ul]:my-1 [&_li]:my-0.5 [&_strong]:text-foreground">
+                          <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
+                        </div>
+                      ) : (
+                        <div className="whitespace-pre-wrap">{msg.content}</div>
+                      )}
                       {msg.toolsUsed && msg.toolsUsed.length > 0 && (
                         <div className="flex items-center gap-1.5 mt-2 pt-2 border-t border-border/30 flex-wrap">
                           <Database className="h-3 w-3 text-muted-foreground shrink-0" />
