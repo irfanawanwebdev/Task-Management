@@ -40,7 +40,7 @@ const TOOLS: Anthropic.Tool[] = [
       properties: {
         client_name: { type: 'string', description: 'Filter by client name (partial match)' },
         assigned_to_name: { type: 'string', description: 'Filter by team member full name' },
-        status: { type: 'string', enum: ['Todo', 'In Progress', 'Done', 'Blocked'] },
+        status: { type: 'string', enum: ['Not Started', 'In Progress', 'Done', 'Blocked'] },
         step: { type: 'number', description: 'Delivery step number 0–15' },
         overdue: { type: 'boolean', description: 'If true, return only overdue tasks (due_date < today, status ≠ Done)' },
         due_within_days: { type: 'number', description: 'Tasks due within N days from today' },
@@ -55,7 +55,7 @@ const TOOLS: Anthropic.Tool[] = [
       type: 'object' as const,
       properties: {
         name: { type: 'string', description: 'Search by client name (partial match)' },
-        status: { type: 'string', enum: ['Active', 'Paused', 'Churned', 'Prospect'] },
+        status: { type: 'string', enum: ['Active', 'Onboarding', 'At Risk', 'Paused', 'Offboarding'] },
         health: { type: 'string', enum: ['Green', 'Yellow', 'Red'] },
         limit: { type: 'number' },
       },
@@ -71,8 +71,8 @@ const TOOLS: Anthropic.Tool[] = [
         date: { type: 'string', description: 'ISO date YYYY-MM-DD — meetings on this specific date' },
         after_date: { type: 'string', description: 'ISO date — meetings after this date' },
         before_date: { type: 'string', description: 'ISO date — meetings before this date' },
-        meeting_type: { type: 'string', enum: ['Mid-Month', 'End-of-Month', 'Kickoff', 'Ad-Hoc'] },
-        status: { type: 'string', enum: ['Scheduled', 'Completed', 'Cancelled', 'No-Show'] },
+        meeting_type: { type: 'string', enum: ['Kickoff', 'Mid-Month Review', 'End-of-Month Review', 'Owner Requested'] },
+        status: { type: 'string', enum: ['Not Scheduled', 'Scheduled', 'Completed', 'Overdue'] },
         limit: { type: 'number' },
       },
     },
@@ -84,8 +84,8 @@ const TOOLS: Anthropic.Tool[] = [
       type: 'object' as const,
       properties: {
         client_name: { type: 'string' },
-        status: { type: 'string', enum: ['Open', 'Resolved', 'Escalated'] },
-        severity: { type: 'string', enum: ['Low', 'Medium', 'High', 'Critical'] },
+        status: { type: 'string', enum: ['Open', 'In Progress', 'Resolved'] },
+        severity: { type: 'string', enum: ['Low', 'Med', 'High'] },
         limit: { type: 'number' },
       },
     },
@@ -97,15 +97,15 @@ const TOOLS: Anthropic.Tool[] = [
       type: 'object' as const,
       properties: {
         client_id: { type: 'string', description: 'UUID from query_clients' },
-        title: { type: 'string' },
+        task_name: { type: 'string' },
         description: { type: 'string' },
-        status: { type: 'string', enum: ['Todo', 'In Progress', 'Done', 'Blocked'] },
+        status: { type: 'string', enum: ['Not Started', 'In Progress', 'Done', 'Blocked'] },
         step: { type: 'number', description: 'Delivery step 0–15' },
         workstream: { type: 'string' },
         due_date: { type: 'string', description: 'ISO date YYYY-MM-DD' },
-        priority: { type: 'string', enum: ['Low', 'Medium', 'High', 'Critical'] },
+        impact_level: { type: 'string', enum: ['Low', 'Medium', 'High'] },
       },
-      required: ['client_id', 'title'],
+      required: ['client_id', 'task_name'],
     },
   },
   {
@@ -132,7 +132,7 @@ const TOOLS: Anthropic.Tool[] = [
         task_id: { type: 'string', description: 'Optional — UUID of the related task' },
         title: { type: 'string' },
         description: { type: 'string' },
-        severity: { type: 'string', enum: ['Low', 'Medium', 'High', 'Critical'] },
+        severity: { type: 'string', enum: ['Low', 'Med', 'High'] },
       },
       required: ['client_id', 'title'],
     },
@@ -198,7 +198,7 @@ async function executeTool(name: string, input: Record<string, any>, supabase: a
 
         let q = supabase
           .from('delivery_tasks')
-          .select('id, title, status, step, workstream, due_date, priority, client_id, clients(name)')
+          .select('id, task_name, status, step, workstream, due_date, impact_level, client_id, clients(name)')
           .order('due_date', { ascending: true, nullsFirst: false })
           .limit(limit)
 
@@ -232,26 +232,26 @@ async function executeTool(name: string, input: Record<string, any>, supabase: a
         }
 
         const rows = tasks.map((t: {
-          id: string; title: string; status: string; step: number
-          workstream: string; due_date: string; priority: string
+          id: string; task_name: string; status: string; step: number
+          workstream: string; due_date: string; impact_level: string
           clients: { name: string } | null
         }) =>
-          `• [${t.status}] "${t.title}" | Client: ${t.clients?.name ?? '?'} | Step ${t.step} | Due: ${t.due_date ?? 'None'} | Assigned: ${(amap[t.id] ?? []).join(', ') || 'Unassigned'}`
+          `• [${t.status}] "${t.task_name}" | Client: ${t.clients?.name ?? '?'} | Step ${t.step} | Due: ${t.due_date ?? 'None'} | Priority: ${t.impact_level} | Assigned: ${(amap[t.id] ?? []).join(', ') || 'Unassigned'}`
         ).join('\n')
         return `Found ${tasks.length} task(s):\n${rows}`
       }
 
       // ── query_clients ──────────────────────────────────────────────────────
       case 'query_clients': {
-        let q = supabase.from('clients').select('id, name, status, health_status, start_date').order('name').limit(Number(input.limit ?? 30))
+        let q = supabase.from('clients').select('id, name, status, health, start_date').order('name').limit(Number(input.limit ?? 30))
         if (input.name) q = q.ilike('name', `%${input.name}%`)
         if (input.status) q = q.eq('status', input.status)
-        if (input.health) q = q.eq('health_status', input.health)
+        if (input.health) q = q.eq('health', input.health)
         const { data, error } = await q
         if (error) return `Error: ${error.message}`
         if (!data || data.length === 0) return 'No clients found.'
-        const rows = data.map((c: { id: string; name: string; status: string; health_status: string; start_date: string }) =>
-          `• "${c.name}" | ID: ${c.id} | Status: ${c.status} | Health: ${c.health_status} | Start: ${c.start_date ?? '?'}`
+        const rows = data.map((c: { id: string; name: string; status: string; health: string; start_date: string }) =>
+          `• "${c.name}" | ID: ${c.id} | Status: ${c.status} | Health: ${c.health} | Start: ${c.start_date ?? '?'}`
         ).join('\n')
         return `Found ${data.length} client(s):\n${rows}`
       }
@@ -320,16 +320,18 @@ async function executeTool(name: string, input: Record<string, any>, supabase: a
       case 'add_task': {
         const { data, error } = await supabase.from('delivery_tasks').insert({
           client_id: input.client_id,
-          title: input.title,
+          task_name: input.task_name,
+          step_name: input.task_name,
+          timeline: 'Custom',
           description: input.description ?? null,
-          status: input.status ?? 'Todo',
+          status: input.status ?? 'Not Started',
           step: input.step ?? 1,
-          workstream: input.workstream ?? null,
+          workstream: input.workstream ?? 'Ops/PM',
           due_date: input.due_date ?? null,
-          priority: input.priority ?? 'Medium',
-        }).select('id, title').single()
+          impact_level: input.impact_level ?? 'Medium',
+        }).select('id, task_name').single()
         if (error) return `Error creating task: ${error.message}`
-        return `Task created: "${data.title}" (ID: ${data.id})`
+        return `Task created: "${data.task_name}" (ID: ${data.id})`
       }
 
       // ── update_meeting ─────────────────────────────────────────────────────
@@ -366,18 +368,20 @@ async function executeTool(name: string, input: Record<string, any>, supabase: a
         }>
         const rows = tasks.map(t => ({
           client_id: input.client_id,
-          title: t.title,
+          task_name: t.title,
+          step_name: t.title,
+          timeline: `Week ${t.week}`,
           description: t.description ?? null,
-          status: 'Todo',
+          status: 'Not Started',
           step: t.step ?? 1,
-          workstream: t.workstream ?? null,
+          workstream: t.workstream ?? 'Ops/PM',
           due_date: getWeekDueDate(t.week, refDate),
-          priority: t.priority ?? 'Medium',
+          impact_level: t.priority ?? 'Medium',
         }))
-        const { data, error } = await supabase.from('delivery_tasks').insert(rows).select('id, title, due_date')
+        const { data, error } = await supabase.from('delivery_tasks').insert(rows).select('id, task_name, due_date')
         if (error) return `Error creating tasks: ${error.message}`
-        const created = (data ?? []).map((t: { title: string; due_date: string }) =>
-          `• "${t.title}" — due ${t.due_date}`
+        const created = (data ?? []).map((t: { task_name: string; due_date: string }) =>
+          `• "${t.task_name}" — due ${t.due_date}`
         ).join('\n')
         return `Created ${(data ?? []).length} task(s):\n${created}`
       }

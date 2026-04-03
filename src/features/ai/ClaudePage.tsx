@@ -210,36 +210,20 @@ export default function ClaudePage() {
     setLoading(true)
 
     try {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) throw new Error('Not authenticated')
-
       const history = [...messages, { role: 'user' as const, content: fullContent }].map(m => ({
         role: m.role,
         content: m.content,
       }))
 
-      const res = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-assistant`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${session.access_token}`,
-          },
-          body: JSON.stringify({
-            messages: history,
-            user_name: profile?.full_name ?? 'Team Member',
-            user_role: role ?? 'team member',
-          }),
-        }
-      )
+      const { data, error: fnError } = await supabase.functions.invoke('ai-assistant', {
+        body: {
+          messages: history,
+          user_name: profile?.full_name ?? 'Team Member',
+          user_role: role ?? 'team member',
+        },
+      })
 
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}))
-        throw new Error(err.error ?? `Request failed (${res.status})`)
-      }
-
-      const data = await res.json()
+      if (fnError) throw new Error(fnError.message ?? 'Request failed')
       setMessages(prev => [
         ...prev.slice(0, -1),
         { role: 'assistant', content: data.content, toolsUsed: data.toolsUsed ?? [] },
