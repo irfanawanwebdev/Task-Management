@@ -24,6 +24,7 @@ export const PAGE_KEYS = {
   SETTINGS:        'settings',
   MY_TASKS:        'my_tasks',
   CLAUDE:          'claude',
+  OPPORTUNITIES:   'opportunities',
 } as const
 
 /** Maps route paths → page key (for access checks) */
@@ -40,8 +41,9 @@ const ROUTE_TO_PAGE_KEY: Record<string, string> = {
   '/instructions': PAGE_KEYS.INSTRUCTIONS,
   '/admin':        PAGE_KEYS.ADMIN,
   '/settings':     PAGE_KEYS.SETTINGS,
-  '/my-tasks':     PAGE_KEYS.MY_TASKS,
-  '/claude':       PAGE_KEYS.CLAUDE,
+  '/my-tasks':       PAGE_KEYS.MY_TASKS,
+  '/claude':         PAGE_KEYS.CLAUDE,
+  '/opportunities':  PAGE_KEYS.OPPORTUNITIES,
 }
 
 // ─── All Nav Items (full catalogue) ───────────────────────────────────────
@@ -68,6 +70,7 @@ const ALL_NAV_ITEMS: NavItem[] = [
   { label: 'Settings',            path: '/settings',     icon: 'Settings',       pageKey: PAGE_KEYS.SETTINGS },
   { label: 'My Tasks',            path: '/my-tasks',     icon: 'ListTodo',       pageKey: PAGE_KEYS.MY_TASKS },
   { label: 'Claude AI',           path: '/claude',       icon: 'Bot',            pageKey: PAGE_KEYS.CLAUDE },
+  { label: 'Opportunities',       path: '/opportunities',icon: 'Target',         pageKey: PAGE_KEYS.OPPORTUNITIES },
 ]
 
 // ─── Per-User Page Access ──────────────────────────────────────────────────
@@ -87,6 +90,7 @@ export function hasPageAccess(
   if (path === '/specialist' || path.startsWith('/specialist/')) return true
   if (path === '/my-tasks') return true
   if (path === '/claude') return true
+  if (path === '/opportunities') return true
 
   const pageAccess = profile?.page_access ?? []
   if (profile && pageAccess.length > 0) {
@@ -117,14 +121,17 @@ function getPageKeyForPath(path: string): string | null {
 export function getNavForProfile(profile: Profile | null, role: AppRole | null): NavItem[] {
   const pageAccess = profile?.page_access ?? []
   if (profile && pageAccess.length > 0) {
-    // Always include My Dashboard + My Tasks (accessible to all authenticated users)
-    const alwaysIncluded = new Set<string>([PAGE_KEYS.SPECIALIST, PAGE_KEYS.MY_TASKS, PAGE_KEYS.CLAUDE])
-    const specialistItem = ALL_NAV_ITEMS.find(item => item.pageKey === PAGE_KEYS.SPECIALIST)!
-    const myTasksItem = ALL_NAV_ITEMS.find(item => item.pageKey === PAGE_KEYS.MY_TASKS)!
+    // Always include these pages regardless of page_access config
+    const alwaysIncluded = new Set<string>([
+      PAGE_KEYS.SPECIALIST, PAGE_KEYS.MY_TASKS, PAGE_KEYS.CLAUDE, PAGE_KEYS.OPPORTUNITIES,
+    ])
+    const specialistItem    = ALL_NAV_ITEMS.find(item => item.pageKey === PAGE_KEYS.SPECIALIST)!
+    const myTasksItem       = ALL_NAV_ITEMS.find(item => item.pageKey === PAGE_KEYS.MY_TASKS)!
+    const opportunitiesItem = ALL_NAV_ITEMS.find(item => item.pageKey === PAGE_KEYS.OPPORTUNITIES)!
     const rest = ALL_NAV_ITEMS.filter(item =>
       !alwaysIncluded.has(item.pageKey) && pageAccess.includes(item.pageKey)
     )
-    return [specialistItem, ...rest, myTasksItem]
+    return [specialistItem, ...rest, opportunitiesItem, myTasksItem]
   }
   // Fallback to role-based
   return getNavForRole(role ?? 'viewer')
@@ -153,8 +160,9 @@ export function canAccessRoute(role: AppRole, path: string): boolean {
     '/instructions':  pmOwner,
     '/admin':         pmOwner,
     '/settings':      pmOwner,
-    '/my-tasks':      allAuth,
-    '/claude':        allAuth,
+    '/my-tasks':        allAuth,
+    '/claude':          allAuth,
+    '/opportunities':   pmOwner,
   }
 
   for (const [route, roles] of Object.entries(routeMap)) {
@@ -200,6 +208,7 @@ export function getNavForRole(role: AppRole): NavItem[] {
     { label: 'User Management',     path: '/admin',        icon: 'UserCog',         pageKey: PAGE_KEYS.ADMIN },
     { label: 'RACI Matrix',         path: '/raci',         icon: 'Grid',            pageKey: PAGE_KEYS.RACI },
     { label: 'Settings',            path: '/settings',     icon: 'Settings',        pageKey: PAGE_KEYS.SETTINGS },
+    { label: 'Opportunities',       path: '/opportunities',icon: 'Target',          pageKey: PAGE_KEYS.OPPORTUNITIES },
     { label: 'My Tasks',            path: '/my-tasks',     icon: 'ListTodo',        pageKey: PAGE_KEYS.MY_TASKS },
     { label: 'Claude AI',           path: '/claude',       icon: 'Bot',             pageKey: PAGE_KEYS.CLAUDE },
   ]

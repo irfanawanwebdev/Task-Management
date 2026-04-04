@@ -27,6 +27,7 @@ const ClientSOPPage        = lazy(() => import('@/features/instructions/ClientSO
 const SettingsPage         = lazy(() => import('@/features/settings/SettingsPage'))
 const MyTasksPage          = lazy(() => import('@/features/mytasks/MyTasksPage'))
 const ClaudePage           = lazy(() => import('@/features/ai/ClaudePage'))
+const OpportunitiesPage    = lazy(() => import('@/features/opportunities/OpportunitiesPage'))
 const PrivacyPolicyPage    = lazy(() => import('@/features/public/PrivacyPolicyPage'))
 const TermsPage            = lazy(() => import('@/features/public/TermsPage'))
 const SupportPage          = lazy(() => import('@/features/public/SupportPage'))
@@ -141,6 +142,10 @@ const router = createBrowserRouter(
         {
           path: '/claude',
           element: <Suspense fallback={<PageLoader />}><ClaudePage /></Suspense>,
+        },
+        {
+          path: '/opportunities',
+          element: <Suspense fallback={<PageLoader />}><OpportunitiesPage /></Suspense>,
         },
       ],
     },

@@ -39,10 +39,10 @@ const ROLE_LABELS: Record<AppRole, string> = {
   owner:           'Owner',
   project_manager: 'Project Manager',
   web_developer:   'Web Developer',
-  seo:             'SEO',
+  seo:             'SEO Specialist',
   ads_manager:     'Ads Manager',
   social_media:    'Social Media',
-  account_manager: 'Account Manager',
+  account_manager: 'Client Account Manager',
   viewer:          'Viewer',
 }
 
@@ -59,6 +59,7 @@ const PAGE_ACCESS_OPTIONS: { key: string; label: string }[] = [
   { key: PAGE_KEYS.INSTRUCTIONS,    label: 'Internal Workspace' },
   { key: PAGE_KEYS.ADMIN,           label: 'User Management' },
   { key: PAGE_KEYS.SETTINGS,        label: 'Settings' },
+  { key: PAGE_KEYS.OPPORTUNITIES,   label: 'Opportunities' },
 ]
 
 // ─── Data Hooks ─────────────────────────────────────────────────────────────
