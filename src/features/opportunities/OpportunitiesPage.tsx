@@ -10,6 +10,7 @@ import {
   STAGE_TASKS,
 } from './types'
 import { OpportunityDetailDialog } from './OpportunityDetailDialog'
+import { HelpPopover } from '@/components/HelpPopover'
 
 // ── Add Opportunity Dialog ─────────────────────────────────────────────────
 
@@ -500,7 +501,22 @@ export default function OpportunitiesPage() {
           </div>
           <div>
             <h1 className="text-lg font-semibold">Opportunities</h1>
-            <p className="text-xs text-muted-foreground">Sales pipeline · drag cards between stages</p>
+            <div className="flex items-center gap-1.5">
+              <p className="text-xs text-muted-foreground">Sales pipeline · drag cards between stages</p>
+              <HelpPopover
+                title="How the Pipeline Works"
+                align="left"
+                content={
+                  <div className="space-y-2">
+                    <p>Leads move through 8 stages from <strong>New Lead</strong> to <strong>Closed Won/Lost</strong>.</p>
+                    <p><strong>To move a card:</strong> Drag it to another column, or click the <strong>→</strong> button to advance one stage.</p>
+                    <p><strong>To view details:</strong> Click the card body (not the → button) to open Info, Tasks, and Notes.</p>
+                    <p><strong>To add a lead:</strong> Use the <strong>Add Lead</strong> button in the top right.</p>
+                    <p className="text-amber-400">Closed Won / Closed Lost cards don't advance further.</p>
+                  </div>
+                }
+              />
+            </div>
           </div>
         </div>
 

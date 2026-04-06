@@ -9,6 +9,7 @@ import { useAuth } from '@/features/auth/AuthContext'
 import { getNavForProfile } from '@/lib/permissions'
 import { NotificationBell } from '@/components/NotificationBell'
 import { RoleDocsModal } from '@/components/RoleDocsModal'
+import { UserGuideModal } from '@/components/UserGuideModal'
 import { cn } from '@/lib/utils'
 
 const ICON_MAP: Record<string, React.ElementType> = {
@@ -20,7 +21,8 @@ export default function Sidebar() {
   const { role, profile, signOut } = useAuth()
   const location = useLocation()
   const navigate = useNavigate()
-  const [docsOpen, setDocsOpen] = useState(false)
+  const [docsOpen, setDocsOpen]  = useState(false)
+  const [guideOpen, setGuideOpen] = useState(false)
 
   const navItems = getNavForProfile(profile ?? null, role)
 
@@ -89,6 +91,13 @@ export default function Sidebar() {
             Sign out
           </button>
           <button
+            onClick={() => setGuideOpen(true)}
+            title="User Guide — how to use the system"
+            className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+          >
+            <BookOpen className="h-3.5 w-3.5" />
+          </button>
+          <button
             onClick={() => setDocsOpen(true)}
             title="Roles & Permissions Docs"
             className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
@@ -99,6 +108,7 @@ export default function Sidebar() {
       </div>
 
       <RoleDocsModal open={docsOpen} onClose={() => setDocsOpen(false)} />
+      <UserGuideModal open={guideOpen} onClose={() => setGuideOpen(false)} />
     </aside>
   )
 }

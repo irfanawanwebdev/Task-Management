@@ -6,6 +6,7 @@ import { useAuth } from '@/features/auth/AuthContext'
 import { cn } from '@/lib/utils'
 import type { Opportunity, OppTask, OppNote, OpportunityStage } from './types'
 import { STAGE_LIST, STAGE_TASKS as ST, SOURCE_LABELS } from './types'
+import { HelpPopover } from '@/components/HelpPopover'
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -464,10 +465,10 @@ export function OpportunityDetailDialog({
     },
   })
 
-  const tabs: { key: Tab; label: string; icon: React.ElementType }[] = [
-    { key: 'info', label: 'Info', icon: Info },
-    { key: 'tasks', label: `Tasks${taskCounts?.total ? ` (${taskCounts.done}/${taskCounts.total})` : ''}`, icon: CheckSquare },
-    { key: 'notes', label: 'Notes', icon: StickyNote },
+  const tabs: { key: Tab; label: string; icon: React.ElementType; help: string }[] = [
+    { key: 'info',  label: 'Info',  icon: Info,       help: 'Core details about this lead: business name, contact, source, current pipeline stage, and assigned team member.' },
+    { key: 'tasks', label: `Tasks${taskCounts?.total ? ` (${taskCounts.done}/${taskCounts.total})` : ''}`, icon: CheckSquare, help: 'Stage-specific action items for this lead. Tasks are auto-suggested when the lead moves to a new stage. Check them off as you progress.' },
+    { key: 'notes', label: 'Notes', icon: StickyNote, help: 'Log calls, meetings, emails, or any conversation with this lead. Notes are timestamped and show who wrote them.' },
   ]
 
   return (
@@ -513,6 +514,7 @@ export function OpportunityDetailDialog({
               >
                 <Icon className="h-3.5 w-3.5" />
                 {t.label}
+                <HelpPopover title={t.label.split('(')[0].trim()} content={t.help} side="bottom" align="left" />
               </button>
             )
           })}

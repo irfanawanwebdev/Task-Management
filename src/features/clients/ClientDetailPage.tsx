@@ -22,6 +22,7 @@ import { getCompletionClass } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import { CreateTaskDialog } from '@/features/tasks/CreateTaskDialog'
 import { useAuth } from '@/features/auth/AuthContext'
+import { HelpPopover } from '@/components/HelpPopover'
 
 // ─── Data Hook ────────────────────────────────────────────────────────────────
 
@@ -67,14 +68,14 @@ function useClientDetail(id: string) {
 // ─── Tab definitions ──────────────────────────────────────────────────────────
 
 const TABS = [
-  { id: 'onboarding', label: 'Onboarding', icon: CheckCircle2 },
-  { id: 'overdue',    label: 'Overdue',    icon: AlertTriangle },
-  { id: 'blockers',   label: 'Blockers',   icon: AlertTriangle },
-  { id: 'credentials',label: 'Credentials',icon: KeyRound },
-  { id: 'reports',    label: 'Reports',    icon: FileText },
-  { id: 'meetings',   label: 'Meetings',   icon: Calendar },
-  { id: 'upsell',     label: 'Upsell',     icon: Star },
-  { id: 'risk',       label: 'Risk Log',   icon: BarChart2 },
+  { id: 'onboarding',  label: 'Onboarding',  icon: CheckCircle2, help: 'The 16-step delivery lifecycle for this client. Tasks are grouped by step. Complete each step in order — the QA Gate rule means A/R output must be logged before the next step begins.' },
+  { id: 'overdue',     label: 'Overdue',     icon: AlertTriangle, help: 'All tasks for this client that are past their due date and not yet done. Resolve these first to avoid impacting the client\'s risk score.' },
+  { id: 'blockers',    label: 'Blockers',    icon: AlertTriangle, help: 'Active blockers for this client. A blocker is anything preventing a task from being completed. Log blockers early — don\'t wait until a deadline is missed.' },
+  { id: 'credentials', label: 'Credentials', icon: KeyRound,     help: 'Important links for this client: website, Google Drive folder, ad accounts, GBP listing, and social profiles. These are read-only reference links.' },
+  { id: 'reports',     label: 'Reports',     icon: FileText,     help: 'Weekly and monthly reports sent to this client. Weekly reports are due every Friday; the last Friday of the month is the Monthly Report.' },
+  { id: 'meetings',    label: 'Meetings',    icon: Calendar,     help: 'Client meetings log. Each active client requires 2 meetings per month: a Mid-Month Review (~14th) and an End-of-Month Review (~27th).' },
+  { id: 'upsell',      label: 'Upsell',      icon: Star,         help: 'Suggested upsell opportunities for this client — additional services that could benefit them based on their current workstreams and performance.' },
+  { id: 'risk',        label: 'Risk Log',    icon: BarChart2,    help: 'Client health score (0–100) across 4 pillars: Delivery (30 pts), Sentiment (25 pts), Performance (25 pts), Visibility (20 pts). Green < 26, Yellow 26–45, Red 46+.' },
 ] as const
 
 type TabId = typeof TABS[number]['id']
@@ -1128,6 +1129,7 @@ export default function ClientDetailPage() {
               >
                 <Icon className="h-3.5 w-3.5" />
                 {tab.label}
+                <HelpPopover title={tab.label} content={tab.help} side="bottom" align="left" />
                 {/* Badges */}
                 {tab.id === 'overdue'  && overdue > 0 && (
                   <span className="ml-1 px-1 bg-destructive/20 text-destructive text-xs rounded-full">{overdue}</span>

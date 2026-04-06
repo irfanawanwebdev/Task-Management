@@ -20,6 +20,7 @@ import { useAuth } from '@/features/auth/AuthContext'
 import { isPMOrOwner } from '@/lib/permissions'
 import { useNavigationGuard } from '@/lib/useNavigationGuard'
 import { cn } from '@/lib/utils'
+import { HelpPopover } from '@/components/HelpPopover'
 
 // ─── Edge Function caller ─────────────────────────────────────────────────────
 
@@ -1070,24 +1071,24 @@ type MeetingTab =
 
 type ReportTab = 'all' | 'weekly-done' | 'done-7' | 'done-14' | 'monthly-done' | 'blocked-risk' | 'by-client'
 
-const MEETING_TABS: { id: MeetingTab; label: string }[] = [
-  { id: 'scheduled',       label: 'Scheduled' },
-  { id: 'by-client',       label: 'By Client' },
-  { id: 'this-week',       label: 'This Week' },
-  { id: 'last-14',         label: 'Last 14 Days' },
-  { id: 'this-month',      label: 'This Month' },
-  { id: 'biweekly-done',   label: 'Bi-Weekly Done' },
-  { id: 'owner-requested', label: 'Owner Requested' },
+const MEETING_TABS: { id: MeetingTab; label: string; help: string }[] = [
+  { id: 'scheduled',       label: 'Scheduled',       help: 'All upcoming meetings that haven\'t happened yet, ordered by date.' },
+  { id: 'by-client',       label: 'By Client',       help: 'Meetings grouped by client. Use this to see all past and future meetings for a specific client.' },
+  { id: 'this-week',       label: 'This Week',       help: 'Meetings scheduled for the current week (Mon–Sun). Good for daily prep.' },
+  { id: 'last-14',         label: 'Last 14 Days',    help: 'Meetings from the past 14 days. Use this to review what was recently discussed.' },
+  { id: 'this-month',      label: 'This Month',      help: 'All meetings within the current calendar month.' },
+  { id: 'biweekly-done',   label: 'Bi-Weekly Done',  help: 'Compliance grid: each active client needs 2 meetings per month (Mid-Month ~14th, End-of-Month ~27th). Green = 2 done, Yellow = 1, Red = 0.' },
+  { id: 'owner-requested', label: 'Owner Requested', help: 'Special meetings requested by the owner/leadership, outside the standard bi-monthly cadence.' },
 ]
 
-const REPORT_TABS: { id: ReportTab; label: string }[] = [
-  { id: 'all',           label: 'All Reports' },
-  { id: 'weekly-done',   label: 'Weekly Done' },
-  { id: 'done-7',        label: 'Done in 7 Days' },
-  { id: 'done-14',       label: 'Done in 14 Days' },
-  { id: 'monthly-done',  label: 'Monthly Done' },
-  { id: 'blocked-risk',  label: 'Blocked / Risk' },
-  { id: 'by-client',     label: 'By Client' },
+const REPORT_TABS: { id: ReportTab; label: string; help: string }[] = [
+  { id: 'all',          label: 'All Reports',      help: 'Every report across all clients and time periods.' },
+  { id: 'weekly-done',  label: 'Weekly Done',      help: 'Completed weekly reports. A weekly update is due every Friday for each active client.' },
+  { id: 'done-7',       label: 'Done in 7 Days',   help: 'Reports completed in the last 7 days.' },
+  { id: 'done-14',      label: 'Done in 14 Days',  help: 'Reports completed in the last 14 days.' },
+  { id: 'monthly-done', label: 'Monthly Done',     help: 'Completed monthly reports. The last Friday of each month\'s weekly report becomes the Monthly Report.' },
+  { id: 'blocked-risk', label: 'Blocked / Risk',   help: 'Reports that are blocked or flagged as at risk of not being delivered on time.' },
+  { id: 'by-client',    label: 'By Client',        help: 'Reports grouped by client. Use this to audit a specific client\'s report history.' },
 ]
 
 // ─── Bi-Weekly Compliance Grid ────────────────────────────────────────────────
@@ -1637,13 +1638,14 @@ export default function MeetingsPage() {
               key={tab.id}
               onClick={() => setMeetingTab(tab.id)}
               className={cn(
-                'flex-shrink-0 px-3 py-2 text-sm font-medium border-b-2 transition-colors',
+                'flex-shrink-0 flex items-center gap-1 px-3 py-2 text-sm font-medium border-b-2 transition-colors',
                 meetingTab === tab.id
                   ? 'border-primary text-primary'
                   : 'border-transparent text-muted-foreground hover:text-foreground',
               )}
             >
               {tab.label}
+              <HelpPopover title={tab.label} content={tab.help} side="bottom" align="left" />
             </button>
           ))}
         </div>
@@ -1757,13 +1759,14 @@ export default function MeetingsPage() {
               key={tab.id}
               onClick={() => setReportTab(tab.id)}
               className={cn(
-                'flex-shrink-0 px-3 py-2 text-sm font-medium border-b-2 transition-colors',
+                'flex-shrink-0 flex items-center gap-1 px-3 py-2 text-sm font-medium border-b-2 transition-colors',
                 reportTab === tab.id
                   ? 'border-primary text-primary'
                   : 'border-transparent text-muted-foreground hover:text-foreground',
               )}
             >
               {tab.label}
+              <HelpPopover title={tab.label} content={tab.help} side="bottom" align="left" />
             </button>
           ))}
         </div>

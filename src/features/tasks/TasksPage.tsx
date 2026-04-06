@@ -16,6 +16,7 @@ import { isOverdueEST, formatDateEST, isDateTodayEST } from '@/lib/timezone'
 import { cn } from '@/lib/utils'
 import { CreateTaskDialog } from './CreateTaskDialog'
 import { useAuth } from '@/features/auth/AuthContext'
+import { HelpPopover } from '@/components/HelpPopover'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -288,7 +289,9 @@ function TaskDetailDialog({
 }) {
   const queryClient = useQueryClient()
   const [qaWarning, setQaWarning]         = useState(false)
+  const [currentStatus, setCurrentStatus] = useState<DeliveryTask['status']>(task.status)
   const [outputUrl, setOutputUrl]         = useState(task.output_link ?? '')
+  const [arLogged, setArLogged]           = useState(task.ar_output_logged ?? false)
   const [savingUrl, setSavingUrl]         = useState(false)
   const [showDuplicate, setShowDuplicate] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -318,9 +321,16 @@ function TaskDetailDialog({
       const { error } = await supabase.from('delivery_tasks').update(upd as never).eq('id', task.id)
       if (error) throw error
     },
+    onMutate: (status) => {
+      setCurrentStatus(status) // optimistic — update button highlight immediately
+    },
+    onError: () => {
+      setCurrentStatus(task.status) // revert on failure
+    },
     onSuccess: () => {
       setQaWarning(false)
       queryClient.invalidateQueries({ queryKey: ['tasks'] })
+      queryClient.invalidateQueries({ queryKey: ['client-detail'] })
     },
   })
 
@@ -328,9 +338,10 @@ function TaskDetailDialog({
   const hasARAssignment = (task.task_assignments ?? []).some(
     a => a.role_type === 'R' || a.role_type === 'A',
   )
-  const needsQAGate = hasARAssignment && !task.ar_output_logged
+  const needsQAGate = hasARAssignment && !arLogged
 
   function handleMarkDone() {
+    if (currentStatus === 'Done') return // already done
     if (needsQAGate) {
       setQaWarning(true)
     } else {
@@ -339,9 +350,18 @@ function TaskDetailDialog({
   }
 
   const saveOutputUrl = async () => {
+    const trimmed = outputUrl.trim()
     setSavingUrl(true)
-    await supabase.from('delivery_tasks').update({ output_link: outputUrl.trim() || null } as never).eq('id', task.id)
+    // Saving a non-empty URL automatically satisfies the QA Gate (ar_output_logged = true).
+    // Clearing the URL reverts the gate.
+    const logged = trimmed.length > 0
+    await supabase.from('delivery_tasks').update({
+      output_link: trimmed || null,
+      ar_output_logged: logged,
+    } as never).eq('id', task.id)
+    setArLogged(logged)
     queryClient.invalidateQueries({ queryKey: ['tasks'] })
+    queryClient.invalidateQueries({ queryKey: ['client-detail'] })
     setSavingUrl(false)
   }
 
@@ -472,7 +492,28 @@ function TaskDetailDialog({
 
           {/* Output Link */}
           <div>
-            <p className="section-header">A/R Output URL</p>
+            <p className="section-header flex items-center gap-1.5">
+              A/R Output URL
+              <HelpPopover
+                title="What is the A/R Output URL?"
+                side="bottom"
+                align="left"
+                content={
+                  <div className="space-y-2">
+                    <p>This is the <strong>QA Gate</strong> — proof that the task was completed. If you are <strong>Accountable (A)</strong> or <strong>Responsible (R)</strong> for this task, you must paste a URL here before marking it Done.</p>
+                    <p className="font-semibold text-foreground">What to paste:</p>
+                    <ul className="list-disc list-inside space-y-0.5">
+                      <li>A live page URL (e.g. the website you built)</li>
+                      <li>A Google Drive link (doc, sheet, report)</li>
+                      <li>A Loom/video recording of the work</li>
+                      <li>A Google Ads / Analytics screenshot link</li>
+                      <li>Any shareable URL proving the deliverable exists</li>
+                    </ul>
+                    <p className="text-amber-400">Without this URL, the <strong>Done ⚠</strong> button triggers a QA Gate warning and the next delivery step stays locked.</p>
+                  </div>
+                }
+              />
+            </p>
             <div className="flex gap-2 items-center">
               <input
                 value={outputUrl}
@@ -640,10 +681,10 @@ function TaskDetailDialog({
                 <button
                   key={s}
                   onClick={() => updateStatus.mutate(s)}
-                  disabled={updateStatus.isPending || task.status === s}
+                  disabled={updateStatus.isPending || currentStatus === s}
                   className={cn(
                     'px-3 py-1.5 rounded-md text-xs font-medium border transition-colors',
-                    task.status === s
+                    currentStatus === s
                       ? 'border-primary/50 bg-primary/10 text-primary cursor-default'
                       : 'border-border bg-muted text-muted-foreground hover:text-foreground hover:border-primary/30'
                   )}
@@ -653,10 +694,10 @@ function TaskDetailDialog({
               ))}
               <button
                 onClick={handleMarkDone}
-                disabled={updateStatus.isPending || task.status === 'Done'}
+                disabled={updateStatus.isPending || currentStatus === 'Done'}
                 className={cn(
                   'px-3 py-1.5 rounded-md text-xs font-medium border transition-colors',
-                  task.status === 'Done'
+                  currentStatus === 'Done'
                     ? 'border-primary/50 bg-primary/10 text-primary cursor-default'
                     : needsQAGate
                     ? 'border-[hsl(var(--warning))]/50 bg-[hsl(var(--warning))]/10 text-[hsl(var(--warning))] hover:bg-[hsl(var(--warning))]/20'
@@ -815,13 +856,13 @@ export default function TasksPage() {
     )
   })()
 
-  const VIEWS: { id: ViewTab; label: string }[] = [
-    { id: 'timeline',    label: 'Timeline' },
-    { id: 'workstream',  label: 'By Workstream' },
-    { id: 'qa-gate',     label: 'QA Gate' },
-    { id: 'blocked',     label: 'Blocked' },
-    { id: 'overdue',     label: 'Overdue' },
-    { id: 'next-ready',  label: 'Next Ready' },
+  const VIEWS: { id: ViewTab; label: string; help: string }[] = [
+    { id: 'timeline',   label: 'Timeline',      help: 'All tasks ordered by delivery step and due date. The default view for tracking overall client delivery progress.' },
+    { id: 'workstream', label: 'By Workstream', help: 'Tasks grouped by department (SEO, PPC, Web, Social, etc.). Use this to see what each team is working on.' },
+    { id: 'qa-gate',    label: 'QA Gate',       help: 'Tasks that are in progress but the A/R output URL hasn\'t been logged yet. The next delivery step is locked until these are cleared.' },
+    { id: 'blocked',    label: 'Blocked',       help: 'Tasks with status "Blocked". Each should have a matching blocker logged on the Blockers page. Resolve or escalate promptly.' },
+    { id: 'overdue',    label: 'Overdue',       help: 'Tasks past their due date that aren\'t done. Prioritize these — they directly affect the client\'s risk score.' },
+    { id: 'next-ready', label: 'Next Ready',    help: 'Tasks where all prerequisites are met and work can begin immediately. Check here each morning to see what to pick up.' },
   ]
 
   const blockedCount = tasks.filter(t => t.status === 'Blocked').length
@@ -862,6 +903,7 @@ export default function TasksPage() {
               className={cn('view-tab flex items-center gap-1', activeView === v.id && 'view-tab-active')}
             >
               {v.label}
+              <HelpPopover title={v.label} content={v.help} side="bottom" align="left" />
               {v.id === 'blocked' && blockedCount > 0 && (
                 <span className="px-1 bg-destructive/20 text-destructive text-xs rounded-full">{blockedCount}</span>
               )}

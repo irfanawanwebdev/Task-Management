@@ -18,6 +18,7 @@ import { useAuth } from '@/features/auth/AuthContext'
 import { isPMOrOwner } from '@/lib/permissions'
 import { useNavigationGuard } from '@/lib/useNavigationGuard'
 import { cn } from '@/lib/utils'
+import { HelpPopover } from '@/components/HelpPopover'
 
 // ─── Data Hooks ───────────────────────────────────────────────────────────────
 
@@ -465,7 +466,7 @@ export default function BlockersPage() {
       </div>
 
       {/* Filters */}
-      <div className="flex flex-wrap gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         {/* Status filter */}
         <div className="relative">
           <select
@@ -495,6 +496,24 @@ export default function BlockersPage() {
           </select>
           <ChevronDown className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
         </div>
+
+        <HelpPopover
+          title="Severity & Status Guide"
+          side="bottom"
+          align="left"
+          content={
+            <div className="space-y-2">
+              <p className="font-semibold text-foreground">Severity Levels</p>
+              <p><span className="text-red-400 font-medium">High</span> — Blocks delivery entirely. Client is at risk. Escalate immediately.</p>
+              <p><span className="text-amber-400 font-medium">Med</span> — Delays a step, but a workaround exists. Resolve within 48 hours.</p>
+              <p><span className="text-green-400 font-medium">Low</span> — Minor delay, no immediate client impact. Resolve this week.</p>
+              <p className="font-semibold text-foreground pt-1">Statuses</p>
+              <p><strong>Open</strong> — Just logged, not yet being worked on.</p>
+              <p><strong>In Progress</strong> — Actively being resolved.</p>
+              <p><strong>Resolved</strong> — Fixed. Add resolution notes so the team can learn from it.</p>
+            </div>
+          }
+        />
 
         {filtered.length !== blockers.length && (
           <button
