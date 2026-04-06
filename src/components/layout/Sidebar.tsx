@@ -3,13 +3,14 @@ import { Link, useLocation, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, Users, CheckSquare, Grid3X3, Calendar,
   AlertTriangle, BarChart2, BookOpen, UserCog, Settings,
-  TrendingUp, LogOut, ChevronRight, ListTodo, Bot, Target, HelpCircle,
+  TrendingUp, LogOut, ChevronRight, ListTodo, Bot, Target, HelpCircle, Download,
 } from 'lucide-react'
 import { useAuth } from '@/features/auth/AuthContext'
 import { getNavForProfile } from '@/lib/permissions'
 import { NotificationBell } from '@/components/NotificationBell'
 import { RoleDocsModal } from '@/components/RoleDocsModal'
 import { UserGuideModal } from '@/components/UserGuideModal'
+import { downloadSOPDoc } from '@/lib/generateSOPDoc'
 import { cn } from '@/lib/utils'
 
 const ICON_MAP: Record<string, React.ElementType> = {
@@ -96,6 +97,13 @@ export default function Sidebar() {
             className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
           >
             <BookOpen className="h-3.5 w-3.5" />
+          </button>
+          <button
+            onClick={downloadSOPDoc}
+            title="Download User Guide (SOP)"
+            className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+          >
+            <Download className="h-3.5 w-3.5" />
           </button>
           <button
             onClick={() => setDocsOpen(true)}

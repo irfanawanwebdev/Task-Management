@@ -1,9 +1,10 @@
 /**
  * HelpPopover — contextual help icon + popover for complex pages/tabs.
  * Click the ? icon to toggle; clicking outside closes it.
+ * Uses fixed positioning to avoid clipping by overflow:hidden ancestors.
  */
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { HelpCircle, X } from 'lucide-react'
 
 interface HelpPopoverProps {
@@ -16,6 +17,8 @@ interface HelpPopoverProps {
   className?: string
 }
 
+const POPOVER_WIDTH = 320
+
 export function HelpPopover({
   title,
   content,
@@ -24,26 +27,60 @@ export function HelpPopover({
   className = '',
 }: HelpPopoverProps) {
   const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
+  const btnRef = useRef<HTMLButtonElement>(null)
+  const popRef = useRef<HTMLDivElement>(null)
+  const [pos, setPos] = useState<{ top: number; left: number }>({ top: 0, left: 0 })
+
+  const calcPos = useCallback(() => {
+    if (!btnRef.current) return
+    const r = btnRef.current.getBoundingClientRect()
+    const gap = 6
+
+    let top = side === 'top' ? r.top - gap : r.bottom + gap
+
+    let left: number
+    if (align === 'right') {
+      left = r.right - POPOVER_WIDTH
+    } else if (align === 'center') {
+      left = r.left + r.width / 2 - POPOVER_WIDTH / 2
+    } else {
+      left = r.left
+    }
+
+    // Clamp horizontally so popover stays inside viewport
+    const vw = window.innerWidth
+    if (left + POPOVER_WIDTH > vw - 8) left = vw - POPOVER_WIDTH - 8
+    if (left < 8) left = 8
+
+    setPos({ top, left })
+  }, [side, align])
 
   useEffect(() => {
     if (!open) return
+    calcPos()
+
     const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+      if (
+        btnRef.current && !btnRef.current.contains(e.target as Node) &&
+        popRef.current  && !popRef.current.contains(e.target as Node)
+      ) {
+        setOpen(false)
+      }
     }
     document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
-  }, [open])
-
-  const verticalClass = side === 'top' ? 'bottom-full mb-2' : 'top-full mt-2'
-  const alignClass =
-    align === 'right'  ? 'right-0' :
-    align === 'center' ? 'left-1/2 -translate-x-1/2' :
-                         'left-0'
+    window.addEventListener('scroll', calcPos, true)
+    window.addEventListener('resize', calcPos)
+    return () => {
+      document.removeEventListener('mousedown', handler)
+      window.removeEventListener('scroll', calcPos, true)
+      window.removeEventListener('resize', calcPos)
+    }
+  }, [open, calcPos])
 
   return (
-    <div ref={ref} className={`relative inline-flex shrink-0 ${className}`}>
+    <div className={`relative inline-flex shrink-0 ${className}`}>
       <button
+        ref={btnRef}
         onClick={e => { e.stopPropagation(); setOpen(o => !o) }}
         className="text-muted-foreground hover:text-foreground transition-colors rounded-full p-0.5"
         aria-label="Help"
@@ -54,8 +91,17 @@ export function HelpPopover({
 
       {open && (
         <div
-          className={`absolute z-[100] w-80 rounded-lg shadow-2xl p-3 ${verticalClass} ${alignClass}`}
-          style={{ background: '#1c1c22', border: '1px solid rgba(255,255,255,0.12)' }}
+          ref={popRef}
+          style={{
+            position: 'fixed',
+            top: pos.top,
+            left: pos.left,
+            width: POPOVER_WIDTH,
+            background: '#1c1c22',
+            border: '1px solid rgba(255,255,255,0.12)',
+            zIndex: 9999,
+          }}
+          className="rounded-lg shadow-2xl p-3"
           onClick={e => e.stopPropagation()}
         >
           <div className="flex items-start justify-between mb-2">
