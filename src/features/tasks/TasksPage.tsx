@@ -8,13 +8,14 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Loader2, AlertTriangle, CheckCircle2, X, ExternalLink, Plus, Copy, Trash2,
-  Link2, FileText, Save,
+  Link2, FileText, Save, BarChart2, Pencil, Check, History,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import type { Client, DeliveryTask } from '@/lib/types'
 import { isOverdueEST, formatDateEST, isDateTodayEST, todayDateEST } from '@/lib/timezone'
 import { cn } from '@/lib/utils'
 import { CreateTaskDialog } from './CreateTaskDialog'
+import { DailyReportModal } from './DailyReportModal'
 import { useAuth } from '@/features/auth/AuthContext'
 import { HelpPopover } from '@/components/HelpPopover'
 
@@ -272,6 +273,16 @@ function DuplicateTaskDialog({
 
 // ─── Task Detail Dialog ───────────────────────────────────────────────────────
 
+type EditHistoryRow = {
+  id: string
+  field_name: string
+  old_value: string | null
+  new_value: string | null
+  changed_at: string
+  changed_by: string | null
+  changer_name?: string
+}
+
 function TaskDetailDialog({
   task,
   clients,
@@ -288,6 +299,14 @@ function TaskDetailDialog({
   onDeleted: () => void
 }) {
   const queryClient = useQueryClient()
+  const { role, profile } = useAuth()
+  const isPM = role === 'owner' || role === 'project_manager'
+
+  // ── Permission: can edit if PM/Owner OR assigned to this task ──────────────
+  const isAssigned = (task.task_assignments ?? []).some(a => a.user_id === profile?.user_id)
+  const canEdit = isPM || isAssigned
+
+  // ── Core state ──────────────────────────────────────────────────────────────
   const [qaWarning, setQaWarning]         = useState(false)
   const [currentStatus, setCurrentStatus] = useState<DeliveryTask['status']>(task.status)
   const [outputUrl, setOutputUrl]         = useState(task.output_link ?? '')
@@ -301,7 +320,120 @@ function TaskDetailDialog({
   const [newLinkLabel, setNewLinkLabel]   = useState('')
   const [newLinkUrl, setNewLinkUrl]       = useState('')
   const [savingLinks, setSavingLinks]     = useState(false)
+  const [showHistory, setShowHistory]     = useState(false)
 
+  // ── Inline edit state ───────────────────────────────────────────────────────
+  const [editingName, setEditingName]       = useState(false)
+  const [nameVal, setNameVal]               = useState(task.task_name)
+  const [editingDue, setEditingDue]         = useState(false)
+  const [dueVal, setDueVal]                 = useState(task.due_date ?? '')
+  const [editingWorkstream, setEditingWorkstream] = useState(false)
+  const [workstreamVal, setWorkstreamVal]   = useState(task.workstream)
+  const [editingImpact, setEditingImpact]   = useState(false)
+  const [impactVal, setImpactVal]           = useState(task.impact_level)
+  const [editingBlocker, setEditingBlocker] = useState(false)
+  const [blockerVal, setBlockerVal]         = useState(task.blocker_text ?? '')
+
+  // ── Edit history query (PM/Owner only) ──────────────────────────────────────
+  const { data: editHistory = [] } = useQuery<EditHistoryRow[]>({
+    queryKey: ['task-edit-history', task.id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('task_edit_history')
+        .select('*')
+        .eq('task_id', task.id)
+        .order('changed_at', { ascending: false })
+      if (error) return []
+      const rows = (data ?? []) as EditHistoryRow[]
+      // Enrich with changer name
+      return rows.map(r => ({
+        ...r,
+        changer_name: r.changed_by
+          ? profilesList.find(p => p.user_id === r.changed_by)?.full_name ?? 'Unknown'
+          : 'System',
+      }))
+    },
+    enabled: isPM && showHistory,
+  })
+
+  // ── Log field change to history (fire-and-forget) ───────────────────────────
+  const logHistory = (field: string, oldVal: string | null, newVal: string | null) => {
+    if (!profile?.user_id) return
+    supabase.from('task_edit_history').insert({
+      task_id: task.id,
+      changed_by: profile.user_id,
+      field_name: field,
+      old_value: oldVal ?? null,
+      new_value: newVal ?? null,
+    } as never).then(() => {
+      queryClient.invalidateQueries({ queryKey: ['task-edit-history', task.id] })
+    })
+  }
+
+  // ── Save a field with optional history ──────────────────────────────────────
+  const saveField = async (
+    field: string,
+    value: unknown,
+    oldDisplay: string | null,
+    newDisplay: string | null,
+    trackHistory = true,
+  ) => {
+    const { error } = await supabase
+      .from('delivery_tasks')
+      .update({ [field]: value } as never)
+      .eq('id', task.id)
+    if (error) return
+    if (trackHistory && (oldDisplay !== newDisplay)) {
+      logHistory(field, oldDisplay, newDisplay)
+    }
+    queryClient.invalidateQueries({ queryKey: ['tasks'] })
+    queryClient.invalidateQueries({ queryKey: ['client-detail'] })
+  }
+
+  // ── Field save handlers ──────────────────────────────────────────────────────
+  const commitName = async () => {
+    const trimmed = nameVal.trim()
+    if (trimmed && trimmed !== task.task_name) {
+      await saveField('task_name', trimmed, task.task_name, trimmed)
+    } else {
+      setNameVal(task.task_name)
+    }
+    setEditingName(false)
+  }
+
+  const commitDue = async (val: string) => {
+    setDueVal(val)
+    if (val !== task.due_date) {
+      await saveField('due_date', val || null, task.due_date ?? null, val || null)
+    }
+    setEditingDue(false)
+  }
+
+  const commitWorkstream = async (val: string) => {
+    setWorkstreamVal(val as DeliveryTask['workstream'])
+    if (val !== task.workstream) {
+      await saveField('workstream', val, task.workstream, val)
+    }
+    setEditingWorkstream(false)
+  }
+
+  const commitImpact = async (val: string) => {
+    setImpactVal(val as DeliveryTask['impact_level'])
+    if (val !== task.impact_level) {
+      await saveField('impact_level', val, task.impact_level, val)
+    }
+    setEditingImpact(false)
+  }
+
+  const commitBlocker = async () => {
+    const trimmed = blockerVal.trim()
+    if (trimmed !== (task.blocker_text ?? '')) {
+      await saveField('blocker_text', trimmed || null, task.blocker_text ?? null, trimmed || null, false)
+    }
+    setEditingBlocker(false)
+  }
+
+  // ── Existing mutations ───────────────────────────────────────────────────────
   const deleteTask = useMutation({
     mutationFn: async () => {
       const { error } = await supabase.from('delivery_tasks').delete().eq('id', task.id)
@@ -321,12 +453,8 @@ function TaskDetailDialog({
       const { error } = await supabase.from('delivery_tasks').update(upd as never).eq('id', task.id)
       if (error) throw error
     },
-    onMutate: (status) => {
-      setCurrentStatus(status) // optimistic — update button highlight immediately
-    },
-    onError: () => {
-      setCurrentStatus(task.status) // revert on failure
-    },
+    onMutate: (status) => { setCurrentStatus(status) },
+    onError:  ()       => { setCurrentStatus(task.status) },
     onSuccess: () => {
       setQaWarning(false)
       queryClient.invalidateQueries({ queryKey: ['tasks'] })
@@ -334,26 +462,18 @@ function TaskDetailDialog({
     },
   })
 
-  /** True if this task has A/R assignments and output is not yet logged */
-  const hasARAssignment = (task.task_assignments ?? []).some(
-    a => a.role_type === 'R' || a.role_type === 'A',
-  )
-  const needsQAGate = hasARAssignment && !arLogged
+  const hasARAssignment = (task.task_assignments ?? []).some(a => a.role_type === 'R' || a.role_type === 'A')
+  const needsQAGate     = hasARAssignment && !arLogged
 
   function handleMarkDone() {
-    if (currentStatus === 'Done') return // already done
-    if (needsQAGate) {
-      setQaWarning(true)
-    } else {
-      updateStatus.mutate('Done')
-    }
+    if (currentStatus === 'Done') return
+    if (needsQAGate) setQaWarning(true)
+    else updateStatus.mutate('Done')
   }
 
   const saveOutputUrl = async () => {
     const trimmed = outputUrl.trim()
     setSavingUrl(true)
-    // Saving a non-empty URL automatically satisfies the QA Gate (ar_output_logged = true).
-    // Clearing the URL reverts the gate.
     const logged = trimmed.length > 0
     await supabase.from('delivery_tasks').update({
       output_link: trimmed || null,
@@ -394,32 +514,65 @@ function TaskDetailDialog({
 
   const isOverdue = task.due_date && isOverdueEST(task.due_date) && task.status !== 'Done'
 
+  const WORKSTREAMS = [
+    'Sales','Ops/PM','AM','Tracking','SEO','PPC','Web/Dev','Local/GBP','Social','VA/Vendor',
+  ] as const
+  const IMPACTS = ['High', 'Medium', 'Low'] as const
+
+  const fieldLabel: Record<string, string> = {
+    task_name: 'Task Name', due_date: 'Due Date',
+    workstream: 'Workstream', impact_level: 'Impact',
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm p-4">
       <div className="relative w-full max-w-2xl bg-card border border-border rounded-xl shadow-xl overflow-y-auto max-h-[90vh]">
-        {/* Header */}
+
+        {/* ── Header ── */}
         <div className="sticky top-0 bg-card border-b border-border px-5 py-4 flex items-start justify-between gap-3">
-          <div>
+          <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap mb-1">
               <span className={cn(
                 task.status === 'Done'        ? 'status-done' :
                 task.status === 'In Progress' ? 'status-in-progress' :
                 task.status === 'Blocked'     ? 'status-blocked' : 'status-not-started'
-              )}>
-                {task.status}
-              </span>
+              )}>{task.status}</span>
               <span className={
-                task.impact_level === 'High' ? 'severity-high' :
-                task.impact_level === 'Medium' ? 'severity-med' : 'severity-low'
-              }>
-                {task.impact_level}
-              </span>
+                impactVal === 'High' ? 'severity-high' :
+                impactVal === 'Medium' ? 'severity-med' : 'severity-low'
+              }>{impactVal}</span>
               {isOverdue && <span className="status-badge bg-destructive/20 text-destructive">Overdue</span>}
             </div>
-            <h2 className="text-lg font-semibold">{task.task_name}</h2>
-            {task.clients && (
-              <p className="text-sm text-muted-foreground mt-0.5">{task.clients.name}</p>
+
+            {/* Editable task name */}
+            {editingName && canEdit ? (
+              <div className="flex items-center gap-2 mt-1">
+                <input
+                  autoFocus
+                  value={nameVal}
+                  onChange={e => setNameVal(e.target.value)}
+                  onBlur={commitName}
+                  onKeyDown={e => { if (e.key === 'Enter') commitName(); if (e.key === 'Escape') { setNameVal(task.task_name); setEditingName(false) } }}
+                  className="flex-1 text-lg font-semibold bg-background border border-primary rounded-md px-2 py-0.5 focus:outline-none focus:ring-2 focus:ring-primary"
+                />
+                <button onClick={commitName} className="text-primary hover:text-primary/80"><Check className="h-4 w-4" /></button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-1.5 group">
+                <h2 className="text-lg font-semibold">{nameVal}</h2>
+                {canEdit && (
+                  <button
+                    onClick={() => setEditingName(true)}
+                    className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-primary"
+                    title="Edit task name"
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </div>
             )}
+
+            {task.clients && <p className="text-sm text-muted-foreground mt-0.5">{task.clients.name}</p>}
           </div>
           <button onClick={onClose} className="text-muted-foreground hover:text-foreground shrink-0">
             <X className="h-5 w-5" />
@@ -435,29 +588,92 @@ function TaskDetailDialog({
             </div>
           )}
 
-          {/* Task Details Grid */}
+          {/* Task Details Grid — editable fields */}
           <div>
             <p className="section-header">Task Details</p>
             <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
-              <div className="flex justify-between border-b border-border/40 py-1.5">
+
+              {/* Workstream */}
+              <div className="flex justify-between items-center border-b border-border/40 py-1.5">
                 <span className="text-muted-foreground">Workstream</span>
-                <span className="font-medium">{task.workstream}</span>
+                {editingWorkstream && isPM ? (
+                  <select
+                    autoFocus
+                    value={workstreamVal}
+                    onChange={e => commitWorkstream(e.target.value)}
+                    onBlur={() => setEditingWorkstream(false)}
+                    className="text-sm bg-background border border-primary rounded px-1.5 py-0.5 focus:outline-none"
+                  >
+                    {WORKSTREAMS.map(w => <option key={w} value={w}>{w}</option>)}
+                  </select>
+                ) : (
+                  <div className="flex items-center gap-1 group">
+                    <span className="font-medium">{workstreamVal}</span>
+                    {isPM && (
+                      <button onClick={() => setEditingWorkstream(true)} className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-primary" title="Edit workstream">
+                        <Pencil className="h-3 w-3" />
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
-              <div className="flex justify-between border-b border-border/40 py-1.5">
+
+              {/* Impact */}
+              <div className="flex justify-between items-center border-b border-border/40 py-1.5">
                 <span className="text-muted-foreground">Impact</span>
-                <span className="font-medium">{task.impact_level}</span>
+                {editingImpact && isPM ? (
+                  <select
+                    autoFocus
+                    value={impactVal}
+                    onChange={e => commitImpact(e.target.value)}
+                    onBlur={() => setEditingImpact(false)}
+                    className="text-sm bg-background border border-primary rounded px-1.5 py-0.5 focus:outline-none"
+                  >
+                    {IMPACTS.map(i => <option key={i} value={i}>{i}</option>)}
+                  </select>
+                ) : (
+                  <div className="flex items-center gap-1 group">
+                    <span className="font-medium">{impactVal}</span>
+                    {isPM && (
+                      <button onClick={() => setEditingImpact(true)} className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-primary" title="Edit impact">
+                        <Pencil className="h-3 w-3" />
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
-              <div className="flex justify-between border-b border-border/40 py-1.5">
+
+              {/* Due Date */}
+              <div className="flex justify-between items-center border-b border-border/40 py-1.5">
                 <span className="text-muted-foreground">Due Date</span>
-                <span className={cn('font-medium', isOverdue ? 'text-destructive' : '')}>
-                  {task.due_date ? formatDateEST(task.due_date) : '—'}
-                </span>
+                {editingDue && canEdit ? (
+                  <input
+                    autoFocus
+                    type="date"
+                    value={dueVal}
+                    onChange={e => setDueVal(e.target.value)}
+                    onBlur={e => commitDue(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') commitDue(dueVal); if (e.key === 'Escape') setEditingDue(false) }}
+                    className="text-sm bg-background border border-primary rounded px-1.5 py-0.5 focus:outline-none"
+                  />
+                ) : (
+                  <div className="flex items-center gap-1 group">
+                    <span className={cn('font-medium', isOverdue ? 'text-destructive' : '')}>
+                      {dueVal ? formatDateEST(dueVal) : '—'}
+                    </span>
+                    {canEdit && (
+                      <button onClick={() => setEditingDue(true)} className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-primary" title="Edit due date">
+                        <Pencil className="h-3 w-3" />
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
+
+              {/* Completed */}
               <div className="flex justify-between border-b border-border/40 py-1.5">
                 <span className="text-muted-foreground">Completed</span>
-                <span className="font-medium">
-                  {task.completed_date ? formatDateEST(task.completed_date) : '—'}
-                </span>
+                <span className="font-medium">{task.completed_date ? formatDateEST(task.completed_date) : '—'}</span>
               </div>
             </div>
           </div>
@@ -471,7 +687,7 @@ function TaskDetailDialog({
                   const name = (a.user_id ? profilesList.find(p => p.user_id === a.user_id)?.full_name : null) ?? a.workstream ?? '—'
                   return (
                     <span key={i} className="text-xs px-2 py-1 rounded-md bg-primary/10 text-primary border border-primary/20">
-                      {name}
+                      {a.role_type}: {name}
                     </span>
                   )
                 })}
@@ -479,16 +695,40 @@ function TaskDetailDialog({
             </div>
           )}
 
-          {/* Blocker Details */}
-          {task.blocker_text && (
-            <div className="qa-gate-warning">
-              <AlertTriangle className="h-4 w-4 text-[hsl(var(--warning))] shrink-0 mt-0.5" />
-              <div>
-                <p className="font-medium text-sm">Blocker</p>
-                <p className="text-sm mt-0.5">{task.blocker_text}</p>
-              </div>
+          {/* Blocker — editable for anyone who can edit */}
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <p className="section-header mb-0">Blocker / Dependency</p>
+              {canEdit && !editingBlocker && (
+                <button onClick={() => setEditingBlocker(true)} className="text-xs text-muted-foreground hover:text-primary flex items-center gap-1">
+                  <Pencil className="h-3 w-3" /> Edit
+                </button>
+              )}
             </div>
-          )}
+            {editingBlocker ? (
+              <div className="space-y-1.5">
+                <textarea
+                  autoFocus
+                  value={blockerVal}
+                  onChange={e => setBlockerVal(e.target.value)}
+                  rows={2}
+                  placeholder="Describe the blocker or dependency…"
+                  className="w-full px-3 py-2 bg-background border border-input rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-ring resize-none"
+                />
+                <div className="flex gap-2">
+                  <button onClick={commitBlocker} className="px-3 py-1 rounded text-xs bg-primary text-primary-foreground hover:bg-primary/90">Save</button>
+                  <button onClick={() => { setBlockerVal(task.blocker_text ?? ''); setEditingBlocker(false) }} className="px-3 py-1 rounded text-xs text-muted-foreground hover:text-foreground">Cancel</button>
+                </div>
+              </div>
+            ) : blockerVal ? (
+              <div className="qa-gate-warning">
+                <AlertTriangle className="h-4 w-4 text-[hsl(var(--warning))] shrink-0 mt-0.5" />
+                <p className="text-sm">{blockerVal}</p>
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground italic">No blocker recorded.</p>
+            )}
+          </div>
 
           {/* Output Link */}
           <div>
@@ -523,9 +763,7 @@ function TaskDetailDialog({
                 className="flex-1 px-3 py-1.5 bg-background border border-input rounded-md text-xs focus:outline-none focus:ring-2 focus:ring-ring"
               />
               {outputUrl && (
-                <a href={outputUrl} target="_blank" rel="noopener noreferrer"
-                  className="text-primary hover:text-primary/80"
-                >
+                <a href={outputUrl} target="_blank" rel="noopener noreferrer" className="text-primary hover:text-primary/80">
                   <ExternalLink className="h-4 w-4" />
                 </a>
               )}
@@ -535,17 +773,14 @@ function TaskDetailDialog({
 
           {/* Notes */}
           <div>
-            <p className="section-header flex items-center gap-1.5">
-              <FileText className="h-3.5 w-3.5" /> Notes
-            </p>
+            <p className="section-header flex items-center gap-1.5"><FileText className="h-3.5 w-3.5" /> Notes</p>
             <textarea
               value={notes}
               onChange={e => setNotes(e.target.value)}
               onBlur={saveNotes}
               rows={4}
               placeholder="Add notes, output documentation, or context…"
-              className="w-full px-3 py-2 bg-background border border-input rounded-md text-sm
-                         focus:outline-none focus:ring-2 focus:ring-ring resize-none placeholder:text-muted-foreground"
+              className="w-full px-3 py-2 bg-background border border-input rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-ring resize-none placeholder:text-muted-foreground"
             />
             {savingNotes && (
               <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
@@ -556,26 +791,16 @@ function TaskDetailDialog({
 
           {/* Links */}
           <div>
-            <p className="section-header flex items-center gap-1.5">
-              <Link2 className="h-3.5 w-3.5" /> Links
-            </p>
+            <p className="section-header flex items-center gap-1.5"><Link2 className="h-3.5 w-3.5" /> Links</p>
             {links.length > 0 && (
               <div className="space-y-1.5 mb-3">
                 {links.map((l, i) => (
                   <div key={i} className="flex items-center gap-2 text-sm">
-                    <a
-                      href={l.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-1.5 text-primary hover:underline flex-1 min-w-0 truncate"
-                    >
-                      <ExternalLink className="h-3 w-3 shrink-0" />
-                      {l.label}
+                    <a href={l.url} target="_blank" rel="noopener noreferrer"
+                      className="flex items-center gap-1.5 text-primary hover:underline flex-1 min-w-0 truncate">
+                      <ExternalLink className="h-3 w-3 shrink-0" />{l.label}
                     </a>
-                    <button
-                      onClick={() => removeLink(i)}
-                      className="text-muted-foreground hover:text-destructive shrink-0"
-                    >
+                    <button onClick={() => removeLink(i)} className="text-muted-foreground hover:text-destructive shrink-0">
                       <X className="h-3 w-3" />
                     </button>
                   </div>
@@ -583,58 +808,52 @@ function TaskDetailDialog({
               </div>
             )}
             <div className="flex gap-2">
-              <input
-                value={newLinkLabel}
-                onChange={e => setNewLinkLabel(e.target.value)}
-                placeholder="Label (optional)"
-                className="w-32 px-2 py-1.5 bg-background border border-input rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-primary"
-              />
-              <input
-                value={newLinkUrl}
-                onChange={e => setNewLinkUrl(e.target.value)}
-                placeholder="https://…"
+              <input value={newLinkLabel} onChange={e => setNewLinkLabel(e.target.value)} placeholder="Label (optional)"
+                className="w-32 px-2 py-1.5 bg-background border border-input rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-primary" />
+              <input value={newLinkUrl} onChange={e => setNewLinkUrl(e.target.value)} placeholder="https://…"
                 onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addLink() } }}
-                className="flex-1 px-2 py-1.5 bg-background border border-input rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-primary"
-              />
-              <button
-                onClick={addLink}
-                disabled={!newLinkUrl.trim() || savingLinks}
-                className="px-2.5 py-1.5 rounded-md bg-primary/10 text-primary border border-primary/20
-                           text-xs font-medium hover:bg-primary/20 disabled:opacity-50 transition-colors"
-              >
+                className="flex-1 px-2 py-1.5 bg-background border border-input rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-primary" />
+              <button onClick={addLink} disabled={!newLinkUrl.trim() || savingLinks}
+                className="px-2.5 py-1.5 rounded-md bg-primary/10 text-primary border border-primary/20 text-xs font-medium hover:bg-primary/20 disabled:opacity-50 transition-colors">
                 {savingLinks ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />}
               </button>
             </div>
           </div>
 
-          {/* Duplicate / Move */}
+          {/* Actions row */}
           <div className="flex items-center justify-between">
             <p className="section-header mb-0">Actions</p>
             <div className="flex items-center gap-2">
-              <button
-                onClick={() => setShowDuplicate(true)}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border/60 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
-              >
-                <Copy className="h-3 w-3" />
-                Duplicate / Move
+              {/* Edit history — PM/Owner only */}
+              {isPM && (
+                <button
+                  onClick={() => setShowHistory(h => !h)}
+                  className={cn(
+                    'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors',
+                    showHistory
+                      ? 'border-primary/40 bg-primary/10 text-primary'
+                      : 'border-border/60 text-muted-foreground hover:bg-accent hover:text-foreground',
+                  )}
+                >
+                  <History className="h-3 w-3" />
+                  Edit History
+                </button>
+              )}
+              <button onClick={() => setShowDuplicate(true)}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border/60 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground transition-colors">
+                <Copy className="h-3 w-3" /> Duplicate / Move
               </button>
               {canDelete && !confirmDelete && (
-                <button
-                  onClick={() => setConfirmDelete(true)}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-destructive/40 text-xs font-medium text-destructive hover:bg-destructive/10 transition-colors"
-                >
-                  <Trash2 className="h-3 w-3" />
-                  Delete
+                <button onClick={() => setConfirmDelete(true)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-destructive/40 text-xs font-medium text-destructive hover:bg-destructive/10 transition-colors">
+                  <Trash2 className="h-3 w-3" /> Delete
                 </button>
               )}
               {canDelete && confirmDelete && (
                 <div className="flex items-center gap-1.5">
                   <span className="text-xs text-destructive">Confirm?</span>
-                  <button
-                    onClick={() => deleteTask.mutate()}
-                    disabled={deleteTask.isPending}
-                    className="px-2.5 py-1 rounded text-xs font-medium bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                  >
+                  <button onClick={() => deleteTask.mutate()} disabled={deleteTask.isPending}
+                    className="px-2.5 py-1 rounded text-xs font-medium bg-destructive text-destructive-foreground hover:bg-destructive/90">
                     {deleteTask.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Yes, Delete'}
                   </button>
                   <button onClick={() => setConfirmDelete(false)} className="px-2.5 py-1 rounded text-xs text-muted-foreground hover:text-foreground">Cancel</button>
@@ -643,11 +862,47 @@ function TaskDetailDialog({
             </div>
           </div>
 
+          {/* ── Edit History Panel ── */}
+          {isPM && showHistory && (
+            <div className="rounded-lg border border-border overflow-hidden">
+              <div className="px-4 py-2.5 bg-muted/40 border-b border-border flex items-center gap-2">
+                <History className="h-3.5 w-3.5 text-primary" />
+                <span className="text-xs font-semibold">Edit History</span>
+                <span className="ml-auto text-xs text-muted-foreground">{editHistory.length} change{editHistory.length !== 1 ? 's' : ''}</span>
+              </div>
+              {editHistory.length === 0 ? (
+                <div className="px-4 py-6 text-center text-xs text-muted-foreground">No edits recorded yet.</div>
+              ) : (
+                <div className="divide-y divide-border/50">
+                  {editHistory.map(h => (
+                    <div key={h.id} className="px-4 py-2.5 flex items-start gap-3 text-xs">
+                      <div className="flex-1 min-w-0">
+                        <span className="font-medium text-foreground">{fieldLabel[h.field_name] ?? h.field_name}</span>
+                        <span className="text-muted-foreground"> changed by </span>
+                        <span className="font-medium text-primary">{h.changer_name}</span>
+                        <div className="flex items-center gap-2 mt-1">
+                          <span className="line-through text-destructive/70 truncate max-w-32">{h.old_value ?? '—'}</span>
+                          <span className="text-muted-foreground">→</span>
+                          <span className="text-[hsl(var(--success))] truncate max-w-32">{h.new_value ?? '—'}</span>
+                        </div>
+                      </div>
+                      <span className="text-muted-foreground shrink-0 text-right">
+                        {new Date(h.changed_at).toLocaleString('en-US', {
+                          timeZone: 'America/New_York',
+                          month: 'short', day: 'numeric',
+                          hour: 'numeric', minute: '2-digit',
+                        })}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Status Update */}
           <div>
             <p className="section-header">Update Status</p>
-
-            {/* QA Gate confirmation */}
             {qaWarning && (
               <div className="qa-gate-warning mb-3">
                 <AlertTriangle className="h-4 w-4 text-[hsl(var(--warning))] shrink-0 mt-0.5" />
@@ -658,52 +913,37 @@ function TaskDetailDialog({
                     Log the output before marking Done, or override to proceed anyway.
                   </p>
                   <div className="flex gap-2 mt-2">
-                    <button
-                      onClick={() => updateStatus.mutate('Done')}
-                      disabled={updateStatus.isPending}
-                      className="px-3 py-1 rounded text-xs font-medium border border-destructive/50 text-destructive hover:bg-destructive/10"
-                    >
+                    <button onClick={() => updateStatus.mutate('Done')} disabled={updateStatus.isPending}
+                      className="px-3 py-1 rounded text-xs font-medium border border-destructive/50 text-destructive hover:bg-destructive/10">
                       Override — Mark Done Anyway
                     </button>
-                    <button
-                      onClick={() => setQaWarning(false)}
-                      className="px-3 py-1 rounded text-xs text-muted-foreground hover:text-foreground"
-                    >
+                    <button onClick={() => setQaWarning(false)} className="px-3 py-1 rounded text-xs text-muted-foreground hover:text-foreground">
                       Cancel
                     </button>
                   </div>
                 </div>
               </div>
             )}
-
             <div className="flex gap-2 flex-wrap">
               {(['Not Started', 'In Progress', 'Blocked'] as const).map(s => (
-                <button
-                  key={s}
-                  onClick={() => updateStatus.mutate(s)}
+                <button key={s} onClick={() => updateStatus.mutate(s)}
                   disabled={updateStatus.isPending || currentStatus === s}
-                  className={cn(
-                    'px-3 py-1.5 rounded-md text-xs font-medium border transition-colors',
+                  className={cn('px-3 py-1.5 rounded-md text-xs font-medium border transition-colors',
                     currentStatus === s
                       ? 'border-primary/50 bg-primary/10 text-primary cursor-default'
                       : 'border-border bg-muted text-muted-foreground hover:text-foreground hover:border-primary/30'
-                  )}
-                >
+                  )}>
                   {s}
                 </button>
               ))}
-              <button
-                onClick={handleMarkDone}
-                disabled={updateStatus.isPending || currentStatus === 'Done'}
-                className={cn(
-                  'px-3 py-1.5 rounded-md text-xs font-medium border transition-colors',
+              <button onClick={handleMarkDone} disabled={updateStatus.isPending || currentStatus === 'Done'}
+                className={cn('px-3 py-1.5 rounded-md text-xs font-medium border transition-colors',
                   currentStatus === 'Done'
                     ? 'border-primary/50 bg-primary/10 text-primary cursor-default'
                     : needsQAGate
                     ? 'border-[hsl(var(--warning))]/50 bg-[hsl(var(--warning))]/10 text-[hsl(var(--warning))] hover:bg-[hsl(var(--warning))]/20'
                     : 'border-border bg-muted text-muted-foreground hover:text-foreground hover:border-primary/30'
-                )}
-              >
+                )}>
                 Done {needsQAGate && '⚠'}
               </button>
             </div>
@@ -712,11 +952,7 @@ function TaskDetailDialog({
       </div>
 
       {showDuplicate && (
-        <DuplicateTaskDialog
-          task={task}
-          clients={clients}
-          onClose={() => setShowDuplicate(false)}
-        />
+        <DuplicateTaskDialog task={task} clients={clients} onClose={() => setShowDuplicate(false)} />
       )}
     </div>
   )
@@ -791,6 +1027,7 @@ export default function TasksPage() {
   const [employeeFilter, setEmployeeFilter] = useState('all')
   const [selectedTask, setSelectedTask]   = useState<DeliveryTask | null>(null)
   const [showCreate, setShowCreate]       = useState(false)
+  const [showDailyReport, setShowDailyReport] = useState(false)
 
   const { role, profile } = useAuth()
   const isPMOrOwner = role === 'owner' || role === 'project_manager'
@@ -892,18 +1129,34 @@ export default function TasksPage() {
         presetClientId={clientFilter !== 'all' ? clientFilter : undefined}
       />
 
+      <DailyReportModal
+        open={showDailyReport}
+        onClose={() => setShowDailyReport(false)}
+      />
+
       <div className="flex items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold">Tasks</h1>
           <p className="text-sm text-muted-foreground mt-1">Master delivery task database</p>
         </div>
-        <button
-          onClick={() => setShowCreate(true)}
-          className="flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-sm hover:bg-primary/90 transition-colors"
-        >
-          <Plus className="h-4 w-4" />
-          Add Task
-        </button>
+        <div className="flex items-center gap-2">
+          {isPMOrOwner && (
+            <button
+              onClick={() => setShowDailyReport(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 border border-border text-muted-foreground rounded-md text-sm hover:text-foreground hover:bg-accent transition-colors"
+            >
+              <BarChart2 className="h-4 w-4" />
+              Daily Report
+            </button>
+          )}
+          <button
+            onClick={() => setShowCreate(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-sm hover:bg-primary/90 transition-colors"
+          >
+            <Plus className="h-4 w-4" />
+            Add Task
+          </button>
+        </div>
       </div>
 
       {/* Controls */}
