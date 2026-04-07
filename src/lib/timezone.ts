@@ -5,14 +5,24 @@
  */
 
 import { formatInTimeZone, toZonedTime, fromZonedTime } from 'date-fns-tz'
-import { format, parseISO, isToday, isBefore, addHours } from 'date-fns'
+import { format, parseISO, isBefore, addHours } from 'date-fns'
 
 export const EST = 'America/New_York'
 
 // ─── Display Formatting ───────────────────────────────────────────────────
 
-/** "Mar 14, 2026" */
+/** "Mar 14, 2026"
+ *
+ * Date-only strings ("YYYY-MM-DD") are treated as local calendar dates and
+ * formatted WITHOUT timezone conversion — "2026-04-07" always shows Apr 7.
+ * Full ISO timestamps (with T/Z) are converted to EST before formatting.
+ */
 export function formatDateEST(utcOrDateStr: string | Date): string {
+  if (typeof utcOrDateStr === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(utcOrDateStr)) {
+    // Parse as local date to avoid UTC→EST shift (e.g. Apr 7 00:00 UTC → Apr 6 EST)
+    const [year, month, day] = utcOrDateStr.split('-').map(Number)
+    return format(new Date(year, month - 1, day), 'MMM d, yyyy')
+  }
   const d = typeof utcOrDateStr === 'string' ? parseISO(utcOrDateStr) : utcOrDateStr
   return formatInTimeZone(d, EST, 'MMM d, yyyy')
 }
@@ -51,12 +61,12 @@ export function nowInEST(): Date {
 
 /** Is a YYYY-MM-DD date string today in EST? */
 export function isDateTodayEST(dateStr: string): boolean {
-  return isToday(parseISO(dateStr))
+  return dateStr === todayDateEST()
 }
 
 /** Is a YYYY-MM-DD date string past today in EST? */
 export function isOverdueEST(dateStr: string): boolean {
-  return isBefore(parseISO(dateStr), parseISO(todayDateEST()))
+  return dateStr < todayDateEST()
 }
 
 /** Days elapsed since a given date string (for blocker aging) */

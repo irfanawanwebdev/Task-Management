@@ -331,10 +331,12 @@ function TaskDetailDialog({
   const [workstreamVal, setWorkstreamVal]   = useState(task.workstream)
   const [editingImpact, setEditingImpact]   = useState(false)
   const [impactVal, setImpactVal]           = useState(task.impact_level)
-  const [editingBlocker, setEditingBlocker] = useState(false)
-  const [blockerVal, setBlockerVal]         = useState(task.blocker_text ?? '')
+  const [editingBlocker, setEditingBlocker]     = useState(false)
+  const [blockerVal, setBlockerVal]             = useState(task.blocker_text ?? '')
+  const [editingDescription, setEditingDescription] = useState(false)
+  const [descriptionVal, setDescriptionVal]     = useState(task.description ?? '')
 
-  // ── Edit history query (PM/Owner only) ──────────────────────────────────────
+  // ── Edit history query — always fetched for PM so count stays live ──────────
   const { data: editHistory = [] } = useQuery<EditHistoryRow[]>({
     queryKey: ['task-edit-history', task.id],
     queryFn: async () => {
@@ -343,9 +345,11 @@ function TaskDetailDialog({
         .select('*')
         .eq('task_id', task.id)
         .order('changed_at', { ascending: false })
-      if (error) return []
+      if (error) {
+        console.error('[task-edit-history] fetch error:', error.message)
+        return []
+      }
       const rows = (data ?? []) as EditHistoryRow[]
-      // Enrich with changer name
       return rows.map(r => ({
         ...r,
         changer_name: r.changed_by
@@ -353,21 +357,24 @@ function TaskDetailDialog({
           : 'System',
       }))
     },
-    enabled: isPM && showHistory,
+    enabled: isPM,  // always fetch for PM — not just when panel is open
   })
 
-  // ── Log field change to history (fire-and-forget) ───────────────────────────
-  const logHistory = (field: string, oldVal: string | null, newVal: string | null) => {
+  // ── Log field change to history ─────────────────────────────────────────────
+  const logHistory = async (field: string, oldVal: string | null, newVal: string | null) => {
     if (!profile?.user_id) return
-    supabase.from('task_edit_history').insert({
+    const { error } = await supabase.from('task_edit_history').insert({
       task_id: task.id,
       changed_by: profile.user_id,
       field_name: field,
       old_value: oldVal ?? null,
       new_value: newVal ?? null,
-    } as never).then(() => {
-      queryClient.invalidateQueries({ queryKey: ['task-edit-history', task.id] })
-    })
+    } as never)
+    if (error) {
+      console.error('[task-edit-history] insert error:', error.message, '— run migration 33 in Supabase SQL editor')
+      return
+    }
+    queryClient.invalidateQueries({ queryKey: ['task-edit-history', task.id] })
   }
 
   // ── Save a field with optional history ──────────────────────────────────────
@@ -382,9 +389,12 @@ function TaskDetailDialog({
       .from('delivery_tasks')
       .update({ [field]: value } as never)
       .eq('id', task.id)
-    if (error) return
-    if (trackHistory && (oldDisplay !== newDisplay)) {
-      logHistory(field, oldDisplay, newDisplay)
+    if (error) {
+      console.error('[saveField] update error:', error.message)
+      return
+    }
+    if (trackHistory && oldDisplay !== newDisplay) {
+      await logHistory(field, oldDisplay, newDisplay)
     }
     queryClient.invalidateQueries({ queryKey: ['tasks'] })
     queryClient.invalidateQueries({ queryKey: ['client-detail'] })
@@ -431,6 +441,14 @@ function TaskDetailDialog({
       await saveField('blocker_text', trimmed || null, task.blocker_text ?? null, trimmed || null, false)
     }
     setEditingBlocker(false)
+  }
+
+  const commitDescription = async () => {
+    const trimmed = descriptionVal.trim()
+    if (trimmed !== (task.description ?? '')) {
+      await saveField('description', trimmed || null, task.description ?? null, trimmed || null, false)
+    }
+    setEditingDescription(false)
   }
 
   // ── Existing mutations ───────────────────────────────────────────────────────
@@ -580,11 +598,35 @@ function TaskDetailDialog({
         </div>
 
         <div className="p-5 space-y-5">
-          {/* Description */}
-          {task.description && (
+          {/* Description — editable for anyone who can edit */}
+          {(descriptionVal || canEdit) && (
             <div>
-              <p className="section-header">Description</p>
-              <p className="text-sm text-muted-foreground">{task.description}</p>
+              <div className="flex items-center justify-between mb-1">
+                <p className="section-header mb-0">Description</p>
+                {canEdit && !editingDescription && (
+                  <button onClick={() => setEditingDescription(true)} className="text-xs text-muted-foreground hover:text-primary flex items-center gap-1">
+                    <Pencil className="h-3 w-3" /> Edit
+                  </button>
+                )}
+              </div>
+              {editingDescription ? (
+                <div className="space-y-1.5">
+                  <textarea
+                    autoFocus
+                    value={descriptionVal}
+                    onChange={e => setDescriptionVal(e.target.value)}
+                    rows={3}
+                    placeholder="Add a description…"
+                    className="w-full px-3 py-2 bg-background border border-input rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-ring resize-none"
+                  />
+                  <div className="flex gap-2">
+                    <button onClick={commitDescription} className="px-3 py-1 rounded text-xs bg-primary text-primary-foreground hover:bg-primary/90">Save</button>
+                    <button onClick={() => { setDescriptionVal(task.description ?? ''); setEditingDescription(false) }} className="px-3 py-1 rounded text-xs text-muted-foreground hover:text-foreground">Cancel</button>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">{descriptionVal || <span className="italic opacity-50">No description.</span>}</p>
+              )}
             </div>
           )}
 
