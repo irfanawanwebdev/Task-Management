@@ -10,26 +10,35 @@ import { useNavigate } from 'react-router-dom'
 
 // ─── Miami Time Clock ──────────────────────────────────────────────────────
 
-function getMiamiTime(): string {
-  return new Date().toLocaleTimeString('en-US', {
+function getMiamiDateTime(): { date: string; time: string } {
+  const now = new Date()
+  const date = now.toLocaleDateString('en-US', {
+    timeZone: 'America/New_York',
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+  })
+  const time = now.toLocaleTimeString('en-US', {
     timeZone: 'America/New_York',
     hour: 'numeric',
     minute: '2-digit',
     hour12: true,
   })
+  return { date, time }
 }
 
 function MiamiClock() {
-  const [time, setTime] = useState(getMiamiTime)
+  const [dt, setDt] = useState(getMiamiDateTime)
   useEffect(() => {
-    const id = setInterval(() => setTime(getMiamiTime()), 1000)
+    const id = setInterval(() => setDt(getMiamiDateTime()), 1000)
     return () => clearInterval(id)
   }, [])
   return (
-    <span className="text-sm font-medium text-foreground">
-      Miami time{' '}
-      <span className="text-muted-foreground">•</span>{' '}
-      {time}
+    <span className="text-sm font-medium text-foreground flex items-center gap-1.5">
+      <span className="text-muted-foreground">{dt.date}</span>
+      <span className="text-muted-foreground/40">·</span>
+      {dt.time}
+      <span className="text-xs text-muted-foreground/60 ml-0.5">Miami</span>
     </span>
   )
 }

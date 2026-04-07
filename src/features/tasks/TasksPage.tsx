@@ -12,7 +12,7 @@ import {
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import type { Client, DeliveryTask } from '@/lib/types'
-import { isOverdueEST, formatDateEST, isDateTodayEST } from '@/lib/timezone'
+import { isOverdueEST, formatDateEST, isDateTodayEST, todayDateEST } from '@/lib/timezone'
 import { cn } from '@/lib/utils'
 import { CreateTaskDialog } from './CreateTaskDialog'
 import { useAuth } from '@/features/auth/AuthContext'
@@ -20,7 +20,7 @@ import { HelpPopover } from '@/components/HelpPopover'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type ViewTab = 'timeline' | 'workstream' | 'qa-gate' | 'blocked' | 'overdue' | 'next-ready'
+type ViewTab = 'timeline' | 'workstream' | 'qa-gate' | 'blocked' | 'overdue' | 'done'
 
 // ─── Data Hooks ───────────────────────────────────────────────────────────────
 
@@ -317,7 +317,7 @@ function TaskDetailDialog({
   const updateStatus = useMutation({
     mutationFn: async (status: DeliveryTask['status']) => {
       const upd: Record<string, unknown> = { status }
-      if (status === 'Done') upd['completed_date'] = new Date().toISOString().slice(0, 10)
+      if (status === 'Done') upd['completed_date'] = todayDateEST()
       const { error } = await supabase.from('delivery_tasks').update(upd as never).eq('id', task.id)
       if (error) throw error
     },
@@ -726,7 +726,7 @@ function TaskDetailDialog({
 
 function TaskRow({ task, profilesList, onClick }: { task: DeliveryTask; profilesList: { user_id: string; full_name: string }[]; onClick: () => void }) {
   const isOverdue = task.due_date && isOverdueEST(task.due_date) && task.status !== 'Done'
-  const isToday   = task.due_date && isDateTodayEST(task.due_date)
+  const isToday   = task.due_date && isDateTodayEST(task.due_date) && task.status !== 'Done'
 
   const resolveName = (a: { user_id?: string | null; workstream?: string | null }) =>
     (a.user_id ? profilesList.find(p => p.user_id === a.user_id)?.full_name : null) ?? a.workstream ?? '—'
@@ -785,11 +785,12 @@ function TaskRow({ task, profilesList, onClick }: { task: DeliveryTask; profiles
 // ─── Main Page ───────────────────────────────────────────────────────────────
 
 export default function TasksPage() {
-  const [activeView, setActiveView]     = useState<ViewTab>('timeline')
-  const [clientFilter, setClientFilter] = useState('all')
-  const [dateFilter, setDateFilter]     = useState<'all' | '7' | '14' | '30'>('all')
-  const [selectedTask, setSelectedTask] = useState<DeliveryTask | null>(null)
-  const [showCreate, setShowCreate]     = useState(false)
+  const [activeView, setActiveView]       = useState<ViewTab>('timeline')
+  const [clientFilter, setClientFilter]   = useState('all')
+  const [dateFilter, setDateFilter]       = useState<'all' | 'today' | '7' | '14' | '30'>('all')
+  const [employeeFilter, setEmployeeFilter] = useState('all')
+  const [selectedTask, setSelectedTask]   = useState<DeliveryTask | null>(null)
+  const [showCreate, setShowCreate]       = useState(false)
 
   const { role, profile } = useAuth()
   const isPMOrOwner = role === 'owner' || role === 'project_manager'
@@ -811,25 +812,37 @@ export default function TasksPage() {
   // ── Date filtering ──────────────────────────────────────────────────────────
   const dateTasks = (() => {
     if (dateFilter === 'all') return tasks
+    if (dateFilter === 'today') {
+      const today = todayDateEST()
+      return tasks.filter(t => t.due_date === today)
+    }
     const cutoff = new Date()
     cutoff.setDate(cutoff.getDate() - parseInt(dateFilter))
     const cutoffStr = cutoff.toISOString().slice(0, 10)
     return tasks.filter(t => t.due_date && t.due_date >= cutoffStr)
   })()
 
+  // ── Employee filtering (PM/Owner only) ──────────────────────────────────────
+  const employeeTasks = (() => {
+    if (!isPMOrOwner || employeeFilter === 'all') return dateTasks
+    return dateTasks.filter(t =>
+      (t.task_assignments ?? []).some(a => a.user_id === employeeFilter)
+    )
+  })()
+
   // ── View filtering ──────────────────────────────────────────────────────────
   const visibleTasks = (() => {
     switch (activeView) {
       case 'qa-gate':
-        return dateTasks.filter(t => !t.ar_output_logged && t.status !== 'Not Started')
+        return employeeTasks.filter(t => !t.ar_output_logged && t.status !== 'Not Started')
       case 'blocked':
-        return dateTasks.filter(t => t.status === 'Blocked')
+        return employeeTasks.filter(t => t.status === 'Blocked')
       case 'overdue':
-        return dateTasks.filter(t => t.due_date && isOverdueEST(t.due_date) && t.status !== 'Done')
-      case 'next-ready':
-        return dateTasks.filter(t => t.ar_output_logged && t.status === 'Done')
+        return employeeTasks.filter(t => t.due_date && isOverdueEST(t.due_date) && t.status !== 'Done')
+      case 'done':
+        return employeeTasks.filter(t => t.status === 'Done')
       default:
-        return dateTasks
+        return employeeTasks
     }
   })()
 
@@ -862,12 +875,13 @@ export default function TasksPage() {
     { id: 'qa-gate',    label: 'QA Gate',       help: 'Tasks that are in progress but the A/R output URL hasn\'t been logged yet. The next delivery step is locked until these are cleared.' },
     { id: 'blocked',    label: 'Blocked',       help: 'Tasks with status "Blocked". Each should have a matching blocker logged on the Blockers page. Resolve or escalate promptly.' },
     { id: 'overdue',    label: 'Overdue',       help: 'Tasks past their due date that aren\'t done. Prioritize these — they directly affect the client\'s risk score.' },
-    { id: 'next-ready', label: 'Next Ready',    help: 'Tasks where all prerequisites are met and work can begin immediately. Check here each morning to see what to pick up.' },
+    { id: 'done',       label: 'Done',          help: 'All completed tasks. Use this to review what has been delivered for each client.' },
   ]
 
-  const blockedCount = tasks.filter(t => t.status === 'Blocked').length
-  const overdueCount = tasks.filter(t => t.due_date && isOverdueEST(t.due_date) && t.status !== 'Done').length
-  const qaCount      = tasks.filter(t => !t.ar_output_logged && t.status !== 'Not Started' && t.status !== 'Done').length
+  const blockedCount = employeeTasks.filter(t => t.status === 'Blocked').length
+  const overdueCount = employeeTasks.filter(t => t.due_date && isOverdueEST(t.due_date) && t.status !== 'Done').length
+  const qaCount      = employeeTasks.filter(t => !t.ar_output_logged && t.status !== 'Not Started' && t.status !== 'Done').length
+  const doneCount    = employeeTasks.filter(t => t.status === 'Done').length
 
   return (
     <div className="space-y-5">
@@ -913,13 +927,16 @@ export default function TasksPage() {
               {v.id === 'qa-gate' && qaCount > 0 && (
                 <span className="px-1 bg-[hsl(var(--warning))]/20 text-[hsl(var(--warning))] text-xs rounded-full">{qaCount}</span>
               )}
+              {v.id === 'done' && doneCount > 0 && (
+                <span className="px-1 bg-[hsl(var(--success))]/20 text-[hsl(var(--success))] text-xs rounded-full">{doneCount}</span>
+              )}
             </button>
           ))}
         </div>
 
         {/* Date Filter Pills */}
         <div className="flex gap-1 ml-auto">
-          {(['all', '7', '14', '30'] as const).map(f => (
+          {(['all', 'today', '7', '14', '30'] as const).map(f => (
             <button
               key={f}
               onClick={() => setDateFilter(f)}
@@ -930,7 +947,7 @@ export default function TasksPage() {
                   : 'border-border text-muted-foreground hover:text-foreground bg-background',
               )}
             >
-              {f === 'all' ? 'All Time' : `Last ${f}d`}
+              {f === 'all' ? 'All Time' : f === 'today' ? 'Today' : `Last ${f}d`}
             </button>
           ))}
         </div>
@@ -946,6 +963,20 @@ export default function TasksPage() {
             <option key={c.id} value={c.id}>{c.name}</option>
           ))}
         </select>
+
+        {/* Employee Filter — PM/Owner only */}
+        {isPMOrOwner && (
+          <select
+            value={employeeFilter}
+            onChange={e => setEmployeeFilter(e.target.value)}
+            className="px-3 py-1.5 bg-background border border-input rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+          >
+            <option value="all">All Employees</option>
+            {profilesList.map(p => (
+              <option key={p.user_id} value={p.user_id}>{p.full_name}</option>
+            ))}
+          </select>
+        )}
       </div>
 
       {/* QA Gate Banner */}
