@@ -303,8 +303,7 @@ function TaskDetailDialog({
   const isPM = role === 'owner' || role === 'project_manager'
 
   // ── Permission: can edit if PM/Owner OR assigned to this task ──────────────
-  const isAssigned = (task.task_assignments ?? []).some(a => a.user_id === profile?.user_id)
-  const canEdit = isPM || isAssigned
+  const canEdit = true  // any authenticated user can edit tasks
 
   // ── Core state ──────────────────────────────────────────────────────────────
   const [qaWarning, setQaWarning]         = useState(false)
@@ -1073,7 +1072,7 @@ export default function TasksPage() {
 
   const { role, profile } = useAuth()
   const isPMOrOwner = role === 'owner' || role === 'project_manager'
-  const canDelete = role === 'owner' || role === 'project_manager' || role === 'account_manager'
+  const canDelete = !!role  // any authenticated user can delete tasks
 
   const { data: tasks = [], isLoading, isError } = useTasks(
     clientFilter,

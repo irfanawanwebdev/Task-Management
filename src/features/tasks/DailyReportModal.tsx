@@ -5,12 +5,14 @@
  *  - Shows employee names (responsible / accountable) — DAILY only.
  *  - Weekly / Monthly reports remain anonymous (handled in MeetingsPage).
  *  - Status filter: All | Done | In Progress | Not Started | Blocked.
+ *  - Employee filter: All | one or more employees (multi-select).
+ *  - Description & Notes shown in daily report only.
  *  - Download generates a self-contained HTML file.
  */
 
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { X, Download, Loader2, FileText, User } from 'lucide-react'
+import { X, Download, Loader2, FileText, User, Users } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import type { DeliveryTask } from '@/lib/types'
 import { formatDateEST, todayDateEST } from '@/lib/timezone'
@@ -77,7 +79,6 @@ function buildEmployeeGroups(
     ? tasks
     : tasks.filter(t => t.status === statusFilter)
 
-  // Map: employee name → tasks
   const map = new Map<string, EnrichedTask[]>()
 
   for (const task of filtered) {
@@ -95,7 +96,6 @@ function buildEmployeeGroups(
       accountables,
     }
 
-    // Collect all assigned employees (R + A)
     const assigned = assignments
       .filter(a => a.user_id)
       .map(a => resolveName(a.user_id, a.workstream, profiles))
@@ -103,7 +103,6 @@ function buildEmployeeGroups(
     const uniqueAssigned = [...new Set(assigned)]
 
     if (uniqueAssigned.length === 0) {
-      // Unassigned task — bucket under workstream
       const key = task.workstream ?? 'Unassigned'
       if (!map.has(key)) map.set(key, [])
       map.get(key)!.push(enriched)
@@ -115,7 +114,6 @@ function buildEmployeeGroups(
     }
   }
 
-  // Sort: named employees first (alphabetically), then workstreams
   const entries = [...map.entries()]
   const isPersonName = (n: string) => profiles.some(p => p.full_name === n)
   entries.sort(([a], [b]) => {
@@ -138,32 +136,59 @@ function statusColor(status: string): string {
   return '#6b7280'
 }
 
-function buildReportHTML(groups: EmployeeGroup[], statusFilter: StatusFilter, date: string): string {
-  const label = statusFilter === 'all' ? 'All Statuses' : statusFilter
+function esc(str: string | null | undefined): string {
+  if (!str) return '—'
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/\n/g, '<br/>')
+}
+
+function buildReportHTML(
+  groups: EmployeeGroup[],
+  statusFilter: StatusFilter,
+  selectedEmployees: string[],
+  date: string,
+): string {
+  const statusLabel = statusFilter === 'all' ? 'All Statuses' : statusFilter
+  const employeeLabel = selectedEmployees.length === 0
+    ? 'All Employees'
+    : selectedEmployees.length === 1
+      ? selectedEmployees[0]
+      : `${selectedEmployees.length} employees`
   const totalTasks = groups.reduce((n, g) => n + g.tasks.length, 0)
 
   const groupsHTML = groups.map(g => {
-    const rows = g.tasks.map(t => `
+    const rows = g.tasks.map(t => {
+      const linksHTML = (t.links && t.links.length > 0)
+        ? t.links.map(l => `<a href="${esc(l.url)}" target="_blank" rel="noopener noreferrer">${esc(l.label || l.url)}</a>`).join('<br/>')
+        : '—'
+      return `
       <tr>
-        <td>${t.task_name}</td>
-        <td>${t.clientName}</td>
-        <td>${t.workstream}</td>
+        <td>${esc(t.task_name)}</td>
+        <td>${esc(t.clientName)}</td>
+        <td>${esc(t.workstream)}</td>
         <td style="color:${statusColor(t.status)};font-weight:600">${t.status}</td>
         <td>${t.due_date ? formatDateEST(t.due_date) : '—'}</td>
-        <td>${t.responsibles.join(', ') || '—'}</td>
-      </tr>`).join('')
+        <td class="notes-cell">${esc(t.description)}</td>
+        <td class="notes-cell">${esc(t.notes ?? null)}</td>
+        <td class="links-cell">${linksHTML}</td>
+      </tr>`
+    }).join('')
 
     return `
       <div class="group">
         <div class="group-header">
-          <span class="group-name">${g.name}</span>
+          <span class="group-name">${esc(g.name)}</span>
           <span class="group-count">${g.tasks.length} task${g.tasks.length !== 1 ? 's' : ''}</span>
         </div>
         <table>
           <thead>
             <tr>
               <th>Task</th><th>Client</th><th>Workstream</th>
-              <th>Status</th><th>Due Date</th><th>Responsible</th>
+              <th>Status</th><th>Due Date</th>
+              <th>Description</th><th>Notes</th><th>Links</th>
             </tr>
           </thead>
           <tbody>${rows}</tbody>
@@ -182,10 +207,10 @@ function buildReportHTML(groups: EmployeeGroup[], statusFilter: StatusFilter, da
     color:#111;background:#fff;padding:32px 40px}
   .header{border-bottom:3px solid #6366f1;padding-bottom:16px;margin-bottom:28px}
   .header h1{font-size:22px;font-weight:800;color:#1e1b4b}
-  .header .meta{font-size:12px;color:#6b7280;margin-top:6px;display:flex;gap:20px}
-  .header .meta span{display:flex;align-items:center;gap:4px}
+  .header .meta{font-size:12px;color:#6b7280;margin-top:6px;display:flex;gap:20px;flex-wrap:wrap}
   .badge{display:inline-block;padding:2px 10px;border-radius:20px;font-size:11px;font-weight:600}
   .badge-purple{background:#ede9fe;color:#5b21b6}
+  .badge-blue{background:#dbeafe;color:#1d4ed8}
   .group{margin-bottom:28px;page-break-inside:avoid}
   .group-header{display:flex;align-items:center;justify-content:space-between;
     background:linear-gradient(135deg,#1e1b4b,#312e81);color:#fff;
@@ -199,6 +224,10 @@ function buildReportHTML(groups: EmployeeGroup[], statusFilter: StatusFilter, da
   tbody tr:nth-child(even){background:#fafaff}
   tbody td{padding:8px 12px;border-bottom:1px solid #f0f0f0;vertical-align:top;color:#374151}
   tbody tr:last-child td{border-bottom:none}
+  .notes-cell{font-size:11px;color:#6b7280;max-width:200px;white-space:pre-wrap;word-break:break-word}
+  .links-cell{font-size:11px;max-width:180px;word-break:break-all}
+  .links-cell a{color:#4338ca;text-decoration:underline;display:inline-block;margin-bottom:2px}
+  .links-cell a:hover{color:#6366f1}
   .footer{margin-top:32px;padding-top:16px;border-top:1px solid #e5e7eb;
     font-size:11px;color:#9ca3af;display:flex;justify-content:space-between}
   .disclaimer{background:#fff7ed;border:1px solid #fed7aa;border-radius:6px;
@@ -212,7 +241,8 @@ function buildReportHTML(groups: EmployeeGroup[], statusFilter: StatusFilter, da
     <h1>Daily Task Report</h1>
     <div class="meta">
       <span>📅 ${date}</span>
-      <span>🔍 Filter: <span class="badge badge-purple">${label}</span></span>
+      <span>🔍 Status: <span class="badge badge-purple">${statusLabel}</span></span>
+      <span>👤 Employees: <span class="badge badge-blue">${esc(employeeLabel)}</span></span>
       <span>📋 ${totalTasks} total tasks across ${groups.length} employees/teams</span>
     </div>
   </div>
@@ -230,13 +260,23 @@ function buildReportHTML(groups: EmployeeGroup[], statusFilter: StatusFilter, da
 </html>`
 }
 
-function downloadDailyReport(groups: EmployeeGroup[], statusFilter: StatusFilter, date: string) {
-  const html = buildReportHTML(groups, statusFilter, date)
+function downloadDailyReport(
+  groups: EmployeeGroup[],
+  statusFilter: StatusFilter,
+  selectedEmployees: string[],
+  date: string,
+) {
+  const html = buildReportHTML(groups, statusFilter, selectedEmployees, date)
   const blob = new Blob([html], { type: 'text/html;charset=utf-8' })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
-  a.download = `Daily-Task-Report-${date}.html`
+  const suffix = selectedEmployees.length === 1
+    ? `-${selectedEmployees[0].replace(/\s+/g, '-')}`
+    : selectedEmployees.length > 1
+      ? `-${selectedEmployees.length}-employees`
+      : ''
+  a.download = `Daily-Task-Report-${date}${suffix}.html`
   document.body.appendChild(a)
   a.click()
   document.body.removeChild(a)
@@ -261,14 +301,26 @@ interface DailyReportModalProps {
 }
 
 export function DailyReportModal({ open, onClose }: DailyReportModalProps) {
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
+  const [statusFilter, setStatusFilter]       = useState<StatusFilter>('all')
+  const [selectedEmployees, setSelectedEmployees] = useState<string[]>([])
   const today = todayDateEST()
 
   const { data: tasks = [], isLoading } = useAllTasksForReport()
   const { data: profiles = [] } = useProfiles()
 
-  const groups = buildEmployeeGroups(tasks, profiles, statusFilter)
+  // Build all groups first, then apply employee filter
+  const allGroups = buildEmployeeGroups(tasks, profiles, statusFilter)
+  const groups = selectedEmployees.length > 0
+    ? allGroups.filter(g => selectedEmployees.includes(g.name))
+    : allGroups
+
   const totalTasks = groups.reduce((n, g) => n + g.tasks.length, 0)
+
+  const toggleEmployee = (name: string) => {
+    setSelectedEmployees(prev =>
+      prev.includes(name) ? prev.filter(n => n !== name) : [...prev, name]
+    )
+  }
 
   if (!open) return null
 
@@ -289,7 +341,7 @@ export function DailyReportModal({ open, onClose }: DailyReportModalProps) {
           </div>
           <div className="flex items-center gap-2">
             <button
-              onClick={() => downloadDailyReport(groups, statusFilter, today)}
+              onClick={() => downloadDailyReport(groups, statusFilter, selectedEmployees, today)}
               disabled={groups.length === 0}
               className="flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-xs font-medium hover:bg-primary/90 disabled:opacity-50 transition-colors"
             >
@@ -308,7 +360,7 @@ export function DailyReportModal({ open, onClose }: DailyReportModalProps) {
         {/* ── Status Filter ── */}
         <div className="px-5 pt-4 pb-3 border-b border-border">
           <div className="flex items-center gap-1.5 flex-wrap">
-            <span className="text-xs text-muted-foreground mr-1">Show:</span>
+            <span className="text-xs text-muted-foreground mr-1">Status:</span>
             {STATUS_FILTERS.map(f => (
               <button
                 key={f.id}
@@ -326,6 +378,44 @@ export function DailyReportModal({ open, onClose }: DailyReportModalProps) {
             <span className="ml-auto text-xs text-muted-foreground">
               {totalTasks} task{totalTasks !== 1 ? 's' : ''} · {groups.length} employee{groups.length !== 1 ? 's' : ''}/team{groups.length !== 1 ? 's' : ''}
             </span>
+          </div>
+        </div>
+
+        {/* ── Employee Filter ── */}
+        <div className="px-5 pt-3 pb-3 border-b border-border">
+          <div className="flex items-start gap-2 flex-wrap">
+            <div className="flex items-center gap-1 shrink-0 mt-0.5">
+              <Users className="h-3.5 w-3.5 text-muted-foreground" />
+              <span className="text-xs text-muted-foreground">Employees:</span>
+            </div>
+            {/* All button */}
+            <button
+              onClick={() => setSelectedEmployees([])}
+              className={cn(
+                'px-3 py-1 rounded-full text-xs font-medium border transition-colors',
+                selectedEmployees.length === 0
+                  ? 'bg-primary text-primary-foreground border-primary'
+                  : 'border-border text-muted-foreground hover:text-foreground bg-background',
+              )}
+            >
+              All
+            </button>
+            {/* Per-employee chips */}
+            {allGroups.map(g => (
+              <button
+                key={g.name}
+                onClick={() => toggleEmployee(g.name)}
+                className={cn(
+                  'px-3 py-1 rounded-full text-xs font-medium border transition-colors',
+                  selectedEmployees.includes(g.name)
+                    ? 'bg-primary text-primary-foreground border-primary'
+                    : 'border-border text-muted-foreground hover:text-foreground bg-background',
+                )}
+              >
+                {g.name}
+                <span className="ml-1 opacity-60">({g.tasks.length})</span>
+              </button>
+            ))}
           </div>
         </div>
 
@@ -351,7 +441,7 @@ export function DailyReportModal({ open, onClose }: DailyReportModalProps) {
           {!isLoading && groups.length === 0 && (
             <div className="flex flex-col items-center justify-center h-32 gap-2 text-muted-foreground">
               <FileText className="h-6 w-6 opacity-30" />
-              <p className="text-sm">No tasks match the selected filter.</p>
+              <p className="text-sm">No tasks match the selected filters.</p>
             </div>
           )}
 
@@ -369,7 +459,6 @@ export function DailyReportModal({ open, onClose }: DailyReportModalProps) {
 function EmployeeSection({ group }: { group: EmployeeGroup }) {
   return (
     <div className="rounded-lg border border-border overflow-hidden">
-      {/* Section header */}
       <div className="flex items-center justify-between px-4 py-2.5 bg-primary/10 border-b border-border">
         <div className="flex items-center gap-2">
           <User className="h-3.5 w-3.5 text-primary" />
@@ -380,7 +469,6 @@ function EmployeeSection({ group }: { group: EmployeeGroup }) {
         </span>
       </div>
 
-      {/* Tasks table */}
       <div className="overflow-x-auto">
         <table className="w-full text-xs">
           <thead>
@@ -390,7 +478,9 @@ function EmployeeSection({ group }: { group: EmployeeGroup }) {
               <th className="px-4 py-2 text-left font-semibold text-muted-foreground">Workstream</th>
               <th className="px-4 py-2 text-left font-semibold text-muted-foreground">Status</th>
               <th className="px-4 py-2 text-left font-semibold text-muted-foreground">Due Date</th>
-              <th className="px-4 py-2 text-left font-semibold text-muted-foreground">Responsible</th>
+              <th className="px-4 py-2 text-left font-semibold text-muted-foreground">Description</th>
+              <th className="px-4 py-2 text-left font-semibold text-muted-foreground">Notes</th>
+              <th className="px-4 py-2 text-left font-semibold text-muted-foreground">Links</th>
             </tr>
           </thead>
           <tbody>
@@ -410,13 +500,13 @@ function DailyTaskRow({ task }: { task: EnrichedTask }) {
   return (
     <tr className="border-b border-border/50 last:border-0 hover:bg-muted/20">
       <td className="px-4 py-2.5">
-        <p className="font-medium text-foreground line-clamp-1">{task.task_name}</p>
+        <p className="font-medium text-foreground line-clamp-2">{task.task_name}</p>
       </td>
-      <td className="px-4 py-2.5 text-muted-foreground">{task.clientName}</td>
-      <td className="px-4 py-2.5 text-muted-foreground">{task.workstream}</td>
+      <td className="px-4 py-2.5 text-muted-foreground whitespace-nowrap">{task.clientName}</td>
+      <td className="px-4 py-2.5 text-muted-foreground whitespace-nowrap">{task.workstream}</td>
       <td className="px-4 py-2.5">
         <span className={cn(
-          'inline-flex px-2 py-0.5 rounded-full text-xs font-medium',
+          'inline-flex px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap',
           task.status === 'Done'        ? 'bg-green-500/15 text-green-400' :
           task.status === 'In Progress' ? 'bg-blue-500/15 text-blue-400' :
           task.status === 'Blocked'     ? 'bg-red-500/15 text-red-400' :
@@ -425,11 +515,38 @@ function DailyTaskRow({ task }: { task: EnrichedTask }) {
           {task.status}
         </span>
       </td>
-      <td className="px-4 py-2.5 text-muted-foreground">
+      <td className="px-4 py-2.5 text-muted-foreground whitespace-nowrap">
         {task.due_date ? formatDateEST(task.due_date) : '—'}
       </td>
-      <td className="px-4 py-2.5 text-muted-foreground">
-        {task.responsibles.length > 0 ? task.responsibles.join(', ') : '—'}
+      <td className="px-4 py-2.5 text-muted-foreground max-w-[180px]">
+        {task.description
+          ? <span className="line-clamp-3 whitespace-pre-wrap break-words">{task.description}</span>
+          : <span className="opacity-40 italic">—</span>
+        }
+      </td>
+      <td className="px-4 py-2.5 text-muted-foreground max-w-[180px]">
+        {task.notes
+          ? <span className="line-clamp-3 whitespace-pre-wrap break-words">{task.notes}</span>
+          : <span className="opacity-40 italic">—</span>
+        }
+      </td>
+      <td className="px-4 py-2.5 max-w-[160px]">
+        {task.links && task.links.length > 0
+          ? <div className="flex flex-col gap-1">
+              {task.links.map((l, i) => (
+                <a
+                  key={i}
+                  href={l.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs text-primary underline hover:text-primary/80 truncate block"
+                >
+                  {l.label || l.url}
+                </a>
+              ))}
+            </div>
+          : <span className="opacity-40 italic text-muted-foreground">—</span>
+        }
       </td>
     </tr>
   )

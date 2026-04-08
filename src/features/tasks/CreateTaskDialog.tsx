@@ -10,6 +10,7 @@ import { X, Loader2 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import type { Client, Profile, Workstream } from '@/lib/types'
 import { WORKSTREAMS } from '@/lib/types'
+import { todayDateEST } from '@/lib/timezone'
 import { useNavigationGuard } from '@/lib/useNavigationGuard'
 import { cn } from '@/lib/utils'
 
@@ -69,7 +70,7 @@ export function CreateTaskDialog({ open, onClose, presetClientId, clients = [] }
 
   const qc = useQueryClient()
   const [form, setForm] = useState<CreateTaskForm>({
-    ...BLANK, client_id: presetClientId ?? '',
+    ...BLANK, client_id: presetClientId ?? '', due_date: todayDateEST(),
   })
   const [error, setError] = useState<string | null>(null)
 
@@ -195,7 +196,7 @@ export function CreateTaskDialog({ open, onClose, presetClientId, clients = [] }
       qc.invalidateQueries({ queryKey: ['tasks'] })
       qc.invalidateQueries({ queryKey: ['client-detail'] })
       qc.invalidateQueries({ queryKey: ['task-assignments-workload'] })
-      setForm({ ...BLANK, client_id: presetClientId ?? '' })
+      setForm({ ...BLANK, client_id: presetClientId ?? '', due_date: todayDateEST() })
       setError(null)
       onClose()
     },
