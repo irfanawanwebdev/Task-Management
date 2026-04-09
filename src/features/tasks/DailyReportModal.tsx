@@ -5,6 +5,7 @@
  *  - Shows employee names (responsible / accountable) — DAILY only.
  *  - Weekly / Monthly reports remain anonymous (handled in MeetingsPage).
  *  - Status filter: All | Done | In Progress | Not Started | Blocked.
+ *  - Date filter: Today | Yesterday | Last 7 Days | Last 30 Days | Custom range.
  *  - Employee filter: All | one or more employees (multi-select).
  *  - Description & Notes shown in daily report only.
  *  - Download generates a self-contained HTML file.
@@ -12,15 +13,17 @@
 
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { X, Download, Loader2, FileText, User, Users } from 'lucide-react'
+import { X, Download, Loader2, FileText, User, Users, Calendar } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import type { DeliveryTask } from '@/lib/types'
 import { formatDateEST, todayDateEST } from '@/lib/timezone'
+import { format } from 'date-fns'
 import { cn } from '@/lib/utils'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type StatusFilter = 'all' | 'Done' | 'In Progress' | 'Not Started' | 'Blocked'
+type DatePreset   = 'all' | 'today' | 'yesterday' | 'last7' | 'last30' | 'custom'
 
 interface Profile { user_id: string; full_name: string }
 
@@ -33,6 +36,40 @@ interface EnrichedTask extends DeliveryTask {
   clientName: string
   responsibles: string[]
   accountables: string[]
+}
+
+// ─── Date helpers ─────────────────────────────────────────────────────────────
+
+/** Offset from TODAY in Miami/EST time (not system clock). */
+function offsetDate(days: number): string {
+  const today = todayDateEST() // always Miami date regardless of system TZ
+  const [y, m, d] = today.split('-').map(Number)
+  const date = new Date(y, m - 1, d + days)
+  return format(date, 'yyyy-MM-dd')
+}
+
+function dateRangeBounds(
+  preset: DatePreset,
+  customFrom: string,
+  customTo: string,
+): { from: string | null; to: string | null } {
+  const today = todayDateEST()
+  if (preset === 'today')     return { from: today, to: today }
+  if (preset === 'yesterday') { const y = offsetDate(-1); return { from: y, to: y } }
+  if (preset === 'last7')     return { from: offsetDate(-6), to: today }
+  if (preset === 'last30')    return { from: offsetDate(-29), to: today }
+  if (preset === 'custom')    return { from: customFrom || null, to: customTo || null }
+  return { from: null, to: null }
+}
+
+function dateRangeLabel(preset: DatePreset, customFrom: string, customTo: string): string {
+  if (preset === 'today')     return todayDateEST()
+  if (preset === 'yesterday') return offsetDate(-1)
+  if (preset === 'last7')     return `${offsetDate(-6)} → ${todayDateEST()}`
+  if (preset === 'last30')    return `${offsetDate(-29)} → ${todayDateEST()}`
+  if (preset === 'custom' && customFrom && customTo) return `${customFrom} → ${customTo}`
+  if (preset === 'custom' && customFrom)             return `From ${customFrom}`
+  return 'All Dates'
 }
 
 // ─── Data hook ────────────────────────────────────────────────────────────────
@@ -74,10 +111,14 @@ function buildEmployeeGroups(
   tasks: DeliveryTask[],
   profiles: Profile[],
   statusFilter: StatusFilter,
+  dateFrom: string | null,
+  dateTo: string | null,
 ): EmployeeGroup[] {
-  const filtered = statusFilter === 'all'
-    ? tasks
-    : tasks.filter(t => t.status === statusFilter)
+  let filtered = statusFilter === 'all' ? tasks : tasks.filter(t => t.status === statusFilter)
+
+  // Apply date range filter on due_date
+  if (dateFrom) filtered = filtered.filter(t => !!t.due_date && t.due_date >= dateFrom)
+  if (dateTo)   filtered = filtered.filter(t => !!t.due_date && t.due_date <= dateTo)
 
   const map = new Map<string, EnrichedTask[]>()
 
@@ -149,7 +190,7 @@ function buildReportHTML(
   groups: EmployeeGroup[],
   statusFilter: StatusFilter,
   selectedEmployees: string[],
-  date: string,
+  dateLabel: string,
 ): string {
   const statusLabel = statusFilter === 'all' ? 'All Statuses' : statusFilter
   const employeeLabel = selectedEmployees.length === 0
@@ -200,7 +241,7 @@ function buildReportHTML(
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
-<title>Daily Task Report — ${date}</title>
+<title>Daily Task Report — ${dateLabel}</title>
 <style>
   *{box-sizing:border-box;margin:0;padding:0}
   body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:13px;
@@ -211,6 +252,7 @@ function buildReportHTML(
   .badge{display:inline-block;padding:2px 10px;border-radius:20px;font-size:11px;font-weight:600}
   .badge-purple{background:#ede9fe;color:#5b21b6}
   .badge-blue{background:#dbeafe;color:#1d4ed8}
+  .badge-green{background:#dcfce7;color:#166534}
   .group{margin-bottom:28px;page-break-inside:avoid}
   .group-header{display:flex;align-items:center;justify-content:space-between;
     background:linear-gradient(135deg,#1e1b4b,#312e81);color:#fff;
@@ -240,7 +282,7 @@ function buildReportHTML(
   <div class="header">
     <h1>Daily Task Report</h1>
     <div class="meta">
-      <span>📅 ${date}</span>
+      <span>📅 ${dateLabel}</span>
       <span>🔍 Status: <span class="badge badge-purple">${statusLabel}</span></span>
       <span>👤 Employees: <span class="badge badge-blue">${esc(employeeLabel)}</span></span>
       <span>📋 ${totalTasks} total tasks across ${groups.length} employees/teams</span>
@@ -249,12 +291,12 @@ function buildReportHTML(
   <div class="disclaimer">
     <strong>⚠ Internal Use Only — Confidential</strong>
     This daily report includes employee names and task assignments. Do not share externally.
-    Weekly and monthly client reports are sent without employee attribution.
+    Weekly and monthly client-facing reports are sent without employee attribution.
   </div>
   ${groupsHTML}
   <div class="footer">
     <span>JZ Smart Media — Operations Hub</span>
-    <span>Generated ${date} · Daily Report · Internal Only</span>
+    <span>Generated ${todayDateEST()} · Daily Report · Internal Only</span>
   </div>
 </body>
 </html>`
@@ -264,9 +306,9 @@ function downloadDailyReport(
   groups: EmployeeGroup[],
   statusFilter: StatusFilter,
   selectedEmployees: string[],
-  date: string,
+  dateLabel: string,
 ) {
-  const html = buildReportHTML(groups, statusFilter, selectedEmployees, date)
+  const html = buildReportHTML(groups, statusFilter, selectedEmployees, dateLabel)
   const blob = new Blob([html], { type: 'text/html;charset=utf-8' })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
@@ -276,7 +318,9 @@ function downloadDailyReport(
     : selectedEmployees.length > 1
       ? `-${selectedEmployees.length}-employees`
       : ''
-  a.download = `Daily-Task-Report-${date}${suffix}.html`
+  // Sanitize dateLabel for filename (replace → and spaces)
+  const datePart = dateLabel.replace(/\s*→\s*/g, '_to_').replace(/\s+/g, '-')
+  a.download = `Daily-Task-Report-${datePart}${suffix}.html`
   document.body.appendChild(a)
   a.click()
   document.body.removeChild(a)
@@ -293,6 +337,15 @@ const STATUS_FILTERS: { id: StatusFilter; label: string }[] = [
   { id: 'Blocked',      label: 'Blocked'      },
 ]
 
+const DATE_PRESETS: { id: DatePreset; label: string }[] = [
+  { id: 'all',       label: 'All Dates'   },
+  { id: 'today',     label: 'Today'       },
+  { id: 'yesterday', label: 'Yesterday'   },
+  { id: 'last7',     label: 'Last 7 Days' },
+  { id: 'last30',    label: 'Last 30 Days'},
+  { id: 'custom',    label: 'Custom'      },
+]
+
 // ─── Main Modal ───────────────────────────────────────────────────────────────
 
 interface DailyReportModalProps {
@@ -301,15 +354,20 @@ interface DailyReportModalProps {
 }
 
 export function DailyReportModal({ open, onClose }: DailyReportModalProps) {
-  const [statusFilter, setStatusFilter]       = useState<StatusFilter>('all')
+  const [statusFilter, setStatusFilter]           = useState<StatusFilter>('all')
+  const [datePreset, setDatePreset]               = useState<DatePreset>('today')
+  const [customFrom, setCustomFrom]               = useState('')
+  const [customTo, setCustomTo]                   = useState('')
   const [selectedEmployees, setSelectedEmployees] = useState<string[]>([])
-  const today = todayDateEST()
 
   const { data: tasks = [], isLoading } = useAllTasksForReport()
   const { data: profiles = [] } = useProfiles()
 
+  const { from: dateFrom, to: dateTo } = dateRangeBounds(datePreset, customFrom, customTo)
+  const dateLabel = dateRangeLabel(datePreset, customFrom, customTo)
+
   // Build all groups first, then apply employee filter
-  const allGroups = buildEmployeeGroups(tasks, profiles, statusFilter)
+  const allGroups = buildEmployeeGroups(tasks, profiles, statusFilter, dateFrom, dateTo)
   const groups = selectedEmployees.length > 0
     ? allGroups.filter(g => selectedEmployees.includes(g.name))
     : allGroups
@@ -336,12 +394,12 @@ export function DailyReportModal({ open, onClose }: DailyReportModalProps) {
             </div>
             <div>
               <h2 className="text-base font-semibold">Daily Task Report</h2>
-              <p className="text-xs text-muted-foreground">{today} · Tasks grouped by employee</p>
+              <p className="text-xs text-muted-foreground">{dateLabel} · Tasks grouped by employee</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
             <button
-              onClick={() => downloadDailyReport(groups, statusFilter, selectedEmployees, today)}
+              onClick={() => downloadDailyReport(groups, statusFilter, selectedEmployees, dateLabel)}
               disabled={groups.length === 0}
               className="flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-xs font-medium hover:bg-primary/90 disabled:opacity-50 transition-colors"
             >
@@ -357,8 +415,63 @@ export function DailyReportModal({ open, onClose }: DailyReportModalProps) {
           </div>
         </div>
 
-        {/* ── Status Filter ── */}
+        {/* ── Date Filter ── */}
         <div className="px-5 pt-4 pb-3 border-b border-border">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <div className="flex items-center gap-1 shrink-0">
+              <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
+              <span className="text-xs text-muted-foreground mr-1">Date:</span>
+            </div>
+            {DATE_PRESETS.map(p => (
+              <button
+                key={p.id}
+                onClick={() => setDatePreset(p.id)}
+                className={cn(
+                  'px-3 py-1 rounded-full text-xs font-medium border transition-colors',
+                  datePreset === p.id
+                    ? 'bg-primary text-primary-foreground border-primary'
+                    : 'border-border text-muted-foreground hover:text-foreground bg-background',
+                )}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+          {/* Custom date range inputs */}
+          {datePreset === 'custom' && (
+            <div className="flex items-center gap-2 mt-2.5 flex-wrap">
+              <span className="text-xs text-muted-foreground">From</span>
+              <input
+                type="date"
+                value={customFrom}
+                onChange={e => setCustomFrom(e.target.value)}
+                className="px-2 py-1 text-xs rounded border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+              />
+              <span className="text-xs text-muted-foreground">To</span>
+              <input
+                type="date"
+                value={customTo}
+                min={customFrom || undefined}
+                onChange={e => setCustomTo(e.target.value)}
+                className="px-2 py-1 text-xs rounded border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+              />
+              {(customFrom || customTo) && (
+                <button
+                  onClick={() => { setCustomFrom(''); setCustomTo('') }}
+                  className="text-xs text-muted-foreground hover:text-foreground underline"
+                >
+                  Clear
+                </button>
+              )}
+              <span className="text-xs text-muted-foreground/60 ml-1">
+                Miami today: <span className="font-mono text-primary/80">{todayDateEST()}</span>
+              </span>
+            </div>
+          )}
+        </div>
+
+        {/* ── Status Filter ── */}
+        <div className="px-5 pt-3 pb-3 border-b border-border">
           <div className="flex items-center gap-1.5 flex-wrap">
             <span className="text-xs text-muted-foreground mr-1">Status:</span>
             {STATUS_FILTERS.map(f => (
