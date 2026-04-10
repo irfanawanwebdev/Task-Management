@@ -116,9 +116,9 @@ function buildEmployeeGroups(
 ): EmployeeGroup[] {
   let filtered = statusFilter === 'all' ? tasks : tasks.filter(t => t.status === statusFilter)
 
-  // Apply date range filter on due_date
-  if (dateFrom) filtered = filtered.filter(t => !!t.due_date && t.due_date >= dateFrom)
-  if (dateTo)   filtered = filtered.filter(t => !!t.due_date && t.due_date <= dateTo)
+  // Apply date range filter on completed_date
+  if (dateFrom) filtered = filtered.filter(t => !!t.completed_date && t.completed_date >= dateFrom)
+  if (dateTo)   filtered = filtered.filter(t => !!t.completed_date && t.completed_date <= dateTo)
 
   const map = new Map<string, EnrichedTask[]>()
 
@@ -282,7 +282,7 @@ function buildReportHTML(
   <div class="header">
     <h1>Daily Task Report</h1>
     <div class="meta">
-      <span>📅 ${dateLabel}</span>
+      <span>✅ Completed: ${dateLabel}</span>
       <span>🔍 Status: <span class="badge badge-purple">${statusLabel}</span></span>
       <span>👤 Employees: <span class="badge badge-blue">${esc(employeeLabel)}</span></span>
       <span>📋 ${totalTasks} total tasks across ${groups.length} employees/teams</span>
@@ -394,7 +394,7 @@ export function DailyReportModal({ open, onClose }: DailyReportModalProps) {
             </div>
             <div>
               <h2 className="text-base font-semibold">Daily Task Report</h2>
-              <p className="text-xs text-muted-foreground">{dateLabel} · Tasks grouped by employee</p>
+              <p className="text-xs text-muted-foreground">Completed: {dateLabel} · Grouped by employee</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -420,7 +420,7 @@ export function DailyReportModal({ open, onClose }: DailyReportModalProps) {
           <div className="flex items-center gap-1.5 flex-wrap">
             <div className="flex items-center gap-1 shrink-0">
               <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
-              <span className="text-xs text-muted-foreground mr-1">Date:</span>
+              <span className="text-xs text-muted-foreground mr-1">Completed:</span>
             </div>
             {DATE_PRESETS.map(p => (
               <button
