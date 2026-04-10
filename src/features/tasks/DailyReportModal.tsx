@@ -11,7 +11,7 @@
  *  - Download generates a self-contained HTML file.
  */
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { X, Download, Loader2, FileText, User, Users, Calendar, Send, CheckCircle, AlertCircle } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
@@ -329,7 +329,7 @@ function downloadDailyReport(
 
 // ─── Email Send ───────────────────────────────────────────────────────────────
 
-const JORDAN_EMAIL = 'mirfanawan545@gmail.com'
+const JORDAN_EMAIL = 'yarden@jzsmartmedia.com'
 
 type SendState = 'idle' | 'sending' | 'sent' | 'error'
 
@@ -343,6 +343,38 @@ async function sendReportEmail(
   })
   if (error || data?.error) return { ok: false, error: error?.message ?? data?.error ?? 'Unknown error' }
   return { ok: true }
+}
+
+// ─── Countdown to midnight Miami ─────────────────────────────────────────────
+
+function useCountdownToMidnightEST(): string {
+  const [countdown, setCountdown] = useState('')
+
+  useEffect(() => {
+    const update = () => {
+      const parts = new Intl.DateTimeFormat('en-US', {
+        timeZone: 'America/New_York',
+        hour: 'numeric', minute: 'numeric', second: 'numeric', hour12: false,
+      }).formatToParts(new Date())
+
+      const h = parseInt(parts.find(p => p.type === 'hour')?.value ?? '0')
+      const m = parseInt(parts.find(p => p.type === 'minute')?.value ?? '0')
+      const s = parseInt(parts.find(p => p.type === 'second')?.value ?? '0')
+
+      const secondsNow = h * 3600 + m * 60 + s
+      const secondsLeft = 86400 - secondsNow  // seconds until midnight
+
+      const rh = Math.floor(secondsLeft / 3600)
+      const rm = Math.floor((secondsLeft % 3600) / 60)
+      setCountdown(`${rh}h ${rm < 10 ? '0' + rm : rm}m`)
+    }
+
+    update()
+    const id = setInterval(update, 30_000) // refresh every 30s
+    return () => clearInterval(id)
+  }, [])
+
+  return countdown
 }
 
 // ─── Status Filter Tabs ────────────────────────────────────────────────────────
@@ -379,6 +411,7 @@ export function DailyReportModal({ open, onClose }: DailyReportModalProps) {
   const [selectedEmployees, setSelectedEmployees] = useState<string[]>([])
   const [sendState, setSendState] = useState<SendState>('idle')
   const [sendError, setSendError] = useState('')
+  const nextReportIn = useCountdownToMidnightEST()
 
   const { data: tasks = [], isLoading } = useAllTasksForReport()
   const { data: profiles = [] } = useProfiles()
@@ -444,29 +477,36 @@ export function DailyReportModal({ open, onClose }: DailyReportModalProps) {
               Download HTML
             </button>
 
-            {/* Send to Jordan */}
-            <button
-              onClick={handleSendToJordan}
-              disabled={groups.length === 0 || sendState === 'sending'}
-              title={`Send report to ${JORDAN_EMAIL}`}
-              className={cn(
-                'flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors disabled:opacity-50',
-                sendState === 'sent'
-                  ? 'bg-green-600 text-white'
-                  : sendState === 'error'
-                    ? 'bg-destructive text-destructive-foreground'
-                    : 'bg-secondary text-foreground hover:bg-accent border border-border',
+            {/* Send to Jordan — manual + auto countdown */}
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleSendToJordan}
+                disabled={groups.length === 0 || sendState === 'sending'}
+                title={`Send report now to ${JORDAN_EMAIL}`}
+                className={cn(
+                  'flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors disabled:opacity-50',
+                  sendState === 'sent'
+                    ? 'bg-green-600 text-white'
+                    : sendState === 'error'
+                      ? 'bg-destructive text-destructive-foreground'
+                      : 'bg-secondary text-foreground hover:bg-accent border border-border',
+                )}
+              >
+                {sendState === 'sending' && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                {sendState === 'sent' && <CheckCircle className="h-3.5 w-3.5" />}
+                {sendState === 'error' && <AlertCircle className="h-3.5 w-3.5" />}
+                {sendState === 'idle' && <Send className="h-3.5 w-3.5" />}
+                {sendState === 'sending' ? 'Sending…'
+                  : sendState === 'sent' ? 'Sent!'
+                    : sendState === 'error' ? 'Failed'
+                      : 'Send to Jordan'}
+              </button>
+              {nextReportIn && (
+                <span className="text-[10px] text-muted-foreground/60 whitespace-nowrap">
+                  Auto in <span className="font-mono text-primary/70">{nextReportIn}</span>
+                </span>
               )}
-            >
-              {sendState === 'sending' && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-              {sendState === 'sent' && <CheckCircle className="h-3.5 w-3.5" />}
-              {sendState === 'error' && <AlertCircle className="h-3.5 w-3.5" />}
-              {sendState === 'idle' && <Send className="h-3.5 w-3.5" />}
-              {sendState === 'sending' ? 'Sending…'
-                : sendState === 'sent' ? 'Sent!'
-                  : sendState === 'error' ? 'Failed'
-                    : 'Send to Jordan'}
-            </button>
+            </div>
 
             <button
               onClick={onClose}

@@ -1,3 +1,4 @@
+// @ts-nocheck — Deno runtime types not in project tsconfig
 /**
  * send-reminders — Supabase Edge Function
  *
@@ -32,6 +33,7 @@ serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS_HEADERS })
 
   try {
+    const body = await req.json().catch(() => ({}))
     const authHeader = req.headers.get('Authorization') ?? ''
 
     const admin = createClient(
@@ -40,21 +42,25 @@ serve(async (req: Request) => {
     )
 
     // ── Verify caller ─────────────────────────────────────────────────────
-    const callerIsService = authHeader.includes(Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? 'NONE')
-    if (!callerIsService) {
-      const caller = createClient(
-        Deno.env.get('SUPABASE_URL') ?? '',
-        Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-        { global: { headers: { Authorization: authHeader } } }
-      )
-      const { data: { user }, error } = await caller.auth.getUser()
-      if (error || !user) return json({ error: 'Unauthorized' }, 401)
+    // Skip auth when called by pg_cron (body.auto === true, no JWT header)
+    const isAutoCron = body.auto === true
+    if (!isAutoCron) {
+      const callerIsService = authHeader.includes(Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? 'NONE')
+      if (!callerIsService) {
+        const caller = createClient(
+          Deno.env.get('SUPABASE_URL') ?? '',
+          Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+          { global: { headers: { Authorization: authHeader } } }
+        )
+        const { data: { user }, error } = await caller.auth.getUser()
+        if (error || !user) return json({ error: 'Unauthorized' }, 401)
 
-      const { data: roles } = await caller.from('user_roles').select('role').eq('user_id', user.id)
-      const allowed = (roles ?? []).some((r: { role: string }) =>
-        ['owner', 'project_manager'].includes(r.role)
-      )
-      if (!allowed) return json({ error: 'Requires owner or project_manager role' }, 403)
+        const { data: roles } = await caller.from('user_roles').select('role').eq('user_id', user.id)
+        const allowed = (roles ?? []).some((r: { role: string }) =>
+          ['owner', 'project_manager'].includes(r.role)
+        )
+        if (!allowed) return json({ error: 'Requires owner or project_manager role' }, 403)
+      }
     }
 
     // ── Resolve dates ─────────────────────────────────────────────────────
