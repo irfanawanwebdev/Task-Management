@@ -13,7 +13,7 @@
 
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { X, Download, Loader2, FileText, User, Users, Calendar } from 'lucide-react'
+import { X, Download, Loader2, FileText, User, Users, Calendar, Send, CheckCircle, AlertCircle } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import type { DeliveryTask } from '@/lib/types'
 import { formatDateEST, todayDateEST } from '@/lib/timezone'
@@ -23,7 +23,7 @@ import { cn } from '@/lib/utils'
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type StatusFilter = 'all' | 'Done' | 'In Progress' | 'Not Started' | 'Blocked'
-type DatePreset   = 'all' | 'today' | 'yesterday' | 'last7' | 'last30' | 'custom'
+type DatePreset = 'all' | 'today' | 'yesterday' | 'last7' | 'last30' | 'custom'
 
 interface Profile { user_id: string; full_name: string }
 
@@ -54,21 +54,21 @@ function dateRangeBounds(
   customTo: string,
 ): { from: string | null; to: string | null } {
   const today = todayDateEST()
-  if (preset === 'today')     return { from: today, to: today }
+  if (preset === 'today') return { from: today, to: today }
   if (preset === 'yesterday') { const y = offsetDate(-1); return { from: y, to: y } }
-  if (preset === 'last7')     return { from: offsetDate(-6), to: today }
-  if (preset === 'last30')    return { from: offsetDate(-29), to: today }
-  if (preset === 'custom')    return { from: customFrom || null, to: customTo || null }
+  if (preset === 'last7') return { from: offsetDate(-6), to: today }
+  if (preset === 'last30') return { from: offsetDate(-29), to: today }
+  if (preset === 'custom') return { from: customFrom || null, to: customTo || null }
   return { from: null, to: null }
 }
 
 function dateRangeLabel(preset: DatePreset, customFrom: string, customTo: string): string {
-  if (preset === 'today')     return todayDateEST()
+  if (preset === 'today') return todayDateEST()
   if (preset === 'yesterday') return offsetDate(-1)
-  if (preset === 'last7')     return `${offsetDate(-6)} → ${todayDateEST()}`
-  if (preset === 'last30')    return `${offsetDate(-29)} → ${todayDateEST()}`
+  if (preset === 'last7') return `${offsetDate(-6)} → ${todayDateEST()}`
+  if (preset === 'last30') return `${offsetDate(-29)} → ${todayDateEST()}`
   if (preset === 'custom' && customFrom && customTo) return `${customFrom} → ${customTo}`
-  if (preset === 'custom' && customFrom)             return `From ${customFrom}`
+  if (preset === 'custom' && customFrom) return `From ${customFrom}`
   return 'All Dates'
 }
 
@@ -118,7 +118,7 @@ function buildEmployeeGroups(
 
   // Apply date range filter on completed_date
   if (dateFrom) filtered = filtered.filter(t => !!t.completed_date && t.completed_date >= dateFrom)
-  if (dateTo)   filtered = filtered.filter(t => !!t.completed_date && t.completed_date <= dateTo)
+  if (dateTo) filtered = filtered.filter(t => !!t.completed_date && t.completed_date <= dateTo)
 
   const map = new Map<string, EnrichedTask[]>()
 
@@ -171,9 +171,9 @@ function buildEmployeeGroups(
 // ─── HTML Download ────────────────────────────────────────────────────────────
 
 function statusColor(status: string): string {
-  if (status === 'Done')        return '#16a34a'
+  if (status === 'Done') return '#16a34a'
   if (status === 'In Progress') return '#2563eb'
-  if (status === 'Blocked')     return '#dc2626'
+  if (status === 'Blocked') return '#dc2626'
   return '#6b7280'
 }
 
@@ -327,23 +327,41 @@ function downloadDailyReport(
   URL.revokeObjectURL(url)
 }
 
+// ─── Email Send ───────────────────────────────────────────────────────────────
+
+const JORDAN_EMAIL = 'mirfanawan545@gmail.com'
+
+type SendState = 'idle' | 'sending' | 'sent' | 'error'
+
+async function sendReportEmail(
+  html: string,
+  subject: string,
+  to: string,
+): Promise<{ ok: boolean; error?: string }> {
+  const { data, error } = await supabase.functions.invoke('send-daily-report', {
+    body: { to, subject, html },
+  })
+  if (error || data?.error) return { ok: false, error: error?.message ?? data?.error ?? 'Unknown error' }
+  return { ok: true }
+}
+
 // ─── Status Filter Tabs ────────────────────────────────────────────────────────
 
 const STATUS_FILTERS: { id: StatusFilter; label: string }[] = [
-  { id: 'all',          label: 'All Tasks'    },
-  { id: 'Done',         label: 'Done'         },
-  { id: 'In Progress',  label: 'In Progress'  },
-  { id: 'Not Started',  label: 'Not Started'  },
-  { id: 'Blocked',      label: 'Blocked'      },
+  { id: 'all', label: 'All Tasks' },
+  { id: 'Done', label: 'Done' },
+  { id: 'In Progress', label: 'In Progress' },
+  { id: 'Not Started', label: 'Not Started' },
+  { id: 'Blocked', label: 'Blocked' },
 ]
 
 const DATE_PRESETS: { id: DatePreset; label: string }[] = [
-  { id: 'all',       label: 'All Dates'   },
-  { id: 'today',     label: 'Today'       },
-  { id: 'yesterday', label: 'Yesterday'   },
-  { id: 'last7',     label: 'Last 7 Days' },
-  { id: 'last30',    label: 'Last 30 Days'},
-  { id: 'custom',    label: 'Custom'      },
+  { id: 'all', label: 'All Dates' },
+  { id: 'today', label: 'Today' },
+  { id: 'yesterday', label: 'Yesterday' },
+  { id: 'last7', label: 'Last 7 Days' },
+  { id: 'last30', label: 'Last 30 Days' },
+  { id: 'custom', label: 'Custom' },
 ]
 
 // ─── Main Modal ───────────────────────────────────────────────────────────────
@@ -354,11 +372,13 @@ interface DailyReportModalProps {
 }
 
 export function DailyReportModal({ open, onClose }: DailyReportModalProps) {
-  const [statusFilter, setStatusFilter]           = useState<StatusFilter>('all')
-  const [datePreset, setDatePreset]               = useState<DatePreset>('today')
-  const [customFrom, setCustomFrom]               = useState('')
-  const [customTo, setCustomTo]                   = useState('')
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
+  const [datePreset, setDatePreset] = useState<DatePreset>('today')
+  const [customFrom, setCustomFrom] = useState('')
+  const [customTo, setCustomTo] = useState('')
   const [selectedEmployees, setSelectedEmployees] = useState<string[]>([])
+  const [sendState, setSendState] = useState<SendState>('idle')
+  const [sendError, setSendError] = useState('')
 
   const { data: tasks = [], isLoading } = useAllTasksForReport()
   const { data: profiles = [] } = useProfiles()
@@ -378,6 +398,23 @@ export function DailyReportModal({ open, onClose }: DailyReportModalProps) {
     setSelectedEmployees(prev =>
       prev.includes(name) ? prev.filter(n => n !== name) : [...prev, name]
     )
+  }
+
+  const handleSendToJordan = async () => {
+    if (groups.length === 0) return
+    setSendState('sending')
+    setSendError('')
+    const html = buildReportHTML(groups, statusFilter, selectedEmployees, dateLabel)
+    const subject = `Daily Task Report — ${dateLabel}`
+    const { ok, error } = await sendReportEmail(html, subject, JORDAN_EMAIL)
+    if (ok) {
+      setSendState('sent')
+      setTimeout(() => setSendState('idle'), 4000)
+    } else {
+      setSendState('error')
+      setSendError(error ?? 'Failed to send')
+      setTimeout(() => setSendState('idle'), 5000)
+    }
   }
 
   if (!open) return null
@@ -406,6 +443,31 @@ export function DailyReportModal({ open, onClose }: DailyReportModalProps) {
               <Download className="h-3.5 w-3.5" />
               Download HTML
             </button>
+
+            {/* Send to Jordan */}
+            <button
+              onClick={handleSendToJordan}
+              disabled={groups.length === 0 || sendState === 'sending'}
+              title={`Send report to ${JORDAN_EMAIL}`}
+              className={cn(
+                'flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors disabled:opacity-50',
+                sendState === 'sent'
+                  ? 'bg-green-600 text-white'
+                  : sendState === 'error'
+                    ? 'bg-destructive text-destructive-foreground'
+                    : 'bg-secondary text-foreground hover:bg-accent border border-border',
+              )}
+            >
+              {sendState === 'sending' && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+              {sendState === 'sent' && <CheckCircle className="h-3.5 w-3.5" />}
+              {sendState === 'error' && <AlertCircle className="h-3.5 w-3.5" />}
+              {sendState === 'idle' && <Send className="h-3.5 w-3.5" />}
+              {sendState === 'sending' ? 'Sending…'
+                : sendState === 'sent' ? 'Sent!'
+                  : sendState === 'error' ? 'Failed'
+                    : 'Send to Jordan'}
+            </button>
+
             <button
               onClick={onClose}
               className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
@@ -414,6 +476,14 @@ export function DailyReportModal({ open, onClose }: DailyReportModalProps) {
             </button>
           </div>
         </div>
+
+        {/* ── Send error toast ── */}
+        {sendState === 'error' && sendError && (
+          <div className="px-5 py-2 bg-destructive/10 border-b border-destructive/20 flex items-center gap-2">
+            <AlertCircle className="h-3.5 w-3.5 text-destructive shrink-0" />
+            <p className="text-xs text-destructive">{sendError}</p>
+          </div>
+        )}
 
         {/* ── Date Filter ── */}
         <div className="px-5 pt-4 pb-3 border-b border-border">
@@ -620,10 +690,10 @@ function DailyTaskRow({ task }: { task: EnrichedTask }) {
       <td className="px-4 py-2.5">
         <span className={cn(
           'inline-flex px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap',
-          task.status === 'Done'        ? 'bg-green-500/15 text-green-400' :
-          task.status === 'In Progress' ? 'bg-blue-500/15 text-blue-400' :
-          task.status === 'Blocked'     ? 'bg-red-500/15 text-red-400' :
-          'bg-muted text-muted-foreground'
+          task.status === 'Done' ? 'bg-green-500/15 text-green-400' :
+            task.status === 'In Progress' ? 'bg-blue-500/15 text-blue-400' :
+              task.status === 'Blocked' ? 'bg-red-500/15 text-red-400' :
+                'bg-muted text-muted-foreground'
         )}>
           {task.status}
         </span>
@@ -646,18 +716,18 @@ function DailyTaskRow({ task }: { task: EnrichedTask }) {
       <td className="px-4 py-2.5 max-w-[160px]">
         {task.links && task.links.length > 0
           ? <div className="flex flex-col gap-1">
-              {task.links.map((l, i) => (
-                <a
-                  key={i}
-                  href={l.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-xs text-primary underline hover:text-primary/80 truncate block"
-                >
-                  {l.label || l.url}
-                </a>
-              ))}
-            </div>
+            {task.links.map((l, i) => (
+              <a
+                key={i}
+                href={l.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs text-primary underline hover:text-primary/80 truncate block"
+              >
+                {l.label || l.url}
+              </a>
+            ))}
+          </div>
           : <span className="opacity-40 italic text-muted-foreground">—</span>
         }
       </td>
