@@ -287,7 +287,17 @@ function AddMeetingDialog({ clients, onClose }: { clients: Client[]; onClose: ()
     meeting_link: '',
   })
   const [createGoogleEvent, setCreateGoogleEvent] = useState(true)
+  const [guests, setGuests] = useState<{ name: string; email: string }[]>([])
+  const [guestName, setGuestName] = useState('')
+  const [guestEmail, setGuestEmail] = useState('')
   const [error, setError] = useState('')
+
+  const addGuest = () => {
+    if (!guestEmail.trim()) return
+    setGuests(g => [...g, { name: guestName.trim(), email: guestEmail.trim() }])
+    setGuestName('')
+    setGuestEmail('')
+  }
 
   // Check if the current user has Google Calendar connected
   const { data: isGoogleConnected } = useQuery({
@@ -332,7 +342,7 @@ function AddMeetingDialog({ clients, onClose }: { clients: Client[]; onClose: ()
         }
       }
 
-      const { error } = await supabase.from('meetings').insert({
+      const { data: insertedMeeting, error } = await supabase.from('meetings').insert({
         client_id:          form.client_id,
         type:               form.type,
         date:               form.date,
@@ -345,8 +355,35 @@ function AddMeetingDialog({ clients, onClose }: { clients: Client[]; onClose: ()
         status:             'Scheduled',
         owner_approval_required: false,
         sla_hours:          24,
-      } as never)
+        guests:             guests,
+      } as never).select('id').single()
       if (error) throw error
+
+      // Send invite emails to guests
+      if (guests.length > 0 && insertedMeeting) {
+        const clientName = clients.find(c => c.id === form.client_id)?.name ?? 'Client'
+        const dateStr    = form.date
+        const timeStr    = form.time ? ` at ${form.time}` : ''
+        const agendaHtml = form.agenda
+          ? `<p style="margin-top:12px"><strong>Agenda:</strong><br>${form.agenda.replace(/\n/g,'<br>')}</p>`
+          : ''
+        const linkHtml   = meetLink
+          ? `<p style="margin-top:12px"><a href="${meetLink}" style="color:#6366f1">Join Meeting</a></p>`
+          : ''
+        for (const g of guests) {
+          const html = `<!DOCTYPE html><html><body style="font-family:sans-serif;padding:32px;color:#111">
+            <h2 style="color:#1e1b4b">Meeting Invitation</h2>
+            <p>Hi ${g.name || 'there'},</p>
+            <p>You have been invited to a <strong>${form.type}</strong> meeting for <strong>${clientName}</strong>.</p>
+            <p><strong>Date:</strong> ${dateStr}${timeStr}</p>
+            ${agendaHtml}${linkHtml}
+            <p style="margin-top:20px;font-size:12px;color:#6b7280">JZ Smart Media — Operations Hub</p>
+          </body></html>`
+          await supabase.functions.invoke('send-daily-report', {
+            body: { to: g.email, subject: `Meeting Invitation: ${clientName} — ${form.type} (${dateStr})`, html },
+          })
+        }
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['meetings-all'] })
@@ -427,6 +464,48 @@ function AddMeetingDialog({ clients, onClose }: { clients: Client[]; onClose: ()
                 className="mt-1 w-full rounded border border-input bg-background px-3 py-2 text-sm" />
             </div>
           )}
+
+          {/* Guests */}
+          <div>
+            <label className="text-xs font-medium text-muted-foreground">Guests (invitations sent by email)</label>
+            {guests.length > 0 && (
+              <div className="mt-1 mb-2 flex flex-wrap gap-1.5">
+                {guests.map((g, i) => (
+                  <span key={i} className="inline-flex items-center gap-1 px-2 py-0.5 bg-primary/10 text-primary border border-primary/20 rounded text-xs">
+                    {g.name ? `${g.name} <${g.email}>` : g.email}
+                    <button onClick={() => setGuests(prev => prev.filter((_, idx) => idx !== i))} className="hover:text-destructive">
+                      <X className="h-3 w-3" />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={guestName}
+                onChange={e => setGuestName(e.target.value)}
+                placeholder="Name (optional)"
+                className="flex-1 rounded border border-input bg-background px-3 py-1.5 text-xs"
+              />
+              <input
+                type="email"
+                value={guestEmail}
+                onChange={e => setGuestEmail(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addGuest() } }}
+                placeholder="Email address"
+                className="flex-1 rounded border border-input bg-background px-3 py-1.5 text-xs"
+              />
+              <button
+                type="button"
+                onClick={addGuest}
+                disabled={!guestEmail.trim()}
+                className="px-2 py-1.5 bg-secondary text-foreground border border-border rounded text-xs hover:bg-accent disabled:opacity-50"
+              >
+                <Plus className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          </div>
         </div>
 
         <div className="flex justify-end gap-2 pt-2">

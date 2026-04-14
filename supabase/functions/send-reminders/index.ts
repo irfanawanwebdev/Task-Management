@@ -312,9 +312,91 @@ serve(async (req: Request) => {
       }
     }
 
+    // ── Send daily summary emails via Resend ──────────────────────────────
+    // For each user who received notifications, fetch their email and send a digest.
+    const apiKey    = Deno.env.get('RESEND_API_KEY')?.trim()
+    const fromEmail = (Deno.env.get('FROM_EMAIL') ?? 'onboarding@resend.dev').trim()
+    let emailsSent = 0
+
+    if (apiKey && notifications.length > 0) {
+      // Group notifications by user
+      const byUser = new Map<string, typeof notifications>()
+      for (const n of notifications) {
+        if (!byUser.has(n.user_id)) byUser.set(n.user_id, [])
+        byUser.get(n.user_id)!.push(n)
+      }
+
+      // Fetch user emails from auth.users + full names from profiles
+      const allUserIds = [...byUser.keys()]
+      const { data: profileData } = await admin
+        .from('profiles')
+        .select('user_id, full_name')
+        .in('user_id', allUserIds)
+      const profileNameMap = new Map<string, string>(
+        (profileData ?? []).map((p: { user_id: string; full_name: string }) => [p.user_id, p.full_name])
+      )
+
+      // Get emails from Supabase auth admin API
+      const emailMap = new Map<string, { email: string; full_name: string }>()
+      for (const uid of allUserIds) {
+        try {
+          const { data: { user } } = await admin.auth.admin.getUserById(uid)
+          if (user?.email) {
+            emailMap.set(uid, {
+              email:     user.email,
+              full_name: profileNameMap.get(uid) ?? user.email,
+            })
+          }
+        } catch {
+          // skip users we can't look up
+        }
+      }
+
+      for (const [userId, userNotifs] of byUser) {
+        const user = emailMap.get(userId)
+        if (!user?.email) continue
+
+        const itemsHtml = userNotifs.map(n => `
+          <tr>
+            <td style="padding:10px 14px;border-bottom:1px solid #f0f0f0;vertical-align:top">
+              <strong style="font-size:13px">${n.title}</strong>
+              <p style="margin:4px 0 0;font-size:12px;color:#6b7280">${n.message}</p>
+            </td>
+          </tr>`).join('')
+
+        const html = `<!DOCTYPE html><html><body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:13px;color:#111;background:#fff;padding:32px">
+          <div style="border-bottom:3px solid #6366f1;padding-bottom:12px;margin-bottom:20px">
+            <h1 style="font-size:20px;font-weight:800;color:#1e1b4b;margin:0">Daily Reminders</h1>
+            <p style="font-size:12px;color:#6b7280;margin:6px 0 0">Hi ${user.full_name} — here's your morning briefing for ${todayEST}.</p>
+          </div>
+          <table style="width:100%;border-collapse:collapse;border:1px solid #e5e7eb">${itemsHtml}</table>
+          <p style="margin-top:24px;font-size:11px;color:#9ca3af">
+            JZ Smart Media Operations Hub · Auto-generated daily at 9 AM EST
+          </p>
+        </body></html>`
+
+        const res = await fetch('https://api.resend.com/emails', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            from: `JZ Smart Media <${fromEmail}>`,
+            to:   [user.email],
+            subject: `Daily Reminders — ${todayEST}`,
+            html,
+          }),
+        })
+        if (res.ok) emailsSent++
+        else {
+          const err = await res.json().catch(() => ({}))
+          console.error('Resend error for', user.email, err)
+        }
+      }
+    }
+
     return json({
       success: true,
       sent:    notifications.length,
+      emails_sent: emailsSent,
       targets: targetUsers.length,
       checks: {
         overdue_tasks_pm_summary:      overdueCount,

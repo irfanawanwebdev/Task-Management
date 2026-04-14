@@ -8,7 +8,7 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Loader2, AlertTriangle, CheckCircle2, X, ExternalLink, Plus, Copy, Trash2,
-  Link2, FileText, Save, BarChart2, Pencil, Check, History,
+  Link2, FileText, Save, BarChart2, Pencil, Check, History, Search, Paperclip,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import type { Client, DeliveryTask } from '@/lib/types'
@@ -16,6 +16,7 @@ import { isOverdueEST, formatDateEST, isDateTodayEST, todayDateEST } from '@/lib
 import { cn } from '@/lib/utils'
 import { CreateTaskDialog } from './CreateTaskDialog'
 import { DailyReportModal } from './DailyReportModal'
+import { TaskFileUpload } from '@/components/TaskFileUpload'
 import { useAuth } from '@/features/auth/AuthContext'
 import { HelpPopover } from '@/components/HelpPopover'
 
@@ -316,6 +317,9 @@ function TaskDetailDialog({
   const [notes, setNotes]                 = useState(task.notes ?? '')
   const [savingNotes, setSavingNotes]     = useState(false)
   const [links, setLinks]                 = useState<{ label: string; url: string }[]>(task.links ?? [])
+  const [attachments, setAttachments]     = useState<import('@/components/TaskFileUpload').Attachment[]>(
+    (task as DeliveryTask & { attachments?: import('@/components/TaskFileUpload').Attachment[] }).attachments ?? []
+  )
   const [newLinkLabel, setNewLinkLabel]   = useState('')
   const [newLinkUrl, setNewLinkUrl]       = useState('')
   const [savingLinks, setSavingLinks]     = useState(false)
@@ -334,6 +338,12 @@ function TaskDetailDialog({
   const [blockerVal, setBlockerVal]             = useState(task.blocker_text ?? '')
   const [editingDescription, setEditingDescription] = useState(false)
   const [descriptionVal, setDescriptionVal]     = useState(task.description ?? '')
+  const [editingAssignees, setEditingAssignees] = useState(false)
+  const [addAssigneeUserId, setAddAssigneeUserId] = useState('')
+  const [addAssigneeRole, setAddAssigneeRole]   = useState<'R' | 'A' | 'A/R' | 'C' | 'I'>('R')
+  const [assigneesSaving, setAssigneesSaving]  = useState(false)
+  // Local copy of assignments so edits are reflected immediately
+  const [localAssignments, setLocalAssignments] = useState(task.task_assignments ?? [])
 
   // ── Edit history query — always fetched for PM so count stays live ──────────
   const { data: editHistory = [] } = useQuery<EditHistoryRow[]>({
@@ -448,6 +458,44 @@ function TaskDetailDialog({
       await saveField('description', trimmed || null, task.description ?? null, trimmed || null, false)
     }
     setEditingDescription(false)
+  }
+
+  // ── Assignment mutations ─────────────────────────────────────────────────────
+  const removeAssignment = async (userId: string | null, idx: number) => {
+    setAssigneesSaving(true)
+    if (userId) {
+      await supabase.from('task_assignments').delete()
+        .eq('task_id', task.id).eq('user_id', userId)
+    }
+    setLocalAssignments(prev => prev.filter((_, i) => i !== idx))
+    queryClient.invalidateQueries({ queryKey: ['tasks'] })
+    queryClient.invalidateQueries({ queryKey: ['client-detail'] })
+    setAssigneesSaving(false)
+  }
+
+  const addAssignment = async () => {
+    if (!addAssigneeUserId) return
+    setAssigneesSaving(true)
+    const { error } = await supabase.from('task_assignments').insert({
+      task_id: task.id,
+      user_id: addAssigneeUserId,
+      role_type: addAssigneeRole,
+    } as never)
+    if (!error) {
+      const name = profilesList.find(p => p.user_id === addAssigneeUserId)?.full_name ?? '?'
+      setLocalAssignments(prev => [...prev, {
+        id: crypto.randomUUID(),
+        task_id: task.id,
+        user_id: addAssigneeUserId,
+        role_type: addAssigneeRole,
+        workstream: null,
+      }])
+      setAddAssigneeUserId('')
+      setAddAssigneeRole('R')
+      queryClient.invalidateQueries({ queryKey: ['tasks'] })
+      queryClient.invalidateQueries({ queryKey: ['client-detail'] })
+    }
+    setAssigneesSaving(false)
   }
 
   // ── Existing mutations ───────────────────────────────────────────────────────
@@ -719,22 +767,80 @@ function TaskDetailDialog({
             </div>
           </div>
 
-          {/* Assignees */}
-          {task.task_assignments && task.task_assignments.length > 0 && (
-            <div>
-              <p className="section-header">Assignees</p>
-              <div className="flex flex-wrap gap-2">
-                {task.task_assignments.map((a, i) => {
-                  const name = (a.user_id ? profilesList.find(p => p.user_id === a.user_id)?.full_name : null) ?? a.workstream ?? '—'
-                  return (
-                    <span key={i} className="text-xs px-2 py-1 rounded-md bg-primary/10 text-primary border border-primary/20">
-                      {a.role_type}: {name}
-                    </span>
-                  )
-                })}
-              </div>
+          {/* Assignees — editable */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <p className="section-header mb-0">Assignees</p>
+              {canEdit && (
+                <button
+                  onClick={() => setEditingAssignees(e => !e)}
+                  className="text-xs text-muted-foreground hover:text-primary flex items-center gap-1"
+                >
+                  <Pencil className="h-3 w-3" />
+                  {editingAssignees ? 'Done' : 'Edit'}
+                </button>
+              )}
             </div>
-          )}
+
+            {/* Current assignments */}
+            <div className="flex flex-wrap gap-2 mb-2">
+              {localAssignments.length === 0 && (
+                <p className="text-xs text-muted-foreground italic">No assignees yet.</p>
+              )}
+              {localAssignments.map((a, i) => {
+                const name = (a.user_id ? profilesList.find(p => p.user_id === a.user_id)?.full_name : null) ?? a.workstream ?? '—'
+                return (
+                  <span key={i} className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-md bg-primary/10 text-primary border border-primary/20">
+                    <span className="font-semibold">{a.role_type}:</span> {name}
+                    {editingAssignees && (
+                      <button
+                        onClick={() => removeAssignment(a.user_id ?? null, i)}
+                        className="ml-0.5 text-primary/60 hover:text-destructive"
+                        title="Remove"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    )}
+                  </span>
+                )
+              })}
+            </div>
+
+            {/* Add assignee row */}
+            {editingAssignees && (
+              <div className="flex items-center gap-2 flex-wrap">
+                <select
+                  value={addAssigneeUserId}
+                  onChange={e => setAddAssigneeUserId(e.target.value)}
+                  className="flex-1 min-w-[140px] px-2 py-1 bg-background border border-input rounded text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+                >
+                  <option value="">Select person…</option>
+                  {profilesList.map(p => (
+                    <option key={p.user_id} value={p.user_id}>{p.full_name}</option>
+                  ))}
+                </select>
+                <select
+                  value={addAssigneeRole}
+                  onChange={e => setAddAssigneeRole(e.target.value as 'R' | 'A' | 'A/R' | 'C' | 'I')}
+                  className="px-2 py-1 bg-background border border-input rounded text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+                >
+                  <option value="R">R — Responsible</option>
+                  <option value="A">A — Accountable</option>
+                  <option value="A/R">A/R — Accountable + Responsible</option>
+                  <option value="C">C — Consulted</option>
+                  <option value="I">I — Informed</option>
+                </select>
+                <button
+                  onClick={addAssignment}
+                  disabled={!addAssigneeUserId || assigneesSaving}
+                  className="flex items-center gap-1 px-2 py-1 bg-primary text-primary-foreground rounded text-xs hover:bg-primary/90 disabled:opacity-50"
+                >
+                  {assigneesSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />}
+                  Add
+                </button>
+              </div>
+            )}
+          </div>
 
           {/* Blocker — editable for anyone who can edit */}
           <div>
@@ -859,6 +965,18 @@ function TaskDetailDialog({
                 {savingLinks ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />}
               </button>
             </div>
+          </div>
+
+          {/* Attachments */}
+          <div>
+            <p className="section-header flex items-center gap-1.5">
+              <Paperclip className="h-3.5 w-3.5" /> Attachments
+            </p>
+            <TaskFileUpload
+              taskId={task.id}
+              attachments={attachments}
+              onChange={setAttachments}
+            />
           </div>
 
           {/* Actions row */}
@@ -1066,6 +1184,7 @@ export default function TasksPage() {
   const [clientFilter, setClientFilter]   = useState('all')
   const [dateFilter, setDateFilter]       = useState<'all' | 'today' | '7' | '14' | '30'>('all')
   const [employeeFilter, setEmployeeFilter] = useState('all')
+  const [searchQuery, setSearchQuery]     = useState('')
   const [selectedTask, setSelectedTask]   = useState<DeliveryTask | null>(null)
   const [showCreate, setShowCreate]       = useState(false)
   const [showDailyReport, setShowDailyReport] = useState(false)
@@ -1108,19 +1227,32 @@ export default function TasksPage() {
     )
   })()
 
+  // ── Keyword search filtering ────────────────────────────────────────────────
+  const searchTasks = (() => {
+    if (!searchQuery.trim()) return employeeTasks
+    const q = searchQuery.toLowerCase()
+    return employeeTasks.filter(t =>
+      t.task_name?.toLowerCase().includes(q) ||
+      t.description?.toLowerCase().includes(q) ||
+      t.notes?.toLowerCase().includes(q) ||
+      t.workstream?.toLowerCase().includes(q) ||
+      (t.clients as { name: string } | undefined)?.name?.toLowerCase().includes(q)
+    )
+  })()
+
   // ── View filtering ──────────────────────────────────────────────────────────
   const visibleTasks = (() => {
     switch (activeView) {
       case 'qa-gate':
-        return employeeTasks.filter(t => !t.ar_output_logged && t.status !== 'Not Started')
+        return searchTasks.filter(t => !t.ar_output_logged && t.status !== 'Not Started')
       case 'blocked':
-        return employeeTasks.filter(t => t.status === 'Blocked')
+        return searchTasks.filter(t => t.status === 'Blocked')
       case 'overdue':
-        return employeeTasks.filter(t => t.due_date && isOverdueEST(t.due_date) && t.status !== 'Done')
+        return searchTasks.filter(t => t.due_date && isOverdueEST(t.due_date) && t.status !== 'Done')
       case 'done':
-        return employeeTasks.filter(t => t.status === 'Done')
+        return searchTasks.filter(t => t.status === 'Done')
       default:
-        return employeeTasks
+        return searchTasks
     }
   })()
 
@@ -1198,6 +1330,26 @@ export default function TasksPage() {
             Add Task
           </button>
         </div>
+      </div>
+
+      {/* Search */}
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+        <input
+          type="text"
+          value={searchQuery}
+          onChange={e => setSearchQuery(e.target.value)}
+          placeholder="Search tasks by name, description, notes, workstream…"
+          className="w-full pl-9 pr-9 py-2 bg-background border border-input rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+        />
+        {searchQuery && (
+          <button
+            onClick={() => setSearchQuery('')}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        )}
       </div>
 
       {/* Controls */}

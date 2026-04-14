@@ -13,7 +13,6 @@ const SpecialistDashboard  = lazy(() => import('@/features/specialist/Specialist
 const TasksPage            = lazy(() => import('@/features/tasks/TasksPage'))
 const ClientsPage          = lazy(() => import('@/features/clients/ClientsPage'))
 const ClientDetailPage     = lazy(() => import('@/features/clients/ClientDetailPage'))
-const RACIPage             = lazy(() => import('@/features/raci/RACIPage'))
 const AdminPage            = lazy(() => import('@/features/admin/AdminPage'))
 const BlockersPage         = lazy(() => import('@/features/blockers/BlockersPage'))
 const MeetingsPage         = lazy(() => import('@/features/meetings/MeetingsPage'))
@@ -28,6 +27,7 @@ const SettingsPage         = lazy(() => import('@/features/settings/SettingsPage
 const MyTasksPage          = lazy(() => import('@/features/mytasks/MyTasksPage'))
 const ClaudePage           = lazy(() => import('@/features/ai/ClaudePage'))
 const OpportunitiesPage    = lazy(() => import('@/features/opportunities/OpportunitiesPage'))
+const TimeTrackingPage     = lazy(() => import('@/features/timetracking/TimeTrackingPage'))
 const PrivacyPolicyPage    = lazy(() => import('@/features/public/PrivacyPolicyPage'))
 const TermsPage            = lazy(() => import('@/features/public/TermsPage'))
 const SupportPage          = lazy(() => import('@/features/public/SupportPage'))
@@ -88,10 +88,6 @@ const router = createBrowserRouter(
           element: <Suspense fallback={<PageLoader />}><ClientDetailPage /></Suspense>,
         },
         {
-          path: '/raci',
-          element: <Suspense fallback={<PageLoader />}><RACIPage /></Suspense>,
-        },
-        {
           path: '/blockers',
           element: <Suspense fallback={<PageLoader />}><BlockersPage /></Suspense>,
         },
@@ -146,6 +142,10 @@ const router = createBrowserRouter(
         {
           path: '/opportunities',
           element: <Suspense fallback={<PageLoader />}><OpportunitiesPage /></Suspense>,
+        },
+        {
+          path: '/time-tracking',
+          element: <Suspense fallback={<PageLoader />}><TimeTrackingPage /></Suspense>,
         },
       ],
     },

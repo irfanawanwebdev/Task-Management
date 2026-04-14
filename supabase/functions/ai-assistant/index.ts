@@ -92,7 +92,7 @@ const TOOLS: Anthropic.Tool[] = [
   },
   {
     name: 'add_task',
-    description: 'Create a new delivery task. Always call query_clients first to verify the client exists and get its UUID. Call query_tasks to check for duplicates.',
+    description: 'Create a new delivery task. Always call query_clients first to verify the client exists and get its UUID. Call query_tasks to check for duplicates. To assign the task to a team member, provide assigned_to_name (partial name match).',
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -104,6 +104,7 @@ const TOOLS: Anthropic.Tool[] = [
         workstream: { type: 'string' },
         due_date: { type: 'string', description: 'ISO date YYYY-MM-DD' },
         impact_level: { type: 'string', enum: ['Low', 'Medium', 'High'] },
+        assigned_to_name: { type: 'string', description: 'Full name (or partial) of the team member to assign this task to (Responsible role)' },
       },
       required: ['client_id', 'task_name'],
     },
@@ -331,7 +332,30 @@ async function executeTool(name: string, input: Record<string, any>, supabase: a
           impact_level: input.impact_level ?? 'Medium',
         }).select('id, task_name').single()
         if (error) return `Error creating task: ${error.message}`
-        return `Task created: "${data.task_name}" (ID: ${data.id})`
+
+        let assignMsg = ''
+        if (input.assigned_to_name) {
+          const { data: profiles } = await supabase
+            .from('profiles')
+            .select('user_id, full_name')
+            .ilike('full_name', `%${input.assigned_to_name}%`)
+            .limit(1)
+          if (profiles && profiles.length > 0) {
+            const assignee = profiles[0] as { user_id: string; full_name: string }
+            const { error: aErr } = await supabase.from('task_assignments').insert({
+              task_id: data.id,
+              user_id: assignee.user_id,
+              role_type: 'R',
+            })
+            assignMsg = aErr
+              ? ` (Warning: assignment failed — ${aErr.message})`
+              : ` Assigned to ${assignee.full_name} (R).`
+          } else {
+            assignMsg = ` (Warning: no team member found matching "${input.assigned_to_name}" — task created but unassigned.)`
+          }
+        }
+
+        return `Task created: "${data.task_name}" (ID: ${data.id}).${assignMsg}`
       }
 
       // ── update_meeting ─────────────────────────────────────────────────────
@@ -406,7 +430,9 @@ Rules:
 - For file uploads with Week 1/2/etc.: use bulk_create_tasks with reference_date=${today}
 - FLAG clearly when something doesn't exist; list what DOES exist
 - Format all tabular data as markdown tables (| Col | Col |) — never use bullet lists for structured data
-- Keep responses concise`
+- Keep responses concise
+- When creating a task and no assignee is specified, use assigned_to_name="${userName}" to assign to the requesting user
+- When asked to "create a task for me" or "assign to me", use assigned_to_name="${userName}"`
 }
 
 // ── Handler ────────────────────────────────────────────────────────────────

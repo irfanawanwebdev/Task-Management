@@ -15,7 +15,6 @@ export const PAGE_KEYS = {
   PM_DASHBOARD:    'pm_dashboard',
   CLIENTS:         'clients',
   TASKS:           'tasks',
-  RACI:            'raci',
   MEETINGS:        'meetings',
   BLOCKERS:        'blockers',
   WORKLOAD:        'workload',
@@ -25,6 +24,7 @@ export const PAGE_KEYS = {
   MY_TASKS:        'my_tasks',
   CLAUDE:          'claude',
   OPPORTUNITIES:   'opportunities',
+  TIME_TRACKING:   'time_tracking',
 } as const
 
 /** Maps route paths → page key (for access checks) */
@@ -34,16 +34,16 @@ const ROUTE_TO_PAGE_KEY: Record<string, string> = {
   '/':             PAGE_KEYS.PM_DASHBOARD,
   '/clients':      PAGE_KEYS.CLIENTS,
   '/tasks':        PAGE_KEYS.TASKS,
-  '/raci':         PAGE_KEYS.RACI,
   '/meetings':     PAGE_KEYS.MEETINGS,
   '/blockers':     PAGE_KEYS.BLOCKERS,
   '/workload':     PAGE_KEYS.WORKLOAD,
   '/instructions': PAGE_KEYS.INSTRUCTIONS,
   '/admin':        PAGE_KEYS.ADMIN,
   '/settings':     PAGE_KEYS.SETTINGS,
-  '/my-tasks':       PAGE_KEYS.MY_TASKS,
-  '/claude':         PAGE_KEYS.CLAUDE,
-  '/opportunities':  PAGE_KEYS.OPPORTUNITIES,
+  '/my-tasks':        PAGE_KEYS.MY_TASKS,
+  '/claude':          PAGE_KEYS.CLAUDE,
+  '/opportunities':   PAGE_KEYS.OPPORTUNITIES,
+  '/time-tracking':   PAGE_KEYS.TIME_TRACKING,
 }
 
 // ─── All Nav Items (full catalogue) ───────────────────────────────────────
@@ -66,11 +66,11 @@ const ALL_NAV_ITEMS: NavItem[] = [
   { label: 'Team Workload',       path: '/workload',     icon: 'BarChart2',      pageKey: PAGE_KEYS.WORKLOAD },
   { label: 'Internal Workspace',  path: '/instructions', icon: 'BookOpen',       pageKey: PAGE_KEYS.INSTRUCTIONS },
   { label: 'User Management',     path: '/admin',        icon: 'UserCog',        pageKey: PAGE_KEYS.ADMIN },
-  { label: 'RACI Matrix',         path: '/raci',         icon: 'Grid',           pageKey: PAGE_KEYS.RACI },
   { label: 'Settings',            path: '/settings',     icon: 'Settings',       pageKey: PAGE_KEYS.SETTINGS },
   { label: 'My Tasks',            path: '/my-tasks',     icon: 'ListTodo',       pageKey: PAGE_KEYS.MY_TASKS },
-  { label: 'Claude AI',           path: '/claude',       icon: 'Bot',            pageKey: PAGE_KEYS.CLAUDE },
-  { label: 'Opportunities',       path: '/opportunities',icon: 'Target',         pageKey: PAGE_KEYS.OPPORTUNITIES },
+  { label: 'Claude AI',           path: '/claude',        icon: 'Bot',            pageKey: PAGE_KEYS.CLAUDE },
+  { label: 'Opportunities',       path: '/opportunities', icon: 'Target',         pageKey: PAGE_KEYS.OPPORTUNITIES },
+  { label: 'Time Tracking',       path: '/time-tracking', icon: 'Clock',          pageKey: PAGE_KEYS.TIME_TRACKING },
 ]
 
 // ─── Per-User Page Access ──────────────────────────────────────────────────
@@ -153,7 +153,6 @@ export function canAccessRoute(role: AppRole, path: string): boolean {
     '/specialist':    allAuth,
     '/tasks':         allAuth,
     '/clients':       pmOwner,
-    '/raci':          pmOwner,
     '/blockers':      allAuth,
     '/meetings':      allAuth,
     '/workload':      pmOwner,
@@ -163,6 +162,7 @@ export function canAccessRoute(role: AppRole, path: string): boolean {
     '/my-tasks':        allAuth,
     '/claude':          allAuth,
     '/opportunities':   pmOwner,
+    '/time-tracking':   allAuth,
   }
 
   for (const [route, roles] of Object.entries(routeMap)) {
@@ -206,20 +206,21 @@ export function getNavForRole(role: AppRole): NavItem[] {
     { label: 'Team Workload',       path: '/workload',     icon: 'BarChart2',       pageKey: PAGE_KEYS.WORKLOAD },
     { label: 'Internal Workspace',  path: '/instructions', icon: 'BookOpen',        pageKey: PAGE_KEYS.INSTRUCTIONS },
     { label: 'User Management',     path: '/admin',        icon: 'UserCog',         pageKey: PAGE_KEYS.ADMIN },
-    { label: 'RACI Matrix',         path: '/raci',         icon: 'Grid',            pageKey: PAGE_KEYS.RACI },
     { label: 'Settings',            path: '/settings',     icon: 'Settings',        pageKey: PAGE_KEYS.SETTINGS },
     { label: 'Opportunities',       path: '/opportunities',icon: 'Target',          pageKey: PAGE_KEYS.OPPORTUNITIES },
+    { label: 'Time Tracking',       path: '/time-tracking',icon: 'Clock',           pageKey: PAGE_KEYS.TIME_TRACKING },
     { label: 'My Tasks',            path: '/my-tasks',     icon: 'ListTodo',        pageKey: PAGE_KEYS.MY_TASKS },
     { label: 'Claude AI',           path: '/claude',       icon: 'Bot',             pageKey: PAGE_KEYS.CLAUDE },
   ]
 
   const specialistNav: NavItem[] = [
-    { label: 'My Dashboard', path: '/specialist', icon: 'LayoutDashboard', pageKey: PAGE_KEYS.SPECIALIST },
-    { label: 'Tasks',        path: '/tasks',      icon: 'CheckSquare',     pageKey: PAGE_KEYS.TASKS },
-    { label: 'My Tasks',     path: '/my-tasks',   icon: 'ListTodo',        pageKey: PAGE_KEYS.MY_TASKS },
-    { label: 'Claude AI',    path: '/claude',     icon: 'Bot',             pageKey: PAGE_KEYS.CLAUDE },
-    { label: 'Meetings',     path: '/meetings',   icon: 'Calendar',        pageKey: PAGE_KEYS.MEETINGS },
-    { label: 'Blockers',     path: '/blockers',   icon: 'AlertTriangle',   pageKey: PAGE_KEYS.BLOCKERS },
+    { label: 'My Dashboard',  path: '/specialist',    icon: 'LayoutDashboard', pageKey: PAGE_KEYS.SPECIALIST },
+    { label: 'Tasks',         path: '/tasks',         icon: 'CheckSquare',     pageKey: PAGE_KEYS.TASKS },
+    { label: 'My Tasks',      path: '/my-tasks',      icon: 'ListTodo',        pageKey: PAGE_KEYS.MY_TASKS },
+    { label: 'Time Tracking', path: '/time-tracking', icon: 'Clock',           pageKey: PAGE_KEYS.TIME_TRACKING },
+    { label: 'Claude AI',     path: '/claude',        icon: 'Bot',             pageKey: PAGE_KEYS.CLAUDE },
+    { label: 'Meetings',      path: '/meetings',      icon: 'Calendar',        pageKey: PAGE_KEYS.MEETINGS },
+    { label: 'Blockers',      path: '/blockers',      icon: 'AlertTriangle',   pageKey: PAGE_KEYS.BLOCKERS },
   ]
 
   if (role === 'owner') {

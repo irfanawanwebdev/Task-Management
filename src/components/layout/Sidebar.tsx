@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import {
-  LayoutDashboard, Users, CheckSquare, Grid3X3, Calendar,
+  LayoutDashboard, Users, CheckSquare, Calendar, Clock,
   AlertTriangle, BarChart2, BookOpen, UserCog, Settings,
   TrendingUp, LogOut, ChevronRight, ListTodo, Bot, Target, HelpCircle, Download,
 } from 'lucide-react'
@@ -14,7 +14,7 @@ import { downloadSOPDoc } from '@/lib/generateSOPDoc'
 import { cn } from '@/lib/utils'
 
 const ICON_MAP: Record<string, React.ElementType> = {
-  LayoutDashboard, Users, CheckSquare, Grid: Grid3X3, Calendar,
+  LayoutDashboard, Users, CheckSquare, Calendar, Clock,
   AlertTriangle, BarChart2, BookOpen, UserCog, Settings, TrendingUp, ListTodo, Bot, Target,
 }
 

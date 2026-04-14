@@ -7,6 +7,7 @@ import { NotificationBell } from '@/components/NotificationBell'
 import { AIChat } from '@/features/ai/AIChat'
 import { LogOut } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
+import { useSessionTracker } from '@/hooks/useSessionTracker'
 
 // ─── Miami Time Clock ──────────────────────────────────────────────────────
 
@@ -85,6 +86,9 @@ function TopHeader() {
 // ─── App Layout ───────────────────────────────────────────────────────────
 
 export default function AppLayout() {
+  const { profile } = useAuth()
+  useSessionTracker(profile?.user_id)
+
   return (
     <div className="flex h-screen overflow-hidden bg-background">
       <Sidebar />

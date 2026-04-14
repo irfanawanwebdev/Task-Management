@@ -87,10 +87,10 @@ async function compileSingle(
 
   if (!client) return { error: 'Client not found' }
 
-  // 2. Get completed tasks in period
+  // 2. Get completed tasks in period (full details)
   const { data: tasks } = await admin
     .from('delivery_tasks')
-    .select('id, task_name, workstream, step, impact_level, status, due_date, ar_output_logged, ar_output_url')
+    .select('id, task_name, workstream, step, impact_level, status, due_date, ar_output_logged, ar_output_url, description, notes, links')
     .eq('client_id', client_id)
     .eq('status', 'Done')
     .gte('due_date', period_start)
@@ -144,13 +144,18 @@ async function compileSingle(
     completed_tasks: doneTasks.map((t: {
       task_name: string; workstream: string; step: number
       impact_level: string; due_date: string; ar_output_url?: string
+      description?: string; notes?: string
+      links?: { label: string; url: string }[]
     }) => ({
-      task_name:     t.task_name,
-      workstream:    t.workstream,
-      step:          t.step,
-      impact_level:  t.impact_level,
-      due_date:      t.due_date,
-      proof_url:     t.ar_output_url ?? null,
+      task_name:    t.task_name,
+      workstream:   t.workstream,
+      step:         t.step,
+      impact_level: t.impact_level,
+      due_date:     t.due_date,
+      proof_url:    t.ar_output_url ?? null,
+      description:  t.description ?? null,
+      notes:        t.notes ?? null,
+      links:        t.links ?? [],
     })),
     active_blockers: (blockers ?? []).map((b: {
       description: string; severity: string; status: string; workstream: string
