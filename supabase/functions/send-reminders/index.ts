@@ -64,11 +64,11 @@ serve(async (req: Request) => {
     }
 
     // ── Resolve dates ─────────────────────────────────────────────────────
-    const nowUTC        = new Date()
-    const todayEST      = toESTDateStr(nowUTC)
-    const tomorrowEST   = toESTDateStr(new Date(nowUTC.getTime() + 24 * 60 * 60 * 1000))
-    const in3Days       = toESTDateStr(new Date(nowUTC.getTime() + 3  * 24 * 60 * 60 * 1000))
-    const threeDaysAgo  = toESTDateStr(new Date(nowUTC.getTime() - 3  * 24 * 60 * 60 * 1000))
+    const nowUTC = new Date()
+    const todayEST = toESTDateStr(nowUTC)
+    const tomorrowEST = toESTDateStr(new Date(nowUTC.getTime() + 24 * 60 * 60 * 1000))
+    const in3Days = toESTDateStr(new Date(nowUTC.getTime() + 3 * 24 * 60 * 60 * 1000))
+    const threeDaysAgo = toESTDateStr(new Date(nowUTC.getTime() - 3 * 24 * 60 * 60 * 1000))
 
     // ── Get all PM/owner user IDs ─────────────────────────────────────────
     const { data: pmUsers } = await admin.rpc('get_pm_owner_user_ids')
@@ -91,10 +91,10 @@ serve(async (req: Request) => {
       for (const u of targetUsers) {
         notifications.push({
           user_id: u.user_id,
-          type:    'overdue_task',
-          title:   `${overdueCount} overdue task${overdueCount > 1 ? 's' : ''} need attention`,
+          type: 'overdue_task',
+          title: `${overdueCount} overdue task${overdueCount > 1 ? 's' : ''} need attention`,
           message: `${overdueCount} task${overdueCount > 1 ? 's are' : ' is'} past their due date and not yet completed.`,
-          link:    '/tasks',
+          link: '/tasks',
         })
       }
     }
@@ -119,14 +119,14 @@ serve(async (req: Request) => {
       }
 
       for (const [userId, taskNames] of overdueByUser) {
-        const count   = taskNames.length
+        const count = taskNames.length
         const preview = taskNames.slice(0, 3).join(', ') + (count > 3 ? ` +${count - 3} more` : '')
         notifications.push({
           user_id: userId,
-          type:    'overdue_task_assigned',
-          title:   `⚠ ${count} overdue task${count > 1 ? 's' : ''} assigned to you`,
+          type: 'overdue_task_assigned',
+          title: `⚠ ${count} overdue task${count > 1 ? 's' : ''} assigned to you`,
           message: `Please complete overdue task${count > 1 ? 's' : ''}: ${preview}.`,
-          link:    '/tasks',
+          link: '/tasks',
         })
       }
     }
@@ -158,7 +158,7 @@ serve(async (req: Request) => {
       )
 
       // Separate by date per user
-      const dueToday    = new Map<string, string[]>()  // userId → task names
+      const dueToday = new Map<string, string[]>()  // userId → task names
       const dueTomorrow = new Map<string, string[]>()
 
       for (const a of (assignments ?? []) as { user_id: string; task_id: string }[]) {
@@ -178,14 +178,14 @@ serve(async (req: Request) => {
 
       // Due TODAY — urgent notification to each assignee
       for (const [userId, taskNames] of dueToday) {
-        const count   = taskNames.length
+        const count = taskNames.length
         const preview = taskNames.slice(0, 3).join(', ') + (count > 3 ? ` +${count - 3} more` : '')
         notifications.push({
           user_id: userId,
-          type:    'task_deadline_approaching',
-          title:   `🔔 ${count} task${count > 1 ? 's' : ''} due TODAY`,
+          type: 'task_deadline_approaching',
+          title: `🔔 ${count} task${count > 1 ? 's' : ''} due TODAY`,
           message: `Complete today: ${preview}. These are due by end of day.`,
-          link:    '/tasks',
+          link: '/tasks',
         })
       }
 
@@ -193,14 +193,14 @@ serve(async (req: Request) => {
       for (const [userId, taskNames] of dueTomorrow) {
         // Skip if user already got a "due today" notification (reduce noise)
         if (dueToday.has(userId)) continue
-        const count   = taskNames.length
+        const count = taskNames.length
         const preview = taskNames.slice(0, 3).join(', ') + (count > 3 ? ` +${count - 3} more` : '')
         notifications.push({
           user_id: userId,
-          type:    'task_deadline_approaching',
-          title:   `${count} task${count > 1 ? 's' : ''} due tomorrow`,
+          type: 'task_deadline_approaching',
+          title: `${count} task${count > 1 ? 's' : ''} due tomorrow`,
           message: `Heads up: ${preview} ${count > 1 ? 'are' : 'is'} due tomorrow.`,
-          link:    '/tasks',
+          link: '/tasks',
         })
       }
     }
@@ -218,10 +218,10 @@ serve(async (req: Request) => {
       for (const u of targetUsers) {
         notifications.push({
           user_id: u.user_id,
-          type:    'report_due',
-          title:   `${reportsDueCount} report${reportsDueCount > 1 ? 's' : ''} due within 3 days`,
+          type: 'report_due',
+          title: `${reportsDueCount} report${reportsDueCount > 1 ? 's' : ''} due within 3 days`,
           message: `${reportsDueCount} unsent report${reportsDueCount > 1 ? 's are' : ' is'} due by ${in3Days}. Review and send promptly.`,
-          link:    '/meetings',
+          link: '/meetings',
         })
       }
     }
@@ -238,10 +238,10 @@ serve(async (req: Request) => {
       for (const u of targetUsers) {
         notifications.push({
           user_id: u.user_id,
-          type:    'blocker_aged',
-          title:   `${blockerCount} blocker${blockerCount > 1 ? 's' : ''} aging beyond 3 days`,
+          type: 'blocker_aged',
+          title: `${blockerCount} blocker${blockerCount > 1 ? 's' : ''} aging beyond 3 days`,
           message: `${blockerCount} unresolved blocker${blockerCount > 1 ? 's have' : ' has'} been open for more than 3 days and require immediate action.`,
-          link:    '/blockers',
+          link: '/blockers',
         })
       }
     }
@@ -264,10 +264,10 @@ serve(async (req: Request) => {
       for (const u of targetUsers) {
         notifications.push({
           user_id: u.user_id,
-          type:    'upcoming_meeting',
-          title:   `${meetingCount} meeting${meetingCount > 1 ? 's' : ''} scheduled tomorrow`,
+          type: 'upcoming_meeting',
+          title: `${meetingCount} meeting${meetingCount > 1 ? 's' : ''} scheduled tomorrow`,
           message: `Upcoming: ${clientNames}${moreCount}. Ensure agendas and reports are prepared.`,
-          link:    '/meetings',
+          link: '/meetings',
         })
       }
     }
@@ -284,22 +284,22 @@ serve(async (req: Request) => {
       if (!personalByUser.has(t.user_id))
         personalByUser.set(t.user_id, { overdue: 0, today: 0, tomorrow: 0 })
       const e = personalByUser.get(t.user_id)!
-      if (t.due_date < todayEST)        e.overdue++
+      if (t.due_date < todayEST) e.overdue++
       else if (t.due_date === todayEST) e.today++
-      else                              e.tomorrow++
+      else e.tomorrow++
     }
 
     for (const [userId, counts] of personalByUser) {
       const parts: string[] = []
-      if (counts.overdue  > 0) parts.push(`${counts.overdue} overdue`)
-      if (counts.today    > 0) parts.push(`${counts.today} due today`)
+      if (counts.overdue > 0) parts.push(`${counts.overdue} overdue`)
+      if (counts.today > 0) parts.push(`${counts.today} due today`)
       if (counts.tomorrow > 0) parts.push(`${counts.tomorrow} due tomorrow`)
       notifications.push({
         user_id: userId,
-        type:    'personal_task_due',
-        title:   'Personal tasks need attention',
+        type: 'personal_task_due',
+        title: 'Personal tasks need attention',
         message: `You have ${parts.join(', ')} in your personal task list.`,
-        link:    '/my-tasks',
+        link: '/my-tasks',
       })
     }
 
@@ -314,7 +314,7 @@ serve(async (req: Request) => {
 
     // ── Send daily summary emails via Resend ──────────────────────────────
     // For each user who received notifications, fetch their email and send a digest.
-    const apiKey    = Deno.env.get('RESEND_API_KEY')?.trim()
+    const apiKey = Deno.env.get('RESEND_API_KEY')?.trim()
     const fromEmail = (Deno.env.get('FROM_EMAIL') ?? 'onboarding@resend.dev').trim()
     let emailsSent = 0
 
@@ -343,12 +343,11 @@ serve(async (req: Request) => {
           const { data: { user } } = await admin.auth.admin.getUserById(uid)
           if (user?.email) {
             emailMap.set(uid, {
-              email:     user.email,
+              email: user.email,
               full_name: profileNameMap.get(uid) ?? user.email,
             })
           }
         } catch {
-          // skip users we can't look up
         }
       }
 
@@ -380,7 +379,7 @@ serve(async (req: Request) => {
           headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
           body: JSON.stringify({
             from: `JZ Smart Media <${fromEmail}>`,
-            to:   [user.email],
+            to: [user.email],
             subject: `Daily Reminders — ${todayEST}`,
             html,
           }),
@@ -395,17 +394,17 @@ serve(async (req: Request) => {
 
     return json({
       success: true,
-      sent:    notifications.length,
+      sent: notifications.length,
       emails_sent: emailsSent,
       targets: targetUsers.length,
       checks: {
-        overdue_tasks_pm_summary:      overdueCount,
+        overdue_tasks_pm_summary: overdueCount,
         overdue_task_assigned_per_user: (overdueTasks ?? []).length,
-        due_today_per_user:            upcomingIds.length,
-        reports_due:                   reportsDueCount,
-        aged_blockers:                 blockerCount,
-        tomorrow_meetings:             meetingCount,
-        personal_task_reminders:       personalByUser.size,
+        due_today_per_user: upcomingIds.length,
+        reports_due: reportsDueCount,
+        aged_blockers: blockerCount,
+        tomorrow_meetings: meetingCount,
+        personal_task_reminders: personalByUser.size,
       },
     }, 200)
 
