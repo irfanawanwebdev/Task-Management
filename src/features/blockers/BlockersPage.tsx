@@ -422,14 +422,16 @@ export default function BlockersPage() {
   const [showAdd, setShowAdd] = useState(false)
   const [filterStatus, setFilterStatus] = useState<FilterStatus>('All')
   const [filterSeverity, setFilterSeverity] = useState<'All' | 'High' | 'Med' | 'Low'>('All')
+  const [filterClient, setFilterClient] = useState<string>('All')
 
   const { data: blockers = [], isLoading } = useBlockers()
   const { data: clients = [] }             = useClientList()
 
   const filtered = sortBlockers(
     blockers.filter(b =>
-      (filterStatus   === 'All' || b.status   === filterStatus) &&
-      (filterSeverity === 'All' || b.severity === filterSeverity),
+      (filterStatus   === 'All' || b.status      === filterStatus) &&
+      (filterSeverity === 'All' || b.severity    === filterSeverity) &&
+      (filterClient   === 'All' || b.client_id   === filterClient),
     ),
   )
 
@@ -497,6 +499,19 @@ export default function BlockersPage() {
           <ChevronDown className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
         </div>
 
+        {/* Client / company filter */}
+        <div className="relative">
+          <select
+            value={filterClient}
+            onChange={e => setFilterClient(e.target.value)}
+            className="appearance-none rounded border border-input bg-background pl-3 pr-8 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+          >
+            <option value="All">All Clients</option>
+            {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+          <ChevronDown className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        </div>
+
         <HelpPopover
           title="Severity & Status Guide"
           side="bottom"
@@ -517,7 +532,7 @@ export default function BlockersPage() {
 
         {filtered.length !== blockers.length && (
           <button
-            onClick={() => { setFilterStatus('All'); setFilterSeverity('All') }}
+            onClick={() => { setFilterStatus('All'); setFilterSeverity('All'); setFilterClient('All') }}
             className="inline-flex items-center gap-1 rounded border border-input px-3 py-2 text-xs hover:bg-muted"
           >
             <X className="h-3 w-3" /> Clear filters ({filtered.length}/{blockers.length})

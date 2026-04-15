@@ -124,6 +124,7 @@ export function getNavForProfile(profile: Profile | null, role: AppRole | null):
     // Always include these pages regardless of page_access config
     const alwaysIncluded = new Set<string>([
       PAGE_KEYS.SPECIALIST, PAGE_KEYS.MY_TASKS, PAGE_KEYS.CLAUDE, PAGE_KEYS.OPPORTUNITIES,
+      PAGE_KEYS.TIME_TRACKING,
     ])
     const specialistItem    = ALL_NAV_ITEMS.find(item => item.pageKey === PAGE_KEYS.SPECIALIST)!
     const myTasksItem       = ALL_NAV_ITEMS.find(item => item.pageKey === PAGE_KEYS.MY_TASKS)!

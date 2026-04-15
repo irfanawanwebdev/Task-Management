@@ -5,7 +5,7 @@
  */
 
 import { useRef, useState } from 'react'
-import { Paperclip, Upload, X, ExternalLink, Loader2, FileText, Image, File } from 'lucide-react'
+import { Upload, X, ExternalLink, Loader2, FileText, Image, File } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { cn } from '@/lib/utils'
 

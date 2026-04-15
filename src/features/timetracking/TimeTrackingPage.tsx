@@ -9,9 +9,9 @@ import { useQuery } from '@tanstack/react-query'
 import { Clock, ChevronLeft, ChevronRight, User, TrendingUp } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/features/auth/AuthContext'
-import { todayDateEST, formatDateEST } from '@/lib/timezone'
+import { todayDateEST } from '@/lib/timezone'
 import { cn } from '@/lib/utils'
-import { format, startOfWeek, endOfWeek, addDays, addWeeks, subWeeks, parseISO } from 'date-fns'
+import { format, startOfWeek, endOfWeek, addDays, addWeeks, subWeeks } from 'date-fns'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 

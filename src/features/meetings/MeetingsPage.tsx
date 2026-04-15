@@ -532,6 +532,9 @@ interface GeneratedContent {
     impact: string
     completed_date: string | null
     output_link: string | null
+    description?: string | null
+    notes?: string | null
+    links?: { label: string; url: string }[]
   }[]
 }
 
@@ -562,10 +565,15 @@ function buildReportText(report: Report, clientName: string): string {
       lines.push('─'.repeat(60))
       gc.delivery_summary.forEach((t, i) => {
         lines.push(`${i + 1}. ${t.task}`)
-        lines.push(`   Workstream : ${t.workstream}`)
-        lines.push(`   Impact     : ${t.impact}`)
-        lines.push(`   Completed  : ${t.completed_date ? formatDateEST(t.completed_date) : '—'}`)
-        if (t.output_link) lines.push(`   Output     : ${t.output_link}`)
+        lines.push(`   Workstream  : ${t.workstream}`)
+        lines.push(`   Impact      : ${t.impact}`)
+        lines.push(`   Completed   : ${t.completed_date ? formatDateEST(t.completed_date) : '—'}`)
+        if (t.description) lines.push(`   Description : ${t.description}`)
+        if (t.notes)       lines.push(`   Notes       : ${t.notes}`)
+        if (t.output_link) lines.push(`   Output      : ${t.output_link}`)
+        if (t.links && t.links.length > 0) {
+          t.links.forEach(l => lines.push(`   Link        : ${l.label || l.url} — ${l.url}`))
+        }
         lines.push('')
       })
     }
@@ -668,17 +676,25 @@ ${gc ? `
 ${gc.delivery_summary && gc.delivery_summary.length > 0 ? `
 <h2>Delivery Summary</h2>
 <table>
-  <thead><tr><th>#</th><th>Task</th><th>Workstream</th><th>Impact</th><th>Completed</th><th>Output</th></tr></thead>
+  <thead><tr><th>#</th><th>Task</th><th>Workstream</th><th>Impact</th><th>Completed</th><th>Description</th><th>Notes</th><th>Output / Links</th></tr></thead>
   <tbody>
-    ${gc.delivery_summary.map((t, i) => `
+    ${gc.delivery_summary.map((t, i) => {
+      const linksHtml = [
+        t.output_link ? `<a href="${t.output_link}" target="_blank">Output</a>` : '',
+        ...(t.links ?? []).map(l => `<a href="${l.url}" target="_blank">${l.label || l.url}</a>`),
+      ].filter(Boolean).join('<br/>')
+      return `
     <tr>
       <td>${i + 1}</td>
       <td>${t.task}</td>
       <td>${t.workstream}</td>
       <td class="${t.impact === 'High' ? 'impact-high' : t.impact === 'Medium' ? 'impact-med' : 'impact-low'}">${t.impact}</td>
       <td>${t.completed_date ? formatDateEST(t.completed_date) : '—'}</td>
-      <td>${t.output_link ? `<a href="${t.output_link}" target="_blank">View</a>` : '—'}</td>
-    </tr>`).join('')}
+      <td style="font-size:11px;color:#555;white-space:pre-wrap;max-width:200px">${t.description ?? '—'}</td>
+      <td style="font-size:11px;color:#555;white-space:pre-wrap;max-width:200px">${t.notes ?? '—'}</td>
+      <td>${linksHtml || '—'}</td>
+    </tr>`
+    }).join('')}
   </tbody>
 </table>` : ''}
 ` : '<p style="color:#6b7280;font-style:italic;">Manual report — no auto-generated content.</p>'}
@@ -903,7 +919,7 @@ function CreateReportDialog({
       const cutoffStr = cutoff.toISOString().slice(0, 10)
       const { data, error } = await supabase
         .from('delivery_tasks')
-        .select('id, task_name, workstream, step_name, completed_date, output_link, impact_level')
+        .select('id, task_name, workstream, step_name, completed_date, output_link, impact_level, description, notes, links')
         .eq('client_id', clientId)
         .eq('status', 'Done')
         .gte('completed_date', cutoffStr)
@@ -937,6 +953,9 @@ function CreateReportDialog({
               impact:         t.impact_level,
               completed_date: t.completed_date,
               output_link:    t.output_link ?? null,
+              description:    (t as unknown as { description?: string }).description ?? null,
+              notes:          (t as unknown as { notes?: string }).notes ?? null,
+              links:          (t as unknown as { links?: { label: string; url: string }[] }).links ?? [],
             })),
           }
         : null
@@ -1096,6 +1115,8 @@ function CreateReportDialog({
                             <th className="px-3 py-1.5 text-left font-medium text-muted-foreground">Workstream</th>
                             <th className="px-3 py-1.5 text-left font-medium text-muted-foreground">Impact</th>
                             <th className="px-3 py-1.5 text-left font-medium text-muted-foreground">Completed</th>
+                            <th className="px-3 py-1.5 text-left font-medium text-muted-foreground">Description</th>
+                            <th className="px-3 py-1.5 text-left font-medium text-muted-foreground">Notes</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -1111,6 +1132,12 @@ function CreateReportDialog({
                                 )}>{t.impact_level}</span>
                               </td>
                               <td className="px-3 py-1.5 text-muted-foreground">{t.completed_date ? formatDateEST(t.completed_date) : '—'}</td>
+                              <td className="px-3 py-1.5 text-muted-foreground text-xs max-w-[150px] truncate">
+                                {(t as unknown as { description?: string }).description || '—'}
+                              </td>
+                              <td className="px-3 py-1.5 text-muted-foreground text-xs max-w-[150px] truncate">
+                                {(t as unknown as { notes?: string }).notes || '—'}
+                              </td>
                             </tr>
                           ))}
                         </tbody>

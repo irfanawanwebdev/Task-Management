@@ -40,7 +40,7 @@ export type Workstream =
   | 'Social'
   | 'VA/Vendor'
 
-export type RaciRole = 'R' | 'A' | 'C' | 'I'
+export type RaciRole = 'R' | 'A' | 'A/R' | 'C' | 'I'
 
 export type TaskStatus = 'Not Started' | 'In Progress' | 'Blocked' | 'Done'
 

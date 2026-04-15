@@ -52,7 +52,6 @@ const PAGE_ACCESS_OPTIONS: { key: string; label: string }[] = [
   { key: PAGE_KEYS.PM_DASHBOARD,    label: 'PM Dashboard' },
   { key: PAGE_KEYS.CLIENTS,         label: 'Clients' },
   { key: PAGE_KEYS.TASKS,           label: 'Tasks' },
-  { key: PAGE_KEYS.RACI,            label: 'RACI Matrix' },
   { key: PAGE_KEYS.MEETINGS,        label: 'Meetings & Reports' },
   { key: PAGE_KEYS.BLOCKERS,        label: 'Blockers' },
   { key: PAGE_KEYS.WORKLOAD,        label: 'Team Workload' },

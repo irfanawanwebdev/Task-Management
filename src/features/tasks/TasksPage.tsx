@@ -4,7 +4,8 @@
  * Opens Task Detail Dialog on row click.
  */
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Loader2, AlertTriangle, CheckCircle2, X, ExternalLink, Plus, Copy, Trash2,
@@ -340,7 +341,6 @@ function TaskDetailDialog({
   const [descriptionVal, setDescriptionVal]     = useState(task.description ?? '')
   const [editingAssignees, setEditingAssignees] = useState(false)
   const [addAssigneeUserId, setAddAssigneeUserId] = useState('')
-  const [addAssigneeRole, setAddAssigneeRole]   = useState<'R' | 'A' | 'A/R' | 'C' | 'I'>('R')
   const [assigneesSaving, setAssigneesSaving]  = useState(false)
   // Local copy of assignments so edits are reflected immediately
   const [localAssignments, setLocalAssignments] = useState(task.task_assignments ?? [])
@@ -479,19 +479,17 @@ function TaskDetailDialog({
     const { error } = await supabase.from('task_assignments').insert({
       task_id: task.id,
       user_id: addAssigneeUserId,
-      role_type: addAssigneeRole,
+      role_type: 'R',
     } as never)
     if (!error) {
-      const name = profilesList.find(p => p.user_id === addAssigneeUserId)?.full_name ?? '?'
       setLocalAssignments(prev => [...prev, {
         id: crypto.randomUUID(),
         task_id: task.id,
         user_id: addAssigneeUserId,
-        role_type: addAssigneeRole,
+        role_type: 'R',
         workstream: null,
       }])
       setAddAssigneeUserId('')
-      setAddAssigneeRole('R')
       queryClient.invalidateQueries({ queryKey: ['tasks'] })
       queryClient.invalidateQueries({ queryKey: ['client-detail'] })
     }
@@ -520,10 +518,32 @@ function TaskDetailDialog({
     },
     onMutate: (status) => { setCurrentStatus(status) },
     onError:  ()       => { setCurrentStatus(task.status) },
-    onSuccess: () => {
+    onSuccess: async (_, status) => {
       setQaWarning(false)
       queryClient.invalidateQueries({ queryKey: ['tasks'] })
       queryClient.invalidateQueries({ queryKey: ['client-detail'] })
+      // Auto-create a blocker entry when a task is marked Blocked (if one doesn't already exist)
+      if (status === 'Blocked') {
+        const { data: existing } = await supabase
+          .from('blockers')
+          .select('id')
+          .eq('task_id', task.id)
+          .in('status', ['Open', 'In Progress'])
+          .maybeSingle()
+        if (!existing) {
+          await supabase.from('blockers').insert({
+            client_id:    task.client_id,
+            task_id:      task.id,
+            workstream:   task.workstream,
+            description:  `Blocked: ${task.task_name}`,
+            severity:     'Med',
+            status:       'Open',
+            created_date: todayDateEST(),
+          } as never)
+          queryClient.invalidateQueries({ queryKey: ['blockers-page'] })
+          queryClient.invalidateQueries({ queryKey: ['all-blockers'] })
+        }
+      }
     },
   })
 
@@ -791,7 +811,7 @@ function TaskDetailDialog({
                 const name = (a.user_id ? profilesList.find(p => p.user_id === a.user_id)?.full_name : null) ?? a.workstream ?? '—'
                 return (
                   <span key={i} className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-md bg-primary/10 text-primary border border-primary/20">
-                    <span className="font-semibold">{a.role_type}:</span> {name}
+                    {name}
                     {editingAssignees && (
                       <button
                         onClick={() => removeAssignment(a.user_id ?? null, i)}
@@ -818,17 +838,6 @@ function TaskDetailDialog({
                   {profilesList.map(p => (
                     <option key={p.user_id} value={p.user_id}>{p.full_name}</option>
                   ))}
-                </select>
-                <select
-                  value={addAssigneeRole}
-                  onChange={e => setAddAssigneeRole(e.target.value as 'R' | 'A' | 'A/R' | 'C' | 'I')}
-                  className="px-2 py-1 bg-background border border-input rounded text-xs focus:outline-none focus:ring-1 focus:ring-ring"
-                >
-                  <option value="R">R — Responsible</option>
-                  <option value="A">A — Accountable</option>
-                  <option value="A/R">A/R — Accountable + Responsible</option>
-                  <option value="C">C — Consulted</option>
-                  <option value="I">I — Informed</option>
                 </select>
                 <button
                   onClick={addAssignment}
@@ -880,14 +889,14 @@ function TaskDetailDialog({
           {/* Output Link */}
           <div>
             <p className="section-header flex items-center gap-1.5">
-              A/R Output URL
+              Output URL
               <HelpPopover
-                title="What is the A/R Output URL?"
+                title="What is the Output URL?"
                 side="bottom"
                 align="left"
                 content={
                   <div className="space-y-2">
-                    <p>This is the <strong>QA Gate</strong> — proof that the task was completed. If you are <strong>Accountable (A)</strong> or <strong>Responsible (R)</strong> for this task, you must paste a URL here before marking it Done.</p>
+                    <p>This is the <strong>QA Gate</strong> — proof that the task was completed. Paste a URL here before marking the task Done.</p>
                     <p className="font-semibold text-foreground">What to paste:</p>
                     <ul className="list-disc list-inside space-y-0.5">
                       <li>A live page URL (e.g. the website you built)</li>
@@ -1066,10 +1075,10 @@ function TaskDetailDialog({
               <div className="qa-gate-warning mb-3">
                 <AlertTriangle className="h-4 w-4 text-[hsl(var(--warning))] shrink-0 mt-0.5" />
                 <div className="flex-1">
-                  <p className="font-medium text-sm">QA Gate: A/R Output Not Logged</p>
+                  <p className="font-medium text-sm">QA Gate: Output URL Not Logged</p>
                   <p className="text-xs mt-0.5 text-muted-foreground">
-                    This task has Accountable/Responsible assignments and the output has not been logged yet.
-                    Log the output before marking Done, or override to proceed anyway.
+                    The output URL has not been logged for this task.
+                    Paste the output URL above before marking Done, or override to proceed anyway.
                   </p>
                   <div className="flex gap-2 mt-2">
                     <button onClick={() => updateStatus.mutate('Done')} disabled={updateStatus.isPending}
@@ -1126,8 +1135,7 @@ function TaskRow({ task, profilesList, onClick }: { task: DeliveryTask; profiles
   const resolveName = (a: { user_id?: string | null; workstream?: string | null }) =>
     (a.user_id ? profilesList.find(p => p.user_id === a.user_id)?.full_name : null) ?? a.workstream ?? '—'
 
-  const rAssign = task.task_assignments?.filter(a => a.role_type === 'R').map(resolveName).join(', ')
-  const aAssign = task.task_assignments?.filter(a => a.role_type === 'A').map(resolveName).join(', ')
+  const allAssignees = task.task_assignments?.map(resolveName).join(', ')
 
   return (
     <tr onClick={onClick} className={cn(isOverdue && 'bg-destructive/5')}>
@@ -1141,8 +1149,7 @@ function TaskRow({ task, profilesList, onClick }: { task: DeliveryTask; profiles
       <td className="px-4 py-3">
         <p className="text-sm font-medium line-clamp-1">{task.task_name}</p>
       </td>
-      <td className="px-4 py-3 text-xs text-muted-foreground max-w-24 truncate">{rAssign ?? '—'}</td>
-      <td className="px-4 py-3 text-xs text-muted-foreground max-w-24 truncate">{aAssign ?? '—'}</td>
+      <td className="px-4 py-3 text-xs text-muted-foreground max-w-32 truncate">{allAssignees || '—'}</td>
       <td className="px-4 py-3">
         <span className={cn(
           task.status === 'Done'        ? 'status-done' :
@@ -1188,6 +1195,7 @@ export default function TasksPage() {
   const [selectedTask, setSelectedTask]   = useState<DeliveryTask | null>(null)
   const [showCreate, setShowCreate]       = useState(false)
   const [showDailyReport, setShowDailyReport] = useState(false)
+  const [searchParams, setSearchParams]   = useSearchParams()
 
   const { role, profile } = useAuth()
   const isPMOrOwner = role === 'owner' || role === 'project_manager'
@@ -1205,6 +1213,17 @@ export default function TasksPage() {
       return (data ?? []) as { user_id: string; full_name: string }[]
     },
   })
+
+  // ── Auto-open task from ?task=<id> query param (used by dashboards) ─────────
+  useEffect(() => {
+    const taskId = searchParams.get('task')
+    if (!taskId || tasks.length === 0) return
+    const found = tasks.find(t => t.id === taskId)
+    if (found) {
+      setSelectedTask(found)
+      setSearchParams({}, { replace: true }) // clear param after opening
+    }
+  }, [tasks, searchParams, setSearchParams])
 
   // ── Date filtering ──────────────────────────────────────────────────────────
   const dateTasks = (() => {
@@ -1282,7 +1301,7 @@ export default function TasksPage() {
   const VIEWS: { id: ViewTab; label: string; help: string }[] = [
     { id: 'timeline',   label: 'Timeline',      help: 'All tasks ordered by delivery step and due date. The default view for tracking overall client delivery progress.' },
     { id: 'workstream', label: 'By Workstream', help: 'Tasks grouped by department (SEO, PPC, Web, Social, etc.). Use this to see what each team is working on.' },
-    { id: 'qa-gate',    label: 'QA Gate',       help: 'Tasks that are in progress but the A/R output URL hasn\'t been logged yet. The next delivery step is locked until these are cleared.' },
+    { id: 'qa-gate',    label: 'QA Gate',       help: 'Tasks that are in progress but the output URL hasn\'t been logged yet. The next delivery step is locked until these are cleared.' },
     { id: 'blocked',    label: 'Blocked',       help: 'Tasks with status "Blocked". Each should have a matching blocker logged on the Blockers page. Resolve or escalate promptly.' },
     { id: 'overdue',    label: 'Overdue',       help: 'Tasks past their due date that aren\'t done. Prioritize these — they directly affect the client\'s risk score.' },
     { id: 'done',       label: 'Done',          help: 'All completed tasks. Use this to review what has been delivered for each client.' },
@@ -1430,7 +1449,7 @@ export default function TasksPage() {
         <div className="qa-gate-warning">
           <AlertTriangle className="h-4 w-4 text-[hsl(var(--warning))] shrink-0 mt-0.5" />
           <p className="text-sm">
-            These tasks have outputs not yet logged. Next steps are blocked until A/R output is confirmed.
+            These tasks have outputs not yet logged. Next steps are blocked until the output URL is confirmed.
           </p>
         </div>
       )}
@@ -1472,10 +1491,9 @@ export default function TasksPage() {
                     <th>Timeline</th>
                     <th>Workstream</th>
                     <th>Task</th>
-                    <th>R</th>
-                    <th>A</th>
+                    <th>Assignees</th>
                     <th>Status</th>
-                    <th>A/R</th>
+                    <th>Output</th>
                     <th>Due Date</th>
                   </tr>
                 </thead>

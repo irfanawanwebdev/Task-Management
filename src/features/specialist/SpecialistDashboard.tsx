@@ -5,6 +5,7 @@
  */
 
 import { useQuery } from '@tanstack/react-query'
+import { useNavigate } from 'react-router-dom'
 import { CheckSquare, Clock, AlertTriangle, Calendar, Loader2 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/features/auth/AuthContext'
@@ -66,6 +67,7 @@ function useMyMeetings() {
 // ─── Main Page ───────────────────────────────────────────────────────────────
 
 export default function SpecialistDashboard() {
+  const navigate = useNavigate()
   const { profile, role } = useAuth()
   const { data: tasks,    isLoading: tasksLoading }    = useMyTasks(profile?.user_id)
   const { data: meetings, isLoading: meetingsLoading } = useMyMeetings()
@@ -148,7 +150,7 @@ export default function SpecialistDashboard() {
             <section>
               <p className="section-header">Due Today</p>
               <div className="space-y-2">
-                {dueToday.map(t => <TaskRow key={t.id} task={t} />)}
+                {dueToday.map(t => <TaskRow key={t.id} task={t} onOpen={() => navigate(`/tasks?task=${t.id}`)} />)}
               </div>
             </section>
           )}
@@ -158,7 +160,7 @@ export default function SpecialistDashboard() {
             <section>
               <p className="section-header text-destructive">Overdue ({overdue.length})</p>
               <div className="space-y-2">
-                {overdue.map(t => <TaskRow key={t.id} task={t} overdue />)}
+                {overdue.map(t => <TaskRow key={t.id} task={t} overdue onOpen={() => navigate(`/tasks?task=${t.id}`)} />)}
               </div>
             </section>
           )}
@@ -173,7 +175,7 @@ export default function SpecialistDashboard() {
               </div>
             ) : (
               <div className="space-y-2">
-                {tasks.map(t => <TaskRow key={t.id} task={t} overdue={!!t.due_date && isOverdueEST(t.due_date)} />)}
+                {tasks.map(t => <TaskRow key={t.id} task={t} overdue={!!t.due_date && isOverdueEST(t.due_date)} onOpen={() => navigate(`/tasks?task=${t.id}`)} />)}
               </div>
             )}
           </section>
@@ -226,12 +228,16 @@ export default function SpecialistDashboard() {
 
 // ─── Task Row ─────────────────────────────────────────────────────────────────
 
-function TaskRow({ task, overdue = false }: { task: DeliveryTask; overdue?: boolean }) {
+function TaskRow({ task, overdue = false, onOpen }: { task: DeliveryTask; overdue?: boolean; onOpen?: () => void }) {
   return (
-    <div className={cn(
-      'metric-card py-2.5 px-3',
-      overdue && 'border-destructive/30 bg-destructive/5'
-    )}>
+    <div
+      onClick={onOpen}
+      className={cn(
+        'metric-card py-2.5 px-3',
+        overdue && 'border-destructive/30 bg-destructive/5',
+        onOpen && 'cursor-pointer hover:bg-accent/50 transition-colors',
+      )}
+    >
       <div className="flex items-start gap-2">
         <div className="flex-1 min-w-0">
           <p className="text-sm font-medium truncate">{task.task_name}</p>

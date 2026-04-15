@@ -6,6 +6,7 @@
  */
 
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
   CheckCircle2, Clock, TrendingUp, ShieldAlert,
@@ -387,6 +388,7 @@ function DailyChecklist({ items }: { items: string[] }) {
 // ─── Main Dashboard ───────────────────────────────────────────────────────────
 
 export default function PMDashboard() {
+  const navigate = useNavigate()
   const { data: tasks,       isLoading: tasksLoading }       = useAllTasks()
   const { data: blockers,    isLoading: blockersLoading }    = useAllBlockers()
   const { data: meetings,    isLoading: meetingsLoading }    = useUpcomingMeetings()
@@ -504,7 +506,7 @@ export default function PMDashboard() {
             ) : (
               <div className="space-y-2">
                 {highImpactToday.map(t => (
-                  <div key={t.id} className="metric-card flex items-center gap-3">
+                  <div key={t.id} onClick={() => navigate(`/tasks?task=${t.id}`)} className="metric-card flex items-center gap-3 cursor-pointer hover:bg-accent/50 transition-colors">
                     <span className="severity-high shrink-0">High</span>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium">{t.task_name}</p>
@@ -537,7 +539,7 @@ export default function PMDashboard() {
                 ) : (
                   <div className="space-y-1.5 max-h-64 overflow-y-auto">
                     {overdueTasks.slice(0, 8).map(t => (
-                      <div key={t.id} className="metric-card py-2 px-3">
+                      <div key={t.id} onClick={() => navigate(`/tasks?task=${t.id}`)} className="metric-card py-2 px-3 cursor-pointer hover:bg-accent/50 transition-colors">
                         <p className="text-xs font-medium">{t.task_name}</p>
                         <p className="text-xs text-muted-foreground mt-0.5">
                           {t.clients?.name} · {t.due_date && formatDateEST(t.due_date)}
@@ -558,7 +560,7 @@ export default function PMDashboard() {
                 ) : (
                   <div className="space-y-1.5 max-h-64 overflow-y-auto">
                     {overdueOpsPM.slice(0, 8).map(t => (
-                      <div key={t.id} className="metric-card py-2 px-3">
+                      <div key={t.id} onClick={() => navigate(`/tasks?task=${t.id}`)} className="metric-card py-2 px-3 cursor-pointer hover:bg-accent/50 transition-colors">
                         <p className="text-xs font-medium">{t.task_name}</p>
                         <p className="text-xs text-muted-foreground mt-0.5">
                           {t.clients?.name} · {t.due_date && formatDateEST(t.due_date)}
