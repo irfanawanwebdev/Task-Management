@@ -91,6 +91,7 @@ export function hasPageAccess(
   if (path === '/my-tasks') return true
   if (path === '/claude') return true
   if (path === '/opportunities') return true
+  if (path === '/time-tracking') return true
 
   const pageAccess = profile?.page_access ?? []
   if (profile && pageAccess.length > 0) {
@@ -126,13 +127,14 @@ export function getNavForProfile(profile: Profile | null, role: AppRole | null):
       PAGE_KEYS.SPECIALIST, PAGE_KEYS.MY_TASKS, PAGE_KEYS.CLAUDE, PAGE_KEYS.OPPORTUNITIES,
       PAGE_KEYS.TIME_TRACKING,
     ])
-    const specialistItem    = ALL_NAV_ITEMS.find(item => item.pageKey === PAGE_KEYS.SPECIALIST)!
-    const myTasksItem       = ALL_NAV_ITEMS.find(item => item.pageKey === PAGE_KEYS.MY_TASKS)!
-    const opportunitiesItem = ALL_NAV_ITEMS.find(item => item.pageKey === PAGE_KEYS.OPPORTUNITIES)!
+    const specialistItem     = ALL_NAV_ITEMS.find(item => item.pageKey === PAGE_KEYS.SPECIALIST)!
+    const myTasksItem        = ALL_NAV_ITEMS.find(item => item.pageKey === PAGE_KEYS.MY_TASKS)!
+    const opportunitiesItem  = ALL_NAV_ITEMS.find(item => item.pageKey === PAGE_KEYS.OPPORTUNITIES)!
+    const timeTrackingItem   = ALL_NAV_ITEMS.find(item => item.pageKey === PAGE_KEYS.TIME_TRACKING)!
     const rest = ALL_NAV_ITEMS.filter(item =>
       !alwaysIncluded.has(item.pageKey) && pageAccess.includes(item.pageKey)
     )
-    return [specialistItem, ...rest, opportunitiesItem, myTasksItem]
+    return [specialistItem, ...rest, opportunitiesItem, timeTrackingItem, myTasksItem]
   }
   // Fallback to role-based
   return getNavForRole(role ?? 'viewer')

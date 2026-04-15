@@ -335,7 +335,7 @@ export default function TimeTrackingPage() {
         </div>
         <div className="flex items-center gap-1.5 ml-auto">
           <TrendingUp className="h-3.5 w-3.5" />
-          <span>Recorded while app is open · updates every 5 minutes</span>
+          <span>Active tab time only · pauses when tab is hidden · updates every minute</span>
         </div>
       </div>
     </div>
