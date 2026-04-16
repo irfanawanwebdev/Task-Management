@@ -7,7 +7,7 @@
  *   POST { to, subject, html }  — sends the provided HTML as-is
  *
  * AUTO (called by pg_cron at midnight Miami):
- *   POST { auto: true }  — fetches yesterday's completed tasks from DB,
+ *   POST { auto: true }  — fetches ALL tasks updated yesterday (any status),
  *                          builds the HTML report, sends to REPORT_TO_EMAIL
  *
  * Required env vars (Supabase Dashboard → Settings → Edge Function Secrets):
@@ -32,11 +32,20 @@ function estDateString(offsetDays = 0): string {
   const estStr = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'America/New_York',
     year: 'numeric', month: '2-digit', day: '2-digit',
-  }).format(now)                        // "YYYY-MM-DD" in EST
+  }).format(now)
   if (offsetDays === 0) return estStr
   const [y, m, d] = estStr.split('-').map(Number)
   const date = new Date(y, m - 1, d + offsetDays)
   return date.toISOString().slice(0, 10)
+}
+
+/** Returns UTC start/end bounds for a full calendar day in EST (America/New_York) */
+function estDayUTCBounds(estDate: string): { from: string; to: string } {
+  const [y, m, d] = estDate.split('-').map(Number)
+  // Midnight EST = 05:00 UTC (UTC-5). Safe for both EST and EDT.
+  const from = new Date(Date.UTC(y, m - 1, d,     5, 0, 0)).toISOString()
+  const to   = new Date(Date.UTC(y, m - 1, d + 1, 5, 0, 0)).toISOString()
+  return { from, to }
 }
 
 function esc(s: string | null | undefined): string {
@@ -49,6 +58,15 @@ function statusColor(status: string): string {
   if (status === 'In Progress') return '#2563eb'
   if (status === 'Blocked')     return '#dc2626'
   return '#6b7280'
+}
+
+function statusBadge(status: string): string {
+  const color = statusColor(status)
+  const bg =
+    status === 'Done'        ? '#f0fdf4' :
+    status === 'In Progress' ? '#eff6ff' :
+    status === 'Blocked'     ? '#fef2f2' : '#f9fafb'
+  return `<span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;color:${color};background:${bg};border:1px solid ${color}30">${status}</span>`
 }
 
 function formatDate(dateStr: string): string {
@@ -65,11 +83,13 @@ async function buildAutoReportHTML(reportDate: string): Promise<string> {
     Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
   )
 
-  // Fetch tasks completed on reportDate
+  // Fetch ALL tasks updated on reportDate (any status — Done, In Progress, Blocked)
+  const { from, to } = estDayUTCBounds(reportDate)
   const { data: tasks, error: taskErr } = await admin
     .from('delivery_tasks')
-    .select('*, clients(name), task_assignments(role_type, workstream, user_id)')
-    .eq('completed_date', reportDate)
+    .select('*, clients(name), task_assignments(workstream, user_id)')
+    .gte('updated_at', from)
+    .lt('updated_at', to)
     .order('workstream')
 
   if (taskErr) throw new Error(`Tasks fetch failed: ${taskErr.message}`)
@@ -87,9 +107,24 @@ async function buildAutoReportHTML(reportDate: string): Promise<string> {
     return workstream ?? 'Unassigned'
   }
 
+  // Count by status for summary banner
+  const allTasks   = tasks ?? []
+  const doneTasks  = allTasks.filter(t => t.status === 'Done')
+  const inProgress = allTasks.filter(t => t.status === 'In Progress')
+  const blocked    = allTasks.filter(t => t.status === 'Blocked')
+
+  const totalTasks = allTasks.length
+
+  if (totalTasks === 0) {
+    return `<!DOCTYPE html><html><body style="font-family:sans-serif;padding:40px">
+      <h2>Daily Task Report — ${formatDate(reportDate)}</h2>
+      <p style="color:#6b7280">No tasks were updated on ${formatDate(reportDate)}.</p>
+    </body></html>`
+  }
+
   // Group tasks by employee
-  const groups = new Map<string, typeof tasks>()
-  for (const task of tasks ?? []) {
+  const groups = new Map<string, typeof allTasks>()
+  for (const task of allTasks) {
     const assignments = task.task_assignments ?? []
     const assigned = [...new Set(
       assignments
@@ -103,35 +138,51 @@ async function buildAutoReportHTML(reportDate: string): Promise<string> {
     }
   }
 
-  const totalTasks = (tasks ?? []).length
-
-  if (totalTasks === 0) {
-    return `<!DOCTYPE html><html><body style="font-family:sans-serif;padding:40px">
-      <h2>Daily Task Report — ${formatDate(reportDate)}</h2>
-      <p style="color:#6b7280">No tasks were completed on ${formatDate(reportDate)}.</p>
-    </body></html>`
-  }
-
+  // Build per-employee sections
   const groupsHTML = [...groups.entries()].map(([name, gtasks]) => {
-    const rows = gtasks.map(t => {
+    // Sort: Blocked first, then In Progress, then Done
+    const sorted = [...gtasks].sort((a, b) => {
+      const order = { 'Blocked': 0, 'In Progress': 1, 'Done': 2, 'Not Started': 3 }
+      return (order[a.status] ?? 9) - (order[b.status] ?? 9)
+    })
+
+    const rows = sorted.map(t => {
       const linksHTML = (t.links && t.links.length > 0)
-        ? t.links.map(l => `<a href="${esc(l.url)}" target="_blank" rel="noopener noreferrer" style="color:#4338ca">${esc(l.label || l.url)}</a>`).join('<br/>')
+        ? t.links.map(l => `<a href="${esc(l.url)}" style="color:#4338ca">${esc(l.label || l.url)}</a>`).join('<br/>')
         : '—'
+
+      // Blocked reason row (shown inline under the task row)
+      const blockerRow = t.status === 'Blocked' && t.blocker_text
+        ? `<tr>
+            <td colspan="7" style="padding:4px 12px 10px 32px;font-size:11px;background:#fef2f2;border-bottom:1px solid #fecaca">
+              <span style="color:#dc2626;font-weight:700">⛔ Blocker: </span>
+              <span style="color:#7f1d1d">${esc(t.blocker_text)}</span>
+            </td>
+          </tr>`
+        : ''
+
       return `<tr>
-        <td style="padding:8px 12px;border-bottom:1px solid #f0f0f0;vertical-align:top">${esc(t.task_name)}</td>
-        <td style="padding:8px 12px;border-bottom:1px solid #f0f0f0">${esc((t.clients as any)?.name)}</td>
-        <td style="padding:8px 12px;border-bottom:1px solid #f0f0f0">${esc(t.workstream)}</td>
-        <td style="padding:8px 12px;border-bottom:1px solid #f0f0f0;color:${statusColor(t.status)};font-weight:600">${t.status}</td>
-        <td style="padding:8px 12px;border-bottom:1px solid #f0f0f0;font-size:11px;color:#6b7280;max-width:200px">${esc(t.description)}</td>
-        <td style="padding:8px 12px;border-bottom:1px solid #f0f0f0;font-size:11px;color:#6b7280;max-width:200px">${esc(t.notes)}</td>
-        <td style="padding:8px 12px;border-bottom:1px solid #f0f0f0;font-size:11px;max-width:160px;word-break:break-all">${linksHTML}</td>
-      </tr>`
+        <td style="padding:8px 12px;border-bottom:1px solid #f0f0f0;vertical-align:top;font-weight:500">${esc(t.task_name)}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #f0f0f0;vertical-align:top">${esc((t.clients as any)?.name)}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #f0f0f0;vertical-align:top">${esc(t.workstream)}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #f0f0f0;vertical-align:top">${statusBadge(t.status)}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #f0f0f0;font-size:11px;color:#6b7280;max-width:180px;vertical-align:top">${esc(t.description)}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #f0f0f0;font-size:11px;color:#374151;max-width:180px;vertical-align:top">${esc(t.notes)}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #f0f0f0;font-size:11px;max-width:140px;word-break:break-all;vertical-align:top">${linksHTML}</td>
+      </tr>${blockerRow}`
     }).join('')
 
+    // Section header color: red tint if any blocked, blue if any in progress, green if all done
+    const hasBlocked    = gtasks.some(t => t.status === 'Blocked')
+    const hasInProgress = gtasks.some(t => t.status === 'In Progress')
+    const headerBg = hasBlocked ? 'linear-gradient(135deg,#7f1d1d,#991b1b)' :
+                     hasInProgress ? 'linear-gradient(135deg,#1e3a8a,#1d4ed8)' :
+                     'linear-gradient(135deg,#1e1b4b,#312e81)'
+
     return `<div style="margin-bottom:28px">
-      <div style="background:linear-gradient(135deg,#1e1b4b,#312e81);color:#fff;padding:9px 14px;border-radius:8px 8px 0 0;display:flex;justify-content:space-between;align-items:center">
+      <div style="background:${headerBg};color:#fff;padding:9px 14px;border-radius:8px 8px 0 0;display:flex;justify-content:space-between;align-items:center">
         <span style="font-size:13px;font-weight:700">${esc(name)}</span>
-        <span style="font-size:11px;opacity:.75">${gtasks.length} task${gtasks.length !== 1 ? 's' : ''}</span>
+        <span style="font-size:11px;opacity:.8">${gtasks.length} task${gtasks.length !== 1 ? 's' : ''} updated</span>
       </div>
       <table style="width:100%;border-collapse:collapse;border:1px solid #e5e7eb;border-top:none">
         <thead>
@@ -150,6 +201,13 @@ async function buildAutoReportHTML(reportDate: string): Promise<string> {
     </div>`
   }).join('')
 
+  // Status summary pills
+  const summaryPills = [
+    doneTasks.length  > 0 ? `<span style="background:#f0fdf4;color:#16a34a;border:1px solid #bbf7d0;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:600">✅ ${doneTasks.length} Done</span>` : '',
+    inProgress.length > 0 ? `<span style="background:#eff6ff;color:#2563eb;border:1px solid #bfdbfe;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:600">🔄 ${inProgress.length} In Progress</span>` : '',
+    blocked.length    > 0 ? `<span style="background:#fef2f2;color:#dc2626;border:1px solid #fecaca;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:600">⛔ ${blocked.length} Blocked</span>` : '',
+  ].filter(Boolean).join(' ')
+
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -157,19 +215,38 @@ async function buildAutoReportHTML(reportDate: string): Promise<string> {
 <title>Daily Task Report — ${formatDate(reportDate)}</title>
 </head>
 <body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:13px;color:#111;background:#fff;padding:32px 40px">
-  <div style="border-bottom:3px solid #6366f1;padding-bottom:16px;margin-bottom:28px">
+  <div style="border-bottom:3px solid #6366f1;padding-bottom:16px;margin-bottom:20px">
     <h1 style="font-size:22px;font-weight:800;color:#1e1b4b;margin:0">Daily Task Report</h1>
-    <div style="font-size:12px;color:#6b7280;margin-top:6px;display:flex;gap:20px;flex-wrap:wrap">
-      <span>✅ Completed: <strong>${formatDate(reportDate)}</strong></span>
-      <span>📋 ${totalTasks} task${totalTasks !== 1 ? 's' : ''} across ${groups.size} employee${groups.size !== 1 ? 's' : ''}/team${groups.size !== 1 ? 's' : ''}</span>
+    <div style="font-size:12px;color:#6b7280;margin-top:6px">
+      <span>📅 ${formatDate(reportDate)}</span>
+      &nbsp;·&nbsp;
+      <span>📋 ${totalTasks} task${totalTasks !== 1 ? 's' : ''} updated across ${groups.size} employee${groups.size !== 1 ? 's' : ''}/team${groups.size !== 1 ? 's' : ''}</span>
+      &nbsp;·&nbsp;
       <span>🤖 Auto-generated at midnight Miami</span>
     </div>
   </div>
+
+  <!-- Status summary -->
+  <div style="margin-bottom:20px;display:flex;gap:8px;flex-wrap:wrap">
+    ${summaryPills}
+  </div>
+
+  ${blocked.length > 0 ? `
+  <!-- Blocker alert banner -->
+  <div style="background:#fef2f2;border:1px solid #fca5a5;border-radius:8px;padding:12px 16px;margin-bottom:20px">
+    <p style="margin:0;font-size:13px;font-weight:700;color:#991b1b">⛔ ${blocked.length} Blocked Task${blocked.length !== 1 ? 's' : ''} — Action Required</p>
+    <ul style="margin:8px 0 0 0;padding-left:18px;font-size:12px;color:#7f1d1d">
+      ${blocked.map(t => `<li><strong>${esc(t.task_name)}</strong> (${esc((t.clients as any)?.name ?? t.workstream)})${t.blocker_text ? ` — ${esc(t.blocker_text)}` : ''}</li>`).join('')}
+    </ul>
+  </div>` : ''}
+
   <div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:6px;padding:10px 14px;margin-bottom:20px;font-size:12px;color:#92400e">
     <strong>⚠ Internal Use Only — Confidential.</strong>
     This report includes employee names and task assignments. Do not share externally.
   </div>
+
   ${groupsHTML}
+
   <div style="margin-top:32px;padding-top:16px;border-top:1px solid #e5e7eb;font-size:11px;color:#9ca3af;display:flex;justify-content:space-between">
     <span>JZ Smart Media — Operations Hub</span>
     <span>Auto-generated ${formatDate(reportDate)} · Midnight Miami · Internal Only</span>
@@ -251,7 +328,6 @@ serve(async (req: Request) => {
 
   } catch (err) {
     console.error('send-daily-report error:', err)
-    // Return 200 with error so frontend can display the message
     return new Response(JSON.stringify({ error: String(err) }), {
       status: 200, headers: { ...CORS, 'Content-Type': 'application/json' },
     })
