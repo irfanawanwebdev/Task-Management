@@ -40,6 +40,19 @@ interface EnrichedTask extends DeliveryTask {
 
 // ─── Date helpers ─────────────────────────────────────────────────────────────
 
+/** Converts a UTC ISO timestamp to an EST/EDT date string (YYYY-MM-DD). */
+function utcToESTDate(utcTs: string): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/New_York',
+  }).format(new Date(utcTs))
+}
+
+/** Returns the best date to use for filtering a task — updated_at in EST, falling back to completed_date. */
+function taskFilterDate(task: DeliveryTask): string | null {
+  if (task.updated_at) return utcToESTDate(task.updated_at)
+  return task.completed_date ?? null
+}
+
 /** Offset from TODAY in Miami/EST time (not system clock). */
 function offsetDate(days: number): string {
   const today = todayDateEST() // always Miami date regardless of system TZ
@@ -116,9 +129,9 @@ function buildEmployeeGroups(
 ): EmployeeGroup[] {
   let filtered = statusFilter === 'all' ? tasks : tasks.filter(t => t.status === statusFilter)
 
-  // Apply date range filter on completed_date
-  if (dateFrom) filtered = filtered.filter(t => !!t.completed_date && t.completed_date >= dateFrom)
-  if (dateTo) filtered = filtered.filter(t => !!t.completed_date && t.completed_date <= dateTo)
+  // Apply date range filter on updated_at (EST) — catches Done, In Progress, and Blocked
+  if (dateFrom) filtered = filtered.filter(t => { const d = taskFilterDate(t); return !!d && d >= dateFrom })
+  if (dateTo)   filtered = filtered.filter(t => { const d = taskFilterDate(t); return !!d && d <= dateTo   })
 
   const map = new Map<string, EnrichedTask[]>()
 
@@ -282,7 +295,7 @@ function buildReportHTML(
   <div class="header">
     <h1>Daily Task Report</h1>
     <div class="meta">
-      <span>✅ Completed: ${dateLabel}</span>
+      <span>📅 Updated: ${dateLabel}</span>
       <span>🔍 Status: <span class="badge badge-purple">${statusLabel}</span></span>
       <span>👤 Employees: <span class="badge badge-blue">${esc(employeeLabel)}</span></span>
       <span>📋 ${totalTasks} total tasks across ${groups.length} employees/teams</span>
@@ -464,7 +477,7 @@ export function DailyReportModal({ open, onClose }: DailyReportModalProps) {
             </div>
             <div>
               <h2 className="text-base font-semibold">Daily Task Report</h2>
-              <p className="text-xs text-muted-foreground">Completed: {dateLabel} · Grouped by employee</p>
+              <p className="text-xs text-muted-foreground">Updated: {dateLabel} · Grouped by employee</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -530,7 +543,7 @@ export function DailyReportModal({ open, onClose }: DailyReportModalProps) {
           <div className="flex items-center gap-1.5 flex-wrap">
             <div className="flex items-center gap-1 shrink-0">
               <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
-              <span className="text-xs text-muted-foreground mr-1">Completed:</span>
+              <span className="text-xs text-muted-foreground mr-1">Updated:</span>
             </div>
             {DATE_PRESETS.map(p => (
               <button
