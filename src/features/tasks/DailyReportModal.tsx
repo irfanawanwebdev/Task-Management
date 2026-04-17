@@ -22,6 +22,8 @@ import { cn } from '@/lib/utils'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
+interface ClientInfo { id: string; name: string; parent_client_id: string | null }
+
 type StatusFilter = 'all' | 'Done' | 'In Progress' | 'Not Started' | 'Blocked'
 type DatePreset = 'all' | 'today' | 'yesterday' | 'last7' | 'last30' | 'custom'
 
@@ -109,6 +111,16 @@ function useProfiles() {
     queryFn: async () => {
       const { data } = await supabase.from('profiles').select('user_id, full_name').eq('is_active', true)
       return (data ?? []) as Profile[]
+    },
+  })
+}
+
+function useAllClients() {
+  return useQuery<ClientInfo[]>({
+    queryKey: ['clients-with-parent'],
+    queryFn: async () => {
+      const { data } = await supabase.from('clients').select('id, name, parent_client_id').order('name')
+      return (data ?? []) as ClientInfo[]
     },
   })
 }
@@ -421,6 +433,7 @@ export function DailyReportModal({ open, onClose }: DailyReportModalProps) {
   const [datePreset, setDatePreset] = useState<DatePreset>('today')
   const [customFrom, setCustomFrom] = useState('')
   const [customTo, setCustomTo] = useState('')
+  const [selectedCompanies, setSelectedCompanies] = useState<string[]>([])
   const [selectedEmployees, setSelectedEmployees] = useState<string[]>([])
   const [sendState, setSendState] = useState<SendState>('idle')
   const [sendError, setSendError] = useState('')
@@ -428,17 +441,51 @@ export function DailyReportModal({ open, onClose }: DailyReportModalProps) {
 
   const { data: tasks = [], isLoading } = useAllTasksForReport()
   const { data: profiles = [] } = useProfiles()
+  const { data: allClients = [] } = useAllClients()
+
+  // Build parent company list and child-ID sets
+  const parentCompanies = allClients.filter(c => !c.parent_client_id)
+  const childSetByParent = new Map<string, Set<string>>()
+  for (const c of allClients) {
+    if (c.parent_client_id) {
+      if (!childSetByParent.has(c.parent_client_id)) childSetByParent.set(c.parent_client_id, new Set())
+      childSetByParent.get(c.parent_client_id)!.add(c.id)
+    }
+  }
+
+  // Only show companies that actually have tasks in the fetched set
+  const clientIdsWithTasks = new Set(tasks.map(t => t.client_id))
+  const companiesWithTasks = parentCompanies.filter(p =>
+    clientIdsWithTasks.has(p.id) ||
+    [...(childSetByParent.get(p.id) ?? [])].some(cid => clientIdsWithTasks.has(cid))
+  )
+
+  // All IDs for selected companies (parent + their children)
+  const selectedCompanyIdSet = selectedCompanies.length === 0 ? null : new Set(
+    selectedCompanies.flatMap(pid => [pid, ...(childSetByParent.get(pid) ?? [])])
+  )
+
+  // Filter tasks by selected companies before building employee groups
+  const companyFilteredTasks = selectedCompanyIdSet
+    ? tasks.filter(t => selectedCompanyIdSet.has(t.client_id))
+    : tasks
 
   const { from: dateFrom, to: dateTo } = dateRangeBounds(datePreset, customFrom, customTo)
   const dateLabel = dateRangeLabel(datePreset, customFrom, customTo)
 
   // Build all groups first, then apply employee filter
-  const allGroups = buildEmployeeGroups(tasks, profiles, statusFilter, dateFrom, dateTo)
+  const allGroups = buildEmployeeGroups(companyFilteredTasks, profiles, statusFilter, dateFrom, dateTo)
   const groups = selectedEmployees.length > 0
     ? allGroups.filter(g => selectedEmployees.includes(g.name))
     : allGroups
 
   const totalTasks = groups.reduce((n, g) => n + g.tasks.length, 0)
+
+  const toggleCompany = (id: string) => {
+    setSelectedCompanies(prev =>
+      prev.includes(id) ? prev.filter(p => p !== id) : [...prev, id]
+    )
+  }
 
   const toggleEmployee = (name: string) => {
     setSelectedEmployees(prev =>
@@ -616,6 +663,46 @@ export function DailyReportModal({ open, onClose }: DailyReportModalProps) {
             </span>
           </div>
         </div>
+
+        {/* ── Company Filter ── */}
+        {companiesWithTasks.length > 1 && (
+          <div className="px-5 pt-3 pb-3 border-b border-border">
+            <div className="flex items-start gap-2 flex-wrap">
+              <div className="flex items-center gap-1 shrink-0 mt-0.5">
+                <Users className="h-3.5 w-3.5 text-muted-foreground" />
+                <span className="text-xs text-muted-foreground">Company:</span>
+              </div>
+              <button
+                onClick={() => setSelectedCompanies([])}
+                className={cn(
+                  'px-3 py-1 rounded-full text-xs font-medium border transition-colors',
+                  selectedCompanies.length === 0
+                    ? 'bg-primary text-primary-foreground border-primary'
+                    : 'border-border text-muted-foreground hover:text-foreground bg-background',
+                )}
+              >
+                All Companies
+              </button>
+              {companiesWithTasks.map(c => (
+                <button
+                  key={c.id}
+                  onClick={() => toggleCompany(c.id)}
+                  className={cn(
+                    'px-3 py-1 rounded-full text-xs font-medium border transition-colors',
+                    selectedCompanies.includes(c.id)
+                      ? 'bg-primary text-primary-foreground border-primary'
+                      : 'border-border text-muted-foreground hover:text-foreground bg-background',
+                  )}
+                >
+                  {c.name}
+                  {childSetByParent.has(c.id) && (
+                    <span className="ml-1 opacity-60">+{childSetByParent.get(c.id)!.size}</span>
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* ── Employee Filter ── */}
         <div className="px-5 pt-3 pb-3 border-b border-border">

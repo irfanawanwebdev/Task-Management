@@ -91,7 +91,10 @@ function useClients() {
   return useQuery<Client[]>({
     queryKey: ['client-list'],
     queryFn: async () => {
-      const { data, error } = await supabase.from('clients').select('id, name, status').order('name')
+      const { data, error } = await supabase
+        .from('clients')
+        .select('id, name, status, parent_client_id, location_name')
+        .order('name')
       if (error) throw error
       return (data ?? []) as unknown as Client[]
     },
@@ -535,6 +538,7 @@ interface GeneratedContent {
     description?: string | null
     notes?: string | null
     links?: { label: string; url: string }[]
+    location?: string | null
   }[]
 }
 
@@ -568,6 +572,7 @@ function buildReportText(report: Report, clientName: string): string {
         lines.push(`   Workstream  : ${t.workstream}`)
         lines.push(`   Impact      : ${t.impact}`)
         lines.push(`   Completed   : ${t.completed_date ? formatDateEST(t.completed_date) : '—'}`)
+        if (t.location)    lines.push(`   Location    : ${t.location}`)
         if (t.description) lines.push(`   Description : ${t.description}`)
         if (t.notes)       lines.push(`   Notes       : ${t.notes}`)
         if (t.output_link) lines.push(`   Output      : ${t.output_link}`)
@@ -909,18 +914,24 @@ function CreateReportDialog({
   const [rangeDays, setRangeDays]   = useState<7 | 14 | 30>(7)
   const [error, setError]           = useState<string | null>(null)
 
-  // Load completed tasks for auto mode
+  // Separate parent/child clients
+  const parentClients   = clients.filter(c => !c.parent_client_id)
+  const childLocations  = clientId ? clients.filter(c => c.parent_client_id === clientId) : []
+  const allLocationIds  = clientId ? [clientId, ...childLocations.map(c => c.id)] : []
+  const hasMultiLocations = childLocations.length > 0
+
+  // Load completed tasks for auto mode — includes all child locations when parent is selected
   const { data: completedTasks = [], isFetching: loadingTasks } = useQuery<DeliveryTask[]>({
-    queryKey: ['report-tasks', clientId, rangeDays],
+    queryKey: ['report-tasks', allLocationIds, rangeDays],
     queryFn: async () => {
-      if (!clientId) return []
+      if (!clientId || allLocationIds.length === 0) return []
       const cutoff = new Date()
       cutoff.setDate(cutoff.getDate() - rangeDays)
       const cutoffStr = cutoff.toISOString().slice(0, 10)
       const { data, error } = await supabase
         .from('delivery_tasks')
-        .select('id, task_name, workstream, step_name, completed_date, output_link, impact_level, description, notes, links')
-        .eq('client_id', clientId)
+        .select('id, task_name, workstream, step_name, completed_date, output_link, impact_level, description, notes, links, client_id, clients(name, location_name)')
+        .in('client_id', allLocationIds)
         .eq('status', 'Done')
         .gte('completed_date', cutoffStr)
         .order('completed_date', { ascending: false })
@@ -947,16 +958,23 @@ function CreateReportDialog({
         ? {
             tasks_completed: completedTasks.length,
             high_impact:     completedTasks.filter(t => t.impact_level === 'High').length,
-            delivery_summary: completedTasks.map(t => ({
-              task:           t.task_name,
-              workstream:     t.workstream,
-              impact:         t.impact_level,
-              completed_date: t.completed_date,
-              output_link:    t.output_link ?? null,
-              description:    (t as unknown as { description?: string }).description ?? null,
-              notes:          (t as unknown as { notes?: string }).notes ?? null,
-              links:          (t as unknown as { links?: { label: string; url: string }[] }).links ?? [],
-            })),
+            delivery_summary: completedTasks.map(t => {
+              const taskClient = (t as unknown as { clients?: { name: string; location_name?: string | null } }).clients
+              const location = hasMultiLocations
+                ? (taskClient?.location_name ?? (t.client_id !== clientId ? (taskClient?.name ?? null) : null))
+                : null
+              return {
+                task:           t.task_name,
+                workstream:     t.workstream,
+                impact:         t.impact_level,
+                completed_date: t.completed_date,
+                output_link:    t.output_link ?? null,
+                description:    (t as unknown as { description?: string }).description ?? null,
+                notes:          (t as unknown as { notes?: string }).notes ?? null,
+                links:          (t as unknown as { links?: { label: string; url: string }[] }).links ?? [],
+                location,
+              }
+            }),
           }
         : null
 
@@ -1021,9 +1039,14 @@ function CreateReportDialog({
                 onChange={e => setClientId(e.target.value)}
                 className="w-full px-3 py-1.5 bg-background border border-input rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-primary"
               >
-                <option value="">Select client…</option>
-                {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                <option value="">Select company…</option>
+                {parentClients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
+              {hasMultiLocations && (
+                <p className="mt-1 text-xs text-primary/80">
+                  Includes {childLocations.length} location{childLocations.length !== 1 ? 's' : ''}: {childLocations.map(c => c.location_name ?? c.name).join(', ')}
+                </p>
+              )}
             </div>
             <div>
               <label className="block text-xs font-medium mb-1">Report Type</label>
@@ -1112,6 +1135,7 @@ function CreateReportDialog({
                         <thead className="bg-muted/20">
                           <tr>
                             <th className="px-3 py-1.5 text-left font-medium text-muted-foreground">Task</th>
+                            {hasMultiLocations && <th className="px-3 py-1.5 text-left font-medium text-muted-foreground">Location</th>}
                             <th className="px-3 py-1.5 text-left font-medium text-muted-foreground">Workstream</th>
                             <th className="px-3 py-1.5 text-left font-medium text-muted-foreground">Impact</th>
                             <th className="px-3 py-1.5 text-left font-medium text-muted-foreground">Completed</th>
@@ -1120,26 +1144,38 @@ function CreateReportDialog({
                           </tr>
                         </thead>
                         <tbody>
-                          {completedTasks.map(t => (
-                            <tr key={t.id} className="border-t border-border/50">
-                              <td className="px-3 py-1.5 font-medium">{t.task_name}</td>
-                              <td className="px-3 py-1.5 text-muted-foreground">{t.workstream}</td>
-                              <td className="px-3 py-1.5">
-                                <span className={cn(
-                                  'px-1.5 py-0.5 rounded text-xs',
-                                  t.impact_level === 'High'   ? 'bg-red-100 text-red-700' :
-                                  t.impact_level === 'Medium' ? 'bg-amber-100 text-amber-700' : 'bg-muted text-muted-foreground',
-                                )}>{t.impact_level}</span>
-                              </td>
-                              <td className="px-3 py-1.5 text-muted-foreground">{t.completed_date ? formatDateEST(t.completed_date) : '—'}</td>
-                              <td className="px-3 py-1.5 text-muted-foreground text-xs max-w-[150px] truncate">
-                                {(t as unknown as { description?: string }).description || '—'}
-                              </td>
-                              <td className="px-3 py-1.5 text-muted-foreground text-xs max-w-[150px] truncate">
-                                {(t as unknown as { notes?: string }).notes || '—'}
-                              </td>
-                            </tr>
-                          ))}
+                          {completedTasks.map(t => {
+                            const taskClient = (t as unknown as { clients?: { name: string; location_name?: string | null } }).clients
+                            const locationLabel = taskClient?.location_name ?? (t.client_id !== clientId ? (taskClient?.name ?? '—') : null)
+                            return (
+                              <tr key={t.id} className="border-t border-border/50">
+                                <td className="px-3 py-1.5 font-medium">{t.task_name}</td>
+                                {hasMultiLocations && (
+                                  <td className="px-3 py-1.5 text-muted-foreground whitespace-nowrap">
+                                    {locationLabel
+                                      ? <span className="px-1.5 py-0.5 rounded bg-primary/10 text-primary text-xs">{locationLabel}</span>
+                                      : <span className="text-muted-foreground/40">Main</span>
+                                    }
+                                  </td>
+                                )}
+                                <td className="px-3 py-1.5 text-muted-foreground">{t.workstream}</td>
+                                <td className="px-3 py-1.5">
+                                  <span className={cn(
+                                    'px-1.5 py-0.5 rounded text-xs',
+                                    t.impact_level === 'High'   ? 'bg-red-100 text-red-700' :
+                                    t.impact_level === 'Medium' ? 'bg-amber-100 text-amber-700' : 'bg-muted text-muted-foreground',
+                                  )}>{t.impact_level}</span>
+                                </td>
+                                <td className="px-3 py-1.5 text-muted-foreground">{t.completed_date ? formatDateEST(t.completed_date) : '—'}</td>
+                                <td className="px-3 py-1.5 text-muted-foreground text-xs max-w-[150px] truncate">
+                                  {(t as unknown as { description?: string }).description || '—'}
+                                </td>
+                                <td className="px-3 py-1.5 text-muted-foreground text-xs max-w-[150px] truncate">
+                                  {(t as unknown as { notes?: string }).notes || '—'}
+                                </td>
+                              </tr>
+                            )
+                          })}
                         </tbody>
                       </table>
                     </div>
