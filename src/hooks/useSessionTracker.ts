@@ -24,14 +24,6 @@ function leaderKey(userId: string) { return `tracker_leader_${userId}` }
 
 interface LockEntry { tabId: string; claimedAt: number }
 
-function isLeader(userId: string, tabId: string): boolean {
-  try {
-    const raw = localStorage.getItem(leaderKey(userId))
-    if (!raw) return false
-    const lock: LockEntry = JSON.parse(raw)
-    return lock.tabId === tabId
-  } catch { return false }
-}
 
 function claimLeader(userId: string, tabId: string) {
   const entry: LockEntry = { tabId, claimedAt: Date.now() }

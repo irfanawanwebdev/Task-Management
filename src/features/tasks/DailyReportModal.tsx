@@ -120,7 +120,7 @@ function useAllClients() {
     queryKey: ['clients-with-parent'],
     queryFn: async () => {
       const { data } = await supabase.from('clients').select('id, name, parent_client_id').order('name')
-      return (data ?? []) as ClientInfo[]
+      return (data ?? []) as unknown as ClientInfo[]
     },
   })
 }
