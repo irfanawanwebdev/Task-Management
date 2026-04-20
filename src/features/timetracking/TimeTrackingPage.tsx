@@ -1,12 +1,13 @@
 /**
  * Time Tracking Page — /time-tracking
  * Shows weekly active-time breakdown per user.
- * PM/Owner: see all users. Specialist: sees only own data.
+ * PM/Owner: see all users + can edit/correct any day's total.
+ * Specialist: sees only own data (read-only).
  */
 
-import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
-import { Clock, ChevronLeft, ChevronRight, User, TrendingUp } from 'lucide-react'
+import { useState, useRef, useEffect } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { Clock, ChevronLeft, ChevronRight, User, TrendingUp, Pencil, Trash2, Check, X } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/features/auth/AuthContext'
 import { todayDateEST } from '@/lib/timezone'
@@ -16,6 +17,7 @@ import { format, startOfWeek, endOfWeek, addDays, addWeeks, subWeeks } from 'dat
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface SessionRow {
+  id: string
   user_id: string
   session_date: string
   duration_minutes: number
@@ -29,8 +31,8 @@ interface Profile {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function weekRange(anchor: Date): { start: Date; end: Date } {
-  const start = startOfWeek(anchor, { weekStartsOn: 1 }) // Monday
-  const end   = endOfWeek(anchor,   { weekStartsOn: 1 }) // Sunday
+  const start = startOfWeek(anchor, { weekStartsOn: 1 })
+  const end   = endOfWeek(anchor,   { weekStartsOn: 1 })
   return { start, end }
 }
 
@@ -43,22 +45,47 @@ function formatHM(minutes: number): string {
 }
 
 function dayLabel(date: Date): string {
-  return format(date, 'EEE d') // "Mon 14"
+  return format(date, 'EEE d')
 }
 
-// Width for the time bar, capped at 8h as max
 function barWidth(minutes: number): number {
   return Math.min(100, (minutes / 480) * 100)
 }
-
-// ─── Week days array ──────────────────────────────────────────────────────────
 
 function weekDays(anchor: Date): Date[] {
   const { start } = weekRange(anchor)
   return Array.from({ length: 7 }, (_, i) => addDays(start, i))
 }
 
-// ─── Data hook ────────────────────────────────────────────────────────────────
+// Parse "2h 30m", "90m", "2h", "2.5" (hours), "150" (minutes) → minutes
+function parseTimeInput(raw: string): number | null {
+  const s = raw.trim().toLowerCase()
+  if (!s) return null
+
+  // "2h 30m" or "2h30m"
+  const hm = s.match(/^(\d+)h\s*(\d+)m$/)
+  if (hm) return parseInt(hm[1]) * 60 + parseInt(hm[2])
+
+  // "2h"
+  const h = s.match(/^(\d+)h$/)
+  if (h) return parseInt(h[1]) * 60
+
+  // "30m"
+  const m = s.match(/^(\d+)m$/)
+  if (m) return parseInt(m[1])
+
+  // "2.5" → treat as hours
+  const dec = s.match(/^(\d+\.\d+)$/)
+  if (dec) return Math.round(parseFloat(dec[1]) * 60)
+
+  // plain number → minutes
+  const num = s.match(/^(\d+)$/)
+  if (num) return parseInt(num[1])
+
+  return null
+}
+
+// ─── Data hooks ───────────────────────────────────────────────────────────────
 
 function useSessions(weekAnchor: Date, userId: string | undefined, isPMOrOwner: boolean) {
   const { start, end } = weekRange(weekAnchor)
@@ -70,7 +97,7 @@ function useSessions(weekAnchor: Date, userId: string | undefined, isPMOrOwner: 
     queryFn: async () => {
       let q = supabase
         .from('user_sessions')
-        .select('user_id, session_date, duration_minutes')
+        .select('id, user_id, session_date, duration_minutes')
         .gte('session_date', startStr)
         .lte('session_date', endStr)
 
@@ -94,33 +121,225 @@ function useProfiles() {
   })
 }
 
+// ─── Day Edit Cell ─────────────────────────────────────────────────────────────
+
+function DayCell({
+  date,
+  minutes,
+  sessions,
+  isToday,
+  isFuture,
+  canEdit,
+  onSave,
+  onDelete,
+}: {
+  date: Date
+  minutes: number
+  sessions: SessionRow[]
+  isToday: boolean
+  isFuture: boolean
+  canEdit: boolean
+  onSave: (newMinutes: number) => Promise<void>
+  onDelete: () => Promise<void>
+}) {
+  const [editing, setEditing] = useState(false)
+  const [input, setInput]     = useState('')
+  const [saving, setSaving]   = useState(false)
+  const [error, setError]     = useState(false)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (editing) {
+      setInput(minutes > 0 ? formatHM(minutes) : '')
+      setError(false)
+      setTimeout(() => inputRef.current?.focus(), 50)
+    }
+  }, [editing, minutes])
+
+  async function handleSave() {
+    const parsed = parseTimeInput(input)
+    if (parsed === null || parsed < 0) { setError(true); return }
+    setSaving(true)
+    await onSave(parsed)
+    setSaving(false)
+    setEditing(false)
+  }
+
+  async function handleDelete() {
+    setSaving(true)
+    await onDelete()
+    setSaving(false)
+    setEditing(false)
+  }
+
+  function handleKey(e: React.KeyboardEvent) {
+    if (e.key === 'Enter') handleSave()
+    if (e.key === 'Escape') setEditing(false)
+  }
+
+  if (editing) {
+    return (
+      <div className="rounded-lg p-2 text-center border border-primary bg-primary/10 min-h-[80px] flex flex-col justify-between">
+        <p className="text-xs font-medium text-primary mb-1">{dayLabel(date)}</p>
+        <input
+          ref={inputRef}
+          value={input}
+          onChange={e => { setInput(e.target.value); setError(false) }}
+          onKeyDown={handleKey}
+          placeholder="e.g. 2h 30m"
+          className={cn(
+            'w-full text-center text-xs bg-background border rounded px-1 py-0.5 font-mono',
+            error ? 'border-destructive' : 'border-border',
+          )}
+        />
+        {error && <p className="text-[10px] text-destructive mt-0.5">Invalid format</p>}
+        <div className="flex items-center justify-center gap-1 mt-1.5">
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="p-1 rounded bg-primary/20 hover:bg-primary/30 text-primary transition-colors"
+            title="Save"
+          >
+            <Check className="h-3 w-3" />
+          </button>
+          {sessions.length > 0 && (
+            <button
+              onClick={handleDelete}
+              disabled={saving}
+              className="p-1 rounded bg-destructive/20 hover:bg-destructive/30 text-destructive transition-colors"
+              title="Delete all sessions for this day"
+            >
+              <Trash2 className="h-3 w-3" />
+            </button>
+          )}
+          <button
+            onClick={() => setEditing(false)}
+            className="p-1 rounded hover:bg-accent transition-colors text-muted-foreground"
+            title="Cancel"
+          >
+            <X className="h-3 w-3" />
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div
+      className={cn(
+        'rounded-lg p-3 text-center border group relative',
+        isToday
+          ? 'bg-primary/10 border-primary/30'
+          : isFuture
+            ? 'border-border/40 opacity-50'
+            : minutes > 0
+              ? 'bg-accent border-border'
+              : 'border-border',
+        canEdit && !isFuture && 'cursor-pointer hover:border-primary/40 transition-colors',
+      )}
+      onClick={() => canEdit && !isFuture && setEditing(true)}
+      title={canEdit && !isFuture ? 'Click to edit' : undefined}
+    >
+      <p className={cn('text-xs font-medium mb-1', isToday ? 'text-primary' : 'text-muted-foreground')}>
+        {dayLabel(date)}
+      </p>
+      <p className="text-sm font-mono font-semibold">{formatHM(minutes)}</p>
+      {minutes > 0 && (
+        <div className="mt-1.5 h-1 w-full bg-border rounded-full overflow-hidden">
+          <div
+            className={cn('h-full rounded-full', isToday ? 'bg-primary' : 'bg-primary/50')}
+            style={{ width: `${barWidth(minutes)}%` }}
+          />
+        </div>
+      )}
+      {canEdit && !isFuture && (
+        <div className="absolute top-1.5 right-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+          <Pencil className="h-2.5 w-2.5 text-muted-foreground" />
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── User Row ─────────────────────────────────────────────────────────────────
 
 function UserRow({
   profile,
   sessions,
   days,
+  canEdit,
+  weekStartStr,
+  weekEndStr,
 }: {
   profile: Profile
   sessions: SessionRow[]
   days: Date[]
+  canEdit: boolean
+  weekStartStr: string
+  weekEndStr: string
 }) {
   const [expanded, setExpanded] = useState(false)
+  const queryClient = useQueryClient()
 
-  // Build day → minutes map for this user
+  const userSessions = sessions.filter(s => s.user_id === profile.user_id)
+
+  // day → sessions map
+  const daySessionsMap: Record<string, SessionRow[]> = {}
+  for (const s of userSessions) {
+    if (!daySessionsMap[s.session_date]) daySessionsMap[s.session_date] = []
+    daySessionsMap[s.session_date].push(s)
+  }
+
+  // day → total minutes
   const dayMap: Record<string, number> = {}
-  for (const s of sessions) {
-    if (s.user_id !== profile.user_id) continue
-    const key = s.session_date
-    dayMap[key] = (dayMap[key] ?? 0) + s.duration_minutes
+  for (const [date, ss] of Object.entries(daySessionsMap)) {
+    dayMap[date] = ss.reduce((a, s) => a + s.duration_minutes, 0)
   }
 
   const totalMins = Object.values(dayMap).reduce((a, b) => a + b, 0)
   const today     = todayDateEST()
 
+  function invalidate() {
+    return queryClient.invalidateQueries({ queryKey: ['sessions', weekStartStr, weekEndStr] })
+  }
+
+  async function handleSave(dateKey: string, newMinutes: number) {
+    const daySessions = daySessionsMap[dateKey] ?? []
+
+    if (daySessions.length === 0) {
+      // No existing session — insert one
+      await supabase.from('user_sessions').insert({
+        user_id: profile.user_id,
+        session_date: dateKey,
+        duration_minutes: newMinutes,
+      } as never)
+    } else {
+      // Update the first session to the new total, delete the rest
+      const [first, ...rest] = daySessions
+      await supabase
+        .from('user_sessions')
+        .update({ duration_minutes: newMinutes } as never)
+        .eq('id', first.id)
+      if (rest.length > 0) {
+        await supabase
+          .from('user_sessions')
+          .delete()
+          .in('id', rest.map(s => s.id))
+      }
+    }
+    await invalidate()
+  }
+
+  async function handleDelete(dateKey: string) {
+    const ids = (daySessionsMap[dateKey] ?? []).map(s => s.id)
+    if (ids.length > 0) {
+      await supabase.from('user_sessions').delete().in('id', ids)
+    }
+    await invalidate()
+  }
+
   return (
     <div className="bg-card border border-border rounded-lg overflow-hidden">
-      {/* User header row */}
       <button
         onClick={() => setExpanded(e => !e)}
         className="w-full flex items-center gap-4 px-5 py-4 hover:bg-accent/30 transition-colors text-left"
@@ -136,7 +355,6 @@ function UserRow({
             Total this week: <span className="font-mono font-medium text-foreground">{formatHM(totalMins)}</span>
           </p>
         </div>
-        {/* Mini day bars */}
         <div className="hidden sm:flex items-end gap-1.5 h-8">
           {days.map(d => {
             const key  = format(d, 'yyyy-MM-dd')
@@ -147,9 +365,7 @@ function UserRow({
                 <div
                   className={cn(
                     'w-5 rounded-sm transition-all',
-                    mins > 0
-                      ? isToday ? 'bg-primary' : 'bg-primary/50'
-                      : 'bg-border',
+                    mins > 0 ? isToday ? 'bg-primary' : 'bg-primary/50' : 'bg-border',
                   )}
                   style={{ height: `${Math.max(4, barWidth(mins) * 0.28)}px` }}
                 />
@@ -162,44 +378,37 @@ function UserRow({
         </div>
       </button>
 
-      {/* Expanded day breakdown */}
       {expanded && (
         <div className="border-t border-border px-5 py-4">
+          {canEdit && (
+            <p className="text-xs text-muted-foreground mb-3 flex items-center gap-1.5">
+              <Pencil className="h-3 w-3" />
+              Click any past day to edit or remove its time
+            </p>
+          )}
           <div className="grid grid-cols-7 gap-2">
             {days.map(d => {
-              const key   = format(d, 'yyyy-MM-dd')
-              const mins  = dayMap[key] ?? 0
-              const isTd  = key === today
+              const key      = format(d, 'yyyy-MM-dd')
+              const mins     = dayMap[key] ?? 0
+              const isTd     = key === today
               const isFuture = key > today
               return (
-                <div key={key} className={cn(
-                  'rounded-lg p-3 text-center border',
-                  isTd
-                    ? 'bg-primary/10 border-primary/30'
-                    : isFuture
-                      ? 'border-border/40 opacity-50'
-                      : mins > 0
-                        ? 'bg-accent border-border'
-                        : 'border-border',
-                )}>
-                  <p className={cn('text-xs font-medium mb-1', isTd ? 'text-primary' : 'text-muted-foreground')}>
-                    {dayLabel(d)}
-                  </p>
-                  <p className="text-sm font-mono font-semibold">{formatHM(mins)}</p>
-                  {mins > 0 && (
-                    <div className="mt-1.5 h-1 w-full bg-border rounded-full overflow-hidden">
-                      <div
-                        className={cn('h-full rounded-full', isTd ? 'bg-primary' : 'bg-primary/50')}
-                        style={{ width: `${barWidth(mins)}%` }}
-                      />
-                    </div>
-                  )}
-                </div>
+                <DayCell
+                  key={key}
+                  date={d}
+                  minutes={mins}
+                  sessions={daySessionsMap[key] ?? []}
+                  isToday={isTd}
+                  isFuture={isFuture}
+                  canEdit={canEdit}
+                  onSave={(newMins) => handleSave(key, newMins)}
+                  onDelete={() => handleDelete(key)}
+                />
               )
             })}
           </div>
           <p className="text-xs text-muted-foreground mt-3 text-right">
-            Bar fills at 8h = 100%. Data updates every 5 minutes while active.
+            Bar fills at 8h = 100%. Idle time (&gt;15 min) and sleep/hibernate are not counted.
           </p>
         </div>
       )}
@@ -215,31 +424,29 @@ export default function TimeTrackingPage() {
 
   const [weekAnchor, setWeekAnchor] = useState<Date>(new Date())
   const { start, end } = weekRange(weekAnchor)
+  const weekStartStr = format(start, 'yyyy-MM-dd')
+  const weekEndStr   = format(end,   'yyyy-MM-dd')
 
   const { data: sessions = [], isLoading } = useSessions(weekAnchor, profile?.user_id, isPMOrOwner)
   const { data: profiles = [] }            = useProfiles()
 
-  // Which profiles to show
   const visibleProfiles = isPMOrOwner
     ? profiles
     : profiles.filter(p => p.user_id === profile?.user_id)
 
   const days = weekDays(weekAnchor)
 
-  // Total hours across all visible users this week
   const grandTotal = sessions.reduce((sum, s) => sum + s.duration_minutes, 0)
 
-  // Per-user total map (for sorting)
   const userTotals: Record<string, number> = {}
   for (const s of sessions) userTotals[s.user_id] = (userTotals[s.user_id] ?? 0) + s.duration_minutes
   const sorted = [...visibleProfiles].sort((a, b) => (userTotals[b.user_id] ?? 0) - (userTotals[a.user_id] ?? 0))
 
-  const weekLabel = `${format(start, 'MMM d')} – ${format(end, 'MMM d, yyyy')}`
+  const weekLabel     = `${format(start, 'MMM d')} – ${format(end, 'MMM d, yyyy')}`
   const isCurrentWeek = format(weekAnchor, 'yyyy-ww') === format(new Date(), 'yyyy-ww')
 
   return (
     <div className="space-y-6 max-w-5xl">
-      {/* Header */}
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold">Time Tracking</h1>
@@ -255,7 +462,6 @@ export default function TimeTrackingPage() {
         )}
       </div>
 
-      {/* Week navigator */}
       <div className="flex items-center gap-3">
         <button
           onClick={() => setWeekAnchor(d => subWeeks(d, 1))}
@@ -281,7 +487,6 @@ export default function TimeTrackingPage() {
         )}
       </div>
 
-      {/* Column headers for days */}
       <div className="grid grid-cols-7 gap-2 px-5">
         {days.map(d => {
           const isToday = format(d, 'yyyy-MM-dd') === todayDateEST()
@@ -296,7 +501,6 @@ export default function TimeTrackingPage() {
         })}
       </div>
 
-      {/* User rows */}
       {isLoading ? (
         <div className="flex items-center gap-2 text-muted-foreground text-sm py-8 justify-center">
           <Clock className="h-4 w-4 animate-pulse" /> Loading sessions…
@@ -314,12 +518,14 @@ export default function TimeTrackingPage() {
               profile={p}
               sessions={sessions}
               days={days}
+              canEdit={isPMOrOwner}
+              weekStartStr={weekStartStr}
+              weekEndStr={weekEndStr}
             />
           ))}
         </div>
       )}
 
-      {/* Legend */}
       <div className="flex items-center gap-4 text-xs text-muted-foreground pt-2 border-t border-border">
         <div className="flex items-center gap-1.5">
           <div className="h-3 w-3 rounded-sm bg-primary" />
@@ -333,9 +539,15 @@ export default function TimeTrackingPage() {
           <div className="h-3 w-3 rounded-sm bg-border" />
           <span>No activity</span>
         </div>
+        {isPMOrOwner && (
+          <div className="flex items-center gap-1.5">
+            <Pencil className="h-3 w-3" />
+            <span>Click a day (expanded) to edit</span>
+          </div>
+        )}
         <div className="flex items-center gap-1.5 ml-auto">
           <TrendingUp className="h-3.5 w-3.5" />
-          <span>Tracks while tab is open (foreground or background) · updates every minute</span>
+          <span>Idle &gt;15 min and sleep/hibernate not counted</span>
         </div>
       </div>
     </div>
