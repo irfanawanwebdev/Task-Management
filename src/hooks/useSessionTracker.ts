@@ -1,33 +1,36 @@
 /**
- * useSessionTracker — records active time in user_sessions.
+ * useSessionTracker — records ACTIVE time in user_sessions.
  *
- * On mount:    inserts a new session row with today's EST date.
- * Every 1 min: updates last_active_at + duration_minutes.
- *              Only the "leader" tab tracks — other tabs with the same user
- *              skip heartbeats to prevent double-counting when the app is
- *              open in multiple browsers/tabs simultaneously.
- * On unload:   fires a synchronous beacon to write the final duration.
+ * "Active" means the user interacted with the app (mouse/key/scroll/touch)
+ * within the last IDLE_TIMEOUT_MS and the machine was not sleeping.
  *
- * Leader election uses localStorage with a 90-second expiry lock.
- * If the leader tab closes without releasing the lock, the next heartbeat
- * from any remaining tab will reclaim it after 90 s.
+ * Counting method: each heartbeat tick that passes both checks increments
+ * activeMinutes by 1. Wall-clock elapsed time is NOT used — this prevents
+ * hibernate/sleep/forgotten-tab from inflating the count.
+ *
+ * Sleep detection: if the interval fires much later than expected (gap >
+ * SLEEP_GAP_MS), the machine was suspended — that tick is skipped.
+ *
+ * Multi-tab: leader election via localStorage ensures only one tab tracks
+ * per user at a time. Lock TTL = 90 s; a crashed tab's lock expires safely.
  */
 
 import { useEffect, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { todayDateEST } from '@/lib/timezone'
 
-const HEARTBEAT_MS  = 60 * 1000   // 1 minute
-const LOCK_TTL_MS   = 90 * 1000   // lock expires after 90 s (1.5 × heartbeat)
+const HEARTBEAT_MS   = 60 * 1000        // check every 1 minute
+const IDLE_TIMEOUT_MS = 15 * 60 * 1000  // 15 min no interaction = idle
+const SLEEP_GAP_MS   = 90 * 1000        // heartbeat gap > 90 s = machine slept
+const LOCK_TTL_MS    = 90 * 1000        // leader lock TTL
+
+// ── Leader election ──────────────────────────────────────────────────────────
 
 function leaderKey(userId: string) { return `tracker_leader_${userId}` }
-
 interface LockEntry { tabId: string; claimedAt: number }
 
-
 function claimLeader(userId: string, tabId: string) {
-  const entry: LockEntry = { tabId, claimedAt: Date.now() }
-  localStorage.setItem(leaderKey(userId), JSON.stringify(entry))
+  localStorage.setItem(leaderKey(userId), JSON.stringify({ tabId, claimedAt: Date.now() } satisfies LockEntry))
 }
 
 function tryClaimOrSkip(userId: string, tabId: string): boolean {
@@ -35,9 +38,7 @@ function tryClaimOrSkip(userId: string, tabId: string): boolean {
     const raw = localStorage.getItem(leaderKey(userId))
     if (!raw) { claimLeader(userId, tabId); return true }
     const lock: LockEntry = JSON.parse(raw)
-    // Already the leader — refresh timestamp
     if (lock.tabId === tabId) { claimLeader(userId, tabId); return true }
-    // Another tab holds the lock; take over only if it's stale
     if (Date.now() - lock.claimedAt > LOCK_TTL_MS) { claimLeader(userId, tabId); return true }
     return false
   } catch { claimLeader(userId, tabId); return true }
@@ -52,23 +53,31 @@ function releaseLeader(userId: string, tabId: string) {
   } catch { /* ignore */ }
 }
 
-// Stable per-tab ID (survives re-renders, cleared on tab close)
 const TAB_ID = Math.random().toString(36).slice(2)
 
-const HEARTBEAT_MS_EXPORT = HEARTBEAT_MS
+// ── Hook ─────────────────────────────────────────────────────────────────────
 
 export function useSessionTracker(userId: string | undefined | null) {
-  const sessionIdRef  = useRef<string | null>(null)
-  const startedAtRef  = useRef<Date>(new Date())
+  const sessionIdRef      = useRef<string | null>(null)
+  const activeMinutesRef  = useRef(0)
+  const lastActivityRef   = useRef(Date.now())
+  const lastHeartbeatRef  = useRef(Date.now())
 
   useEffect(() => {
     if (!userId) return
 
     const today = todayDateEST()
 
-    // Try to become the leader before starting a session
-    const amLeader = tryClaimOrSkip(userId, TAB_ID)
-    if (!amLeader) return   // another tab is already tracking this user
+    if (!tryClaimOrSkip(userId, TAB_ID)) return
+
+    // ── Track user activity ────────────────────────────────────────────────────
+    const onActivity = () => { lastActivityRef.current = Date.now() }
+    const opts = { passive: true } as const
+    window.addEventListener('mousemove', onActivity, opts)
+    window.addEventListener('keydown',   onActivity, opts)
+    window.addEventListener('click',     onActivity, opts)
+    window.addEventListener('scroll',    onActivity, opts)
+    window.addEventListener('touchstart',onActivity, opts)
 
     // ── Start session ──────────────────────────────────────────────────────────
     supabase
@@ -82,45 +91,60 @@ export function useSessionTracker(userId: string | undefined | null) {
 
     // ── Heartbeat every 1 minute ───────────────────────────────────────────────
     const heartbeat = setInterval(async () => {
-      // Re-check leadership each tick (another tab could have stolen it)
       if (!tryClaimOrSkip(userId, TAB_ID)) return
+
+      const now = Date.now()
+      const gap = now - lastHeartbeatRef.current
+      lastHeartbeatRef.current = now
+
+      // Machine was sleeping — gap much larger than expected interval
+      if (gap > SLEEP_GAP_MS) return
+
+      // User has been idle too long
+      if (now - lastActivityRef.current > IDLE_TIMEOUT_MS) return
+
       const id = sessionIdRef.current
       if (!id) return
-      const mins = Math.floor((Date.now() - startedAtRef.current.getTime()) / 60000)
+
+      activeMinutesRef.current += 1
+
       await supabase
         .from('user_sessions')
         .update({
           last_active_at: new Date().toISOString(),
-          duration_minutes: mins,
+          duration_minutes: activeMinutesRef.current,
         } as never)
         .eq('id', id)
-    }, HEARTBEAT_MS_EXPORT)
+    }, HEARTBEAT_MS)
 
     // ── End session on tab close ───────────────────────────────────────────────
     const handleUnload = () => {
       releaseLeader(userId, TAB_ID)
       const id = sessionIdRef.current
       if (!id) return
-      const mins = Math.floor((Date.now() - startedAtRef.current.getTime()) / 60000)
       const url = `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/user_sessions?id=eq.${id}`
       navigator.sendBeacon(
         url,
-        JSON.stringify({ ended_at: new Date().toISOString(), duration_minutes: mins }),
+        JSON.stringify({ ended_at: new Date().toISOString(), duration_minutes: activeMinutesRef.current }),
       )
     }
     window.addEventListener('beforeunload', handleUnload)
 
-    // ── Cleanup on logout / unmount ────────────────────────────────────────────
+    // ── Cleanup ────────────────────────────────────────────────────────────────
     return () => {
       clearInterval(heartbeat)
       window.removeEventListener('beforeunload', handleUnload)
+      window.removeEventListener('mousemove',  onActivity)
+      window.removeEventListener('keydown',    onActivity)
+      window.removeEventListener('click',      onActivity)
+      window.removeEventListener('scroll',     onActivity)
+      window.removeEventListener('touchstart', onActivity)
       releaseLeader(userId, TAB_ID)
       const id = sessionIdRef.current
       if (id) {
-        const mins = Math.floor((Date.now() - startedAtRef.current.getTime()) / 60000)
         supabase
           .from('user_sessions')
-          .update({ ended_at: new Date().toISOString(), duration_minutes: mins } as never)
+          .update({ ended_at: new Date().toISOString(), duration_minutes: activeMinutesRef.current } as never)
           .eq('id', id)
       }
     }
