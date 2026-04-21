@@ -133,7 +133,7 @@ export function TaskFileUpload({ taskId, attachments, onChange, disabled }: Prop
           ref={inputRef}
           type="file"
           multiple
-          accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.png,.jpg,.jpeg,.gif,.webp,.zip"
+          accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.html,.png,.jpg,.jpeg,.gif,.webp,.zip"
           className="hidden"
           onChange={e => uploadFiles(e.target.files)}
         />

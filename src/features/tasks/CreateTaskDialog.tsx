@@ -19,6 +19,7 @@ interface CreateTaskForm {
   client_id: string
   assignee_user_ids: string[]   // supports multiple assignees
   due_date: string
+  status: 'Not Started' | 'In Progress' | 'Done' | 'Blocked'
   impact_level: string
   workstream: Workstream
   description: string
@@ -35,7 +36,7 @@ interface CreateTaskForm {
 
 const BLANK: CreateTaskForm = {
   task_name: '', client_id: '', assignee_user_ids: [], due_date: '',
-  impact_level: 'Medium', workstream: 'Ops/PM',
+  status: 'Not Started', impact_level: 'Medium', workstream: 'Ops/PM',
   description: '', blocker_text: '', client_facing_risk: false,
   recurrence: 'none',
   asset_which: '', asset_format: '', asset_destination: '',
@@ -122,7 +123,7 @@ export function CreateTaskDialog({ open, onClose, presetClientId, clients = [] }
           workstream: data.workstream,
           description: descriptionText,
           blocker_text: data.blocker_text.trim() || null,
-          status: 'Not Started',
+          status: data.status,
           step: 0,
           step_name: 'Ad-hoc',
           timeline: 'TBD',
@@ -324,6 +325,31 @@ export function CreateTaskDialog({ open, onClose, presetClientId, clients = [] }
               >
                 {['High', 'Medium', 'Low'].map(l => <option key={l}>{l}</option>)}
               </select>
+            </div>
+          </div>
+
+          {/* Status */}
+          <div>
+            <label className="block text-xs font-medium mb-1">Initial Status</label>
+            <div className="flex gap-2">
+              {(['Not Started', 'In Progress', 'Done', 'Blocked'] as const).map(s => (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => setForm(f => ({ ...f, status: s }))}
+                  className={cn(
+                    'flex-1 px-2 py-1.5 rounded-md border text-xs font-medium transition-colors',
+                    form.status === s
+                      ? s === 'Done'        ? 'border-green-500 bg-green-500/10 text-green-600'
+                      : s === 'In Progress' ? 'border-blue-500 bg-blue-500/10 text-blue-600'
+                      : s === 'Blocked'     ? 'border-destructive bg-destructive/10 text-destructive'
+                                            : 'border-primary bg-primary/10 text-primary'
+                      : 'border-border text-muted-foreground hover:text-foreground',
+                  )}
+                >
+                  {s}
+                </button>
+              ))}
             </div>
           </div>
 

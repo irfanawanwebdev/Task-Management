@@ -23,7 +23,7 @@ import { HelpPopover } from '@/components/HelpPopover'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type ViewTab = 'timeline' | 'workstream' | 'qa-gate' | 'blocked' | 'overdue' | 'done'
+type ViewTab = 'timeline' | 'workstream' | 'pending' | 'qa-gate' | 'blocked' | 'overdue' | 'done'
 
 // ─── Data Hooks ───────────────────────────────────────────────────────────────
 
@@ -1262,6 +1262,8 @@ export default function TasksPage() {
   // ── View filtering ──────────────────────────────────────────────────────────
   const visibleTasks = (() => {
     switch (activeView) {
+      case 'pending':
+        return searchTasks.filter(t => t.status === 'Not Started' || t.status === 'In Progress')
       case 'qa-gate':
         return searchTasks.filter(t => !t.ar_output_logged && t.status !== 'Not Started')
       case 'blocked':
@@ -1301,12 +1303,14 @@ export default function TasksPage() {
   const VIEWS: { id: ViewTab; label: string; help: string }[] = [
     { id: 'timeline',   label: 'Timeline',      help: 'All tasks ordered by delivery step and due date. The default view for tracking overall client delivery progress.' },
     { id: 'workstream', label: 'By Workstream', help: 'Tasks grouped by department (SEO, PPC, Web, Social, etc.). Use this to see what each team is working on.' },
+    { id: 'pending',    label: 'Pending',       help: 'All tasks with status Not Started or In Progress — everything that still needs work.' },
     { id: 'qa-gate',    label: 'QA Gate',       help: 'Tasks that are in progress but the output URL hasn\'t been logged yet. The next delivery step is locked until these are cleared.' },
     { id: 'blocked',    label: 'Blocked',       help: 'Tasks with status "Blocked". Each should have a matching blocker logged on the Blockers page. Resolve or escalate promptly.' },
     { id: 'overdue',    label: 'Overdue',       help: 'Tasks past their due date that aren\'t done. Prioritize these — they directly affect the client\'s risk score.' },
     { id: 'done',       label: 'Done',          help: 'All completed tasks. Use this to review what has been delivered for each client.' },
   ]
 
+  const pendingCount = employeeTasks.filter(t => t.status === 'Not Started' || t.status === 'In Progress').length
   const blockedCount = employeeTasks.filter(t => t.status === 'Blocked').length
   const overdueCount = employeeTasks.filter(t => t.due_date && isOverdueEST(t.due_date) && t.status !== 'Done').length
   const qaCount      = employeeTasks.filter(t => !t.ar_output_logged && t.status !== 'Not Started' && t.status !== 'Done').length
@@ -1383,6 +1387,9 @@ export default function TasksPage() {
             >
               {v.label}
               <HelpPopover title={v.label} content={v.help} side="bottom" align="left" />
+              {v.id === 'pending' && pendingCount > 0 && (
+                <span className="px-1 bg-primary/20 text-primary text-xs rounded-full">{pendingCount}</span>
+              )}
               {v.id === 'blocked' && blockedCount > 0 && (
                 <span className="px-1 bg-destructive/20 text-destructive text-xs rounded-full">{blockedCount}</span>
               )}

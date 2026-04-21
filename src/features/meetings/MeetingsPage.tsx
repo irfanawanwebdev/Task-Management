@@ -533,6 +533,7 @@ interface GeneratedContent {
     task: string
     workstream: string
     impact: string
+    status: string
     completed_date: string | null
     output_link: string | null
     description?: string | null
@@ -571,7 +572,8 @@ function buildReportText(report: Report, clientName: string): string {
         lines.push(`${i + 1}. ${t.task}`)
         lines.push(`   Workstream  : ${t.workstream}`)
         lines.push(`   Impact      : ${t.impact}`)
-        lines.push(`   Completed   : ${t.completed_date ? formatDateEST(t.completed_date) : '—'}`)
+        lines.push(`   Status      : ${t.status ?? '—'}`)
+        if (t.completed_date) lines.push(`   Completed   : ${formatDateEST(t.completed_date)}`)
         if (t.location)    lines.push(`   Location    : ${t.location}`)
         if (t.description) lines.push(`   Description : ${t.description}`)
         if (t.notes)       lines.push(`   Notes       : ${t.notes}`)
@@ -681,7 +683,7 @@ ${gc ? `
 ${gc.delivery_summary && gc.delivery_summary.length > 0 ? `
 <h2>Delivery Summary</h2>
 <table>
-  <thead><tr><th>#</th><th>Task</th><th>Workstream</th><th>Impact</th><th>Completed</th><th>Description</th><th>Notes</th><th>Output / Links</th></tr></thead>
+  <thead><tr><th>#</th><th>Task</th><th>Workstream</th><th>Impact</th><th>Status</th><th>Description</th><th>Notes</th><th>Output / Links</th></tr></thead>
   <tbody>
     ${gc.delivery_summary.map((t, i) => {
       const linksHtml = [
@@ -694,7 +696,7 @@ ${gc.delivery_summary && gc.delivery_summary.length > 0 ? `
       <td>${t.task}</td>
       <td>${t.workstream}</td>
       <td class="${t.impact === 'High' ? 'impact-high' : t.impact === 'Medium' ? 'impact-med' : 'impact-low'}">${t.impact}</td>
-      <td>${t.completed_date ? formatDateEST(t.completed_date) : '—'}</td>
+      <td>${t.status ?? '—'}</td>
       <td style="font-size:11px;color:#555;white-space:pre-wrap;max-width:200px">${t.description ?? '—'}</td>
       <td style="font-size:11px;color:#555;white-space:pre-wrap;max-width:200px">${t.notes ?? '—'}</td>
       <td>${linksHtml || '—'}</td>
@@ -797,7 +799,7 @@ ${report.pdf_url ? `<h2>Report Link</h2><p><a href="${report.pdf_url}" target="_
                           <th className="px-3 py-2 text-left font-medium text-muted-foreground">Task</th>
                           <th className="px-3 py-2 text-left font-medium text-muted-foreground">Workstream</th>
                           <th className="px-3 py-2 text-left font-medium text-muted-foreground">Impact</th>
-                          <th className="px-3 py-2 text-left font-medium text-muted-foreground">Completed</th>
+                          <th className="px-3 py-2 text-left font-medium text-muted-foreground">Status</th>
                           <th className="px-3 py-2 text-left font-medium text-muted-foreground">Output</th>
                         </tr>
                       </thead>
@@ -814,8 +816,13 @@ ${report.pdf_url ? `<h2>Report Link</h2><p><a href="${report.pdf_url}" target="_
                                 t.impact === 'Medium' ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700',
                               )}>{t.impact}</span>
                             </td>
-                            <td className="px-3 py-2 text-muted-foreground">
-                              {t.completed_date ? formatDateEST(t.completed_date) : '—'}
+                            <td className="px-3 py-2">
+                              <span className={cn(
+                                'px-1.5 py-0.5 rounded text-[10px] font-medium',
+                                t.status === 'Done'        ? 'bg-green-100 text-green-700' :
+                                t.status === 'In Progress' ? 'bg-blue-100 text-blue-700' :
+                                t.status === 'Blocked'     ? 'bg-red-100 text-red-700' : 'bg-muted text-muted-foreground',
+                              )}>{t.status ?? '—'}</span>
                             </td>
                             <td className="px-3 py-2">
                               {t.output_link ? (
@@ -920,7 +927,7 @@ function CreateReportDialog({
   const allLocationIds  = clientId ? [clientId, ...childLocations.map(c => c.id)] : []
   const hasMultiLocations = childLocations.length > 0
 
-  // Load completed tasks for auto mode — includes all child locations when parent is selected
+  // Load all tasks for auto mode — all statuses, includes all child locations when parent is selected
   const { data: completedTasks = [], isFetching: loadingTasks } = useQuery<DeliveryTask[]>({
     queryKey: ['report-tasks', allLocationIds, rangeDays],
     queryFn: async () => {
@@ -930,11 +937,11 @@ function CreateReportDialog({
       const cutoffStr = cutoff.toISOString().slice(0, 10)
       const { data, error } = await supabase
         .from('delivery_tasks')
-        .select('id, task_name, workstream, step_name, completed_date, output_link, impact_level, description, notes, links, client_id, clients(name, location_name)')
+        .select('id, task_name, workstream, step_name, status, completed_date, output_link, impact_level, description, notes, links, client_id, clients(name, location_name)')
         .in('client_id', allLocationIds)
-        .eq('status', 'Done')
-        .gte('completed_date', cutoffStr)
-        .order('completed_date', { ascending: false })
+        .or(`due_date.gte.${cutoffStr},completed_date.gte.${cutoffStr}`)
+        .order('status')
+        .order('due_date')
       if (error) throw error
       return (data ?? []) as unknown as DeliveryTask[]
     },
@@ -956,8 +963,8 @@ function CreateReportDialog({
 
       const generatedContent = mode === 'auto' && completedTasks.length > 0
         ? {
-            tasks_completed: completedTasks.length,
-            high_impact:     completedTasks.filter(t => t.impact_level === 'High').length,
+            tasks_completed: completedTasks.filter(t => t.status === 'Done').length,
+            high_impact:     completedTasks.filter(t => t.impact_level === 'High' && t.status === 'Done').length,
             delivery_summary: completedTasks.map(t => {
               const taskClient = (t as unknown as { clients?: { name: string; location_name?: string | null } }).clients
               const location = hasMultiLocations
@@ -967,6 +974,7 @@ function CreateReportDialog({
                 task:           t.task_name,
                 workstream:     t.workstream,
                 impact:         t.impact_level,
+                status:         t.status,
                 completed_date: t.completed_date,
                 output_link:    t.output_link ?? null,
                 description:    (t as unknown as { description?: string }).description ?? null,
@@ -1025,7 +1033,7 @@ function CreateReportDialog({
                     : 'border-border text-muted-foreground hover:text-foreground',
                 )}
               >
-                {m === 'auto' ? 'Auto (from completed tasks)' : 'Manual entry'}
+                {m === 'auto' ? 'Auto (from tasks)' : 'Manual entry'}
               </button>
             ))}
           </div>

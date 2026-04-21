@@ -17,7 +17,6 @@
  */
 
 // @ts-nocheck — Deno runtime types not in project tsconfig
-import { serve }        from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const CORS = {
@@ -278,7 +277,7 @@ async function sendViaResend(apiKey: string, from: string, to: string | string[]
 
 // ─── Main handler ─────────────────────────────────────────────────────────────
 
-serve(async (req: Request) => {
+Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS })
 
   try {
@@ -288,8 +287,8 @@ serve(async (req: Request) => {
     const fromEmail = (Deno.env.get('FROM_EMAIL') ?? 'onboarding@resend.dev').trim()
 
     if (!apiKey) {
-      return new Response(JSON.stringify({ error: 'RESEND_API_KEY is not configured' }), {
-        status: 500, headers: { ...CORS, 'Content-Type': 'application/json' },
+      return new Response(JSON.stringify({ error: 'RESEND_API_KEY secret is not configured in Supabase Dashboard → Settings → Edge Function Secrets' }), {
+        status: 200, headers: { ...CORS, 'Content-Type': 'application/json' },
       })
     }
 
@@ -314,7 +313,7 @@ serve(async (req: Request) => {
     const { to, subject, html } = body
     if (!to || !subject || !html) {
       return new Response(JSON.stringify({ error: 'Missing required fields: to, subject, html' }), {
-        status: 400, headers: { ...CORS, 'Content-Type': 'application/json' },
+        status: 200, headers: { ...CORS, 'Content-Type': 'application/json' },
       })
     }
 
