@@ -352,3 +352,66 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
 .rich-editor .ProseMirror h1, .rich-display h1 { font-size: 1.25em; }
 .rich-editor .ProseMirror h2, .rich-display h2 { font-size: 1.1em; }
 .rich-editor .ProseMirror h3, .rich-display h3 { font-size: 1em; }
+
+/* ── Tables ─────────────────────────────────────────────────────────── */
+
+.rich-editor .ProseMirror table,
+.rich-display table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 0.6em 0;
+  font-size: 0.875em;
+  overflow-x: auto;
+  display: block;
+}
+
+.rich-editor .ProseMirror table td,
+.rich-editor .ProseMirror table th,
+.rich-display table td,
+.rich-display table th {
+  border: 1px solid hsl(var(--border));
+  padding: 0.4em 0.65em;
+  vertical-align: top;
+  min-width: 2.5em;
+  position: relative;
+}
+
+.rich-editor .ProseMirror table th,
+.rich-display table th {
+  background: hsl(var(--muted));
+  font-weight: 600;
+  text-align: left;
+  color: hsl(var(--foreground));
+}
+
+.rich-editor .ProseMirror table tr:nth-child(even) td,
+.rich-display table tr:nth-child(even) td {
+  background: hsl(var(--muted) / 0.35);
+}
+
+/* Selected cell highlight */
+.rich-editor .ProseMirror .selectedCell::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: hsl(var(--primary) / 0.15);
+  pointer-events: none;
+}
+
+/* Column resize handle */
+.rich-editor .ProseMirror .column-resize-handle {
+  position: absolute;
+  right: -2px;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: hsl(var(--primary) / 0.4);
+  cursor: col-resize;
+  z-index: 20;
+}
+
+/* Wrapper for horizontal scroll on narrow screens */
+.rich-editor .ProseMirror .tableWrapper,
+.rich-display .tableWrapper {
+  overflow-x: auto;
+}

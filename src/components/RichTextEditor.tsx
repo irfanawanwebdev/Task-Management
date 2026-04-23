@@ -3,10 +3,11 @@
  *
  * Two exports:
  *   <RichTextEditor>  — editable with toolbar (Bold, Italic, Underline,
- *                        Strikethrough, Link, UL, OL, Code, Code Block)
+ *                        Strikethrough, Link, UL, OL, Code, Code Block, Table)
  *   <RichTextDisplay> — read-only rendered HTML, links open in new tab
  *
  * Content is stored / passed as HTML strings.
+ * Paste from Google Docs/Sheets preserves formatting and tables.
  */
 
 import { useEditor, EditorContent } from '@tiptap/react'
@@ -14,20 +15,29 @@ import StarterKit from '@tiptap/starter-kit'
 import Link from '@tiptap/extension-link'
 import Placeholder from '@tiptap/extension-placeholder'
 import Underline from '@tiptap/extension-underline'
+import { Table } from '@tiptap/extension-table'
+import { TableRow } from '@tiptap/extension-table-row'
+import { TableHeader } from '@tiptap/extension-table-header'
+import { TableCell } from '@tiptap/extension-table-cell'
 import { useCallback, useEffect } from 'react'
-import { Bold, Italic, UnderlineIcon, Strikethrough, Link2, List, ListOrdered, Code, Code2 } from 'lucide-react'
+import {
+  Bold, Italic, UnderlineIcon, Strikethrough, Link2,
+  List, ListOrdered, Code, Code2,
+  Table as TableIcon, Plus, Minus, Trash2,
+} from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 // ─── Toolbar Button ───────────────────────────────────────────────────────────
 
 function ToolBtn({
-  active, disabled, title, onClick, children,
+  active, disabled, title, onClick, children, danger,
 }: {
   active?: boolean
   disabled?: boolean
   title?: string
   onClick: () => void
   children: React.ReactNode
+  danger?: boolean
 }) {
   return (
     <button
@@ -37,9 +47,11 @@ function ToolBtn({
       title={title}
       className={cn(
         'p-1.5 rounded text-sm transition-colors disabled:opacity-40',
-        active
-          ? 'bg-primary/15 text-primary'
-          : 'text-muted-foreground hover:text-foreground hover:bg-accent',
+        danger
+          ? 'text-destructive/70 hover:text-destructive hover:bg-destructive/10'
+          : active
+            ? 'bg-primary/15 text-primary'
+            : 'text-muted-foreground hover:text-foreground hover:bg-accent',
       )}
     >
       {children}
@@ -47,10 +59,14 @@ function ToolBtn({
   )
 }
 
+const Sep = () => <span className="w-px h-4 bg-border mx-0.5 shrink-0" />
+
 // ─── Toolbar ─────────────────────────────────────────────────────────────────
 
 function Toolbar({ editor }: { editor: ReturnType<typeof useEditor> }) {
   if (!editor) return null
+
+  const inTable = editor.isActive('table')
 
   const setLink = useCallback(() => {
     const prev = editor.getAttributes('link').href as string | undefined
@@ -65,42 +81,81 @@ function Toolbar({ editor }: { editor: ReturnType<typeof useEditor> }) {
 
   return (
     <div className="flex items-center flex-wrap gap-0.5 px-2 py-1.5 border-b border-input bg-muted/30 rounded-t-md">
-      <ToolBtn title="Bold (Ctrl+B)"    active={editor.isActive('bold')}      onClick={() => editor.chain().focus().toggleBold().run()}>
+      {/* Text formatting */}
+      <ToolBtn title="Bold (Ctrl+B)"        active={editor.isActive('bold')}        onClick={() => editor.chain().focus().toggleBold().run()}>
         <Bold className="h-3.5 w-3.5" />
       </ToolBtn>
-      <ToolBtn title="Italic (Ctrl+I)"  active={editor.isActive('italic')}    onClick={() => editor.chain().focus().toggleItalic().run()}>
+      <ToolBtn title="Italic (Ctrl+I)"      active={editor.isActive('italic')}      onClick={() => editor.chain().focus().toggleItalic().run()}>
         <Italic className="h-3.5 w-3.5" />
       </ToolBtn>
-      <ToolBtn title="Underline (Ctrl+U)" active={editor.isActive('underline')} onClick={() => editor.chain().focus().toggleUnderline().run()}>
+      <ToolBtn title="Underline (Ctrl+U)"   active={editor.isActive('underline')}   onClick={() => editor.chain().focus().toggleUnderline().run()}>
         <UnderlineIcon className="h-3.5 w-3.5" />
       </ToolBtn>
-      <ToolBtn title="Strikethrough"    active={editor.isActive('strike')}    onClick={() => editor.chain().focus().toggleStrike().run()}>
+      <ToolBtn title="Strikethrough"        active={editor.isActive('strike')}      onClick={() => editor.chain().focus().toggleStrike().run()}>
         <Strikethrough className="h-3.5 w-3.5" />
       </ToolBtn>
 
-      <span className="w-px h-4 bg-border mx-1" />
+      <Sep />
 
-      <ToolBtn title="Link"             active={editor.isActive('link')}      onClick={setLink}>
+      <ToolBtn title="Link"                 active={editor.isActive('link')}        onClick={setLink}>
         <Link2 className="h-3.5 w-3.5" />
       </ToolBtn>
 
-      <span className="w-px h-4 bg-border mx-1" />
+      <Sep />
 
-      <ToolBtn title="Bullet list"      active={editor.isActive('bulletList')} onClick={() => editor.chain().focus().toggleBulletList().run()}>
+      <ToolBtn title="Bullet list"          active={editor.isActive('bulletList')}  onClick={() => editor.chain().focus().toggleBulletList().run()}>
         <List className="h-3.5 w-3.5" />
       </ToolBtn>
-      <ToolBtn title="Numbered list"    active={editor.isActive('orderedList')} onClick={() => editor.chain().focus().toggleOrderedList().run()}>
+      <ToolBtn title="Numbered list"        active={editor.isActive('orderedList')} onClick={() => editor.chain().focus().toggleOrderedList().run()}>
         <ListOrdered className="h-3.5 w-3.5" />
       </ToolBtn>
 
-      <span className="w-px h-4 bg-border mx-1" />
+      <Sep />
 
-      <ToolBtn title="Inline code"      active={editor.isActive('code')}      onClick={() => editor.chain().focus().toggleCode().run()}>
+      <ToolBtn title="Inline code"          active={editor.isActive('code')}        onClick={() => editor.chain().focus().toggleCode().run()}>
         <Code className="h-3.5 w-3.5" />
       </ToolBtn>
-      <ToolBtn title="Code block"       active={editor.isActive('codeBlock')} onClick={() => editor.chain().focus().toggleCodeBlock().run()}>
+      <ToolBtn title="Code block"           active={editor.isActive('codeBlock')}   onClick={() => editor.chain().focus().toggleCodeBlock().run()}>
         <Code2 className="h-3.5 w-3.5" />
       </ToolBtn>
+
+      <Sep />
+
+      {/* Table: insert button when not in table; controls when inside a table */}
+      {!inTable ? (
+        <ToolBtn
+          title="Insert table (3×3)"
+          onClick={() => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()}
+        >
+          <TableIcon className="h-3.5 w-3.5" />
+        </ToolBtn>
+      ) : (
+        <>
+          <ToolBtn title="Add row below"    onClick={() => editor.chain().focus().addRowAfter().run()}>
+            <span className="flex items-center gap-0.5 text-[10px] font-medium leading-none">
+              <Plus className="h-3 w-3" />row
+            </span>
+          </ToolBtn>
+          <ToolBtn title="Add column right" onClick={() => editor.chain().focus().addColumnAfter().run()}>
+            <span className="flex items-center gap-0.5 text-[10px] font-medium leading-none">
+              <Plus className="h-3 w-3" />col
+            </span>
+          </ToolBtn>
+          <ToolBtn title="Delete row"       onClick={() => editor.chain().focus().deleteRow().run()}>
+            <span className="flex items-center gap-0.5 text-[10px] font-medium leading-none">
+              <Minus className="h-3 w-3" />row
+            </span>
+          </ToolBtn>
+          <ToolBtn title="Delete column"    onClick={() => editor.chain().focus().deleteColumn().run()}>
+            <span className="flex items-center gap-0.5 text-[10px] font-medium leading-none">
+              <Minus className="h-3 w-3" />col
+            </span>
+          </ToolBtn>
+          <ToolBtn title="Delete table" danger onClick={() => editor.chain().focus().deleteTable().run()}>
+            <Trash2 className="h-3.5 w-3.5" />
+          </ToolBtn>
+        </>
+      )}
     </div>
   )
 }
@@ -135,6 +190,10 @@ export function RichTextEditor({
         HTMLAttributes: { target: '_blank', rel: 'noopener noreferrer' },
       }),
       Placeholder.configure({ placeholder }),
+      Table.configure({ resizable: false }),
+      TableRow,
+      TableHeader,
+      TableCell,
     ],
     content: value || '',
     autofocus: autoFocus,
@@ -185,7 +244,7 @@ export function RichTextDisplay({ html, className, emptyText = 'Nothing here yet
     return <p className={cn('text-sm text-muted-foreground italic', className)}>{emptyText}</p>
   }
 
-  // Open all links in new tab — add target/rel on anchor clicks
+  // Open links in new tab on click
   const handleClick = (e: React.MouseEvent<HTMLDivElement>) => {
     const target = e.target as HTMLElement
     if (target.tagName === 'A') {

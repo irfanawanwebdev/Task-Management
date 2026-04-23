@@ -612,10 +612,10 @@ function TaskDetailDialog({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm p-4">
-      <div className="relative w-full max-w-2xl bg-card border border-border rounded-xl shadow-xl overflow-y-auto max-h-[90vh]">
+      <div className="relative w-full max-w-2xl bg-card border border-border rounded-xl shadow-xl flex flex-col max-h-[90vh]">
 
         {/* ── Header ── */}
-        <div className="sticky top-0 bg-card border-b border-border px-5 py-4 flex items-start justify-between gap-3">
+        <div className="sticky top-0 z-10 bg-card border-b border-border px-5 py-4 flex items-start justify-between gap-3">
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap mb-1">
               <span className={cn(
@@ -665,7 +665,7 @@ function TaskDetailDialog({
           </button>
         </div>
 
-        <div className="p-5 space-y-5">
+        <div className="overflow-y-auto flex-1 p-5 space-y-5">
           {/* Description — editable for anyone who can edit */}
           {(descriptionVal || canEdit) && (
             <div>
