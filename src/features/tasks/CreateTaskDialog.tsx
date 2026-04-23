@@ -4,10 +4,11 @@
  * §8.3: Tasks always within a client; Assignee (person name) required.
  */
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useQueryClient, useMutation, useQuery } from '@tanstack/react-query'
 import { X, Loader2 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
+import { RichTextEditor } from '@/components/RichTextEditor'
 import type { Client, Profile, Workstream } from '@/lib/types'
 import { WORKSTREAMS } from '@/lib/types'
 import { todayDateEST } from '@/lib/timezone'
@@ -89,6 +90,11 @@ export function CreateTaskDialog({ open, onClose, presetClientId, clients = [] }
     },
     enabled: open,
   })
+
+  // Keep form.client_id in sync when presetClientId changes (e.g. filter applied after mount)
+  useEffect(() => {
+    if (presetClientId) setForm(f => ({ ...f, client_id: presetClientId }))
+  }, [presetClientId])
 
   // Show asset fields when workstream is Web/Dev AND "asset" in task name
   const showAssetFields = form.workstream === 'Web/Dev' &&
@@ -242,22 +248,20 @@ export function CreateTaskDialog({ open, onClose, presetClientId, clients = [] }
             />
           </div>
 
-          {/* Client (hidden when preset) */}
-          {!presetClientId && (
-            <div>
-              <label className="block text-xs font-medium mb-1">
-                Client <span className="text-destructive">*</span>
-              </label>
-              <select
-                value={form.client_id}
-                onChange={e => setForm(f => ({ ...f, client_id: e.target.value }))}
-                className="w-full px-3 py-1.5 bg-background border border-input rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-              >
-                <option value="">Select client…</option>
-                {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
-            </div>
-          )}
+          {/* Client — always visible so the required value is never silently missing */}
+          <div>
+            <label className="block text-xs font-medium mb-1">
+              Client <span className="text-destructive">*</span>
+            </label>
+            <select
+              value={form.client_id}
+              onChange={e => setForm(f => ({ ...f, client_id: e.target.value }))}
+              className="w-full px-3 py-1.5 bg-background border border-input rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+            >
+              <option value="">Select client…</option>
+              {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </div>
 
           {/* Assignees — multi-select checkboxes */}
           <div>
@@ -390,12 +394,11 @@ export function CreateTaskDialog({ open, onClose, presetClientId, clients = [] }
           {/* Definition of Done */}
           <div>
             <label className="block text-xs font-medium mb-1">Definition of Done</label>
-            <textarea
+            <RichTextEditor
               value={form.description}
-              onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
-              rows={2}
-              className="w-full px-3 py-1.5 bg-background border border-input rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-ring resize-none"
+              onChange={description => setForm(f => ({ ...f, description }))}
               placeholder="What does completion look like?"
+              minRows={2}
             />
           </div>
 

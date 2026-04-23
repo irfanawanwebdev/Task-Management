@@ -209,6 +209,8 @@ export interface Meeting {
   sla_met: boolean | null
   calendar_source: string | null
   notes: string | null
+  attendees: string | null
+  source_integration: string | null
   created_at: string
   updated_at: string
   // Joined

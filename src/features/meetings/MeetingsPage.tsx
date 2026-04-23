@@ -9,7 +9,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Calendar, CheckCircle2, AlertTriangle, Plus, X, ExternalLink,
   ChevronDown, Loader2, FileText, Users, Zap, Bell, RefreshCw, Save,
-  Eye, Copy, Download,
+  Eye, Copy, Download, NotebookText, Pencil,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import type { Meeting, Report, DeliveryTask, Client, Blocker } from '@/lib/types'
@@ -21,6 +21,7 @@ import { isPMOrOwner } from '@/lib/permissions'
 import { useNavigationGuard } from '@/lib/useNavigationGuard'
 import { cn } from '@/lib/utils'
 import { HelpPopover } from '@/components/HelpPopover'
+import { RichTextEditor, RichTextDisplay } from '@/components/RichTextEditor'
 
 // ─── Edge Function caller ─────────────────────────────────────────────────────
 
@@ -212,6 +213,7 @@ function MetricCard({
 
 function MeetingRow({ meeting, canEdit }: { meeting: Meeting; canEdit: boolean }) {
   const queryClient = useQueryClient()
+  const [showNotes, setShowNotes] = useState(false)
   const slaStatus = meeting.sla_due
     ? isSlaBrokenEST(meeting.sla_due) && !meeting.sla_met ? 'broken' : meeting.sla_met ? 'met' : 'pending'
     : null
@@ -228,46 +230,69 @@ function MeetingRow({ meeting, canEdit }: { meeting: Meeting; canEdit: boolean }
   })
 
   return (
-    <tr className="border-b hover:bg-muted/30 transition-colors">
-      <td className="px-4 py-3 text-sm whitespace-nowrap">{formatDateEST(meeting.date)}</td>
-      <td className="px-4 py-3 text-sm font-medium">{getClientName(meeting)}</td>
-      <td className="px-4 py-3"><MeetingTypeBadge type={meeting.type} /></td>
-      <td className="px-4 py-3"><StatusBadge status={meeting.status} /></td>
-      <td className="px-4 py-3 text-xs text-muted-foreground max-w-[200px] truncate">
-        {meeting.agenda ?? '—'}
-      </td>
-      <td className="px-4 py-3">
-        {slaStatus === 'met' && <span className="text-xs text-green-600 font-medium">SLA ✓</span>}
-        {slaStatus === 'broken' && <span className="text-xs text-red-600 font-medium">SLA ✗</span>}
-        {slaStatus === 'pending' && <span className="text-xs text-muted-foreground">Pending</span>}
-      </td>
-      <td className="px-4 py-3">
-        <div className="flex items-center gap-2">
-          {meeting.meeting_link && (
-            <a href={meeting.meeting_link} target="_blank" rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 rounded border px-2 py-0.5 text-xs hover:bg-muted">
-              <ExternalLink className="h-3 w-3" /> Join
-            </a>
-          )}
-          {meeting.recap_link && (
-            <a href={meeting.recap_link} target="_blank" rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 rounded border px-2 py-0.5 text-xs hover:bg-muted">
-              <FileText className="h-3 w-3" /> Recap
-            </a>
-          )}
-          {canEdit && meeting.status === 'Scheduled' && (
-            <button
-              onClick={() => markComplete.mutate()}
-              disabled={markComplete.isPending}
-              className="inline-flex items-center gap-1 rounded border border-green-300 bg-green-50 px-2 py-0.5 text-xs text-green-700 hover:bg-green-100"
-            >
-              {markComplete.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle2 className="h-3 w-3" />}
-              Done
-            </button>
-          )}
-        </div>
-      </td>
-    </tr>
+    <>
+      <tr className="border-b hover:bg-muted/30 transition-colors">
+        <td className="px-4 py-3 text-sm whitespace-nowrap">{formatDateEST(meeting.date)}</td>
+        <td className="px-4 py-3 text-sm font-medium">{getClientName(meeting)}</td>
+        <td className="px-4 py-3"><MeetingTypeBadge type={meeting.type} /></td>
+        <td className="px-4 py-3"><StatusBadge status={meeting.status} /></td>
+        <td className="px-4 py-3 text-xs text-muted-foreground max-w-[200px] truncate">
+          {meeting.agenda ?? '—'}
+        </td>
+        <td className="px-4 py-3">
+          {slaStatus === 'met' && <span className="text-xs text-green-600 font-medium">SLA ✓</span>}
+          {slaStatus === 'broken' && <span className="text-xs text-red-600 font-medium">SLA ✗</span>}
+          {slaStatus === 'pending' && <span className="text-xs text-muted-foreground">Pending</span>}
+        </td>
+        <td className="px-4 py-3">
+          <div className="flex items-center gap-2">
+            {meeting.meeting_link && (
+              <a href={meeting.meeting_link} target="_blank" rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 rounded border px-2 py-0.5 text-xs hover:bg-muted">
+                <ExternalLink className="h-3 w-3" /> Join
+              </a>
+            )}
+            {meeting.recap_link && (
+              <a href={meeting.recap_link} target="_blank" rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 rounded border px-2 py-0.5 text-xs hover:bg-muted">
+                <FileText className="h-3 w-3" /> Recap
+              </a>
+            )}
+            {(meeting.recap || meeting.notes || meeting.attendees) && (
+              <button
+                onClick={() => setShowNotes(true)}
+                className="inline-flex items-center gap-1 rounded border border-violet-300 bg-violet-50 px-2 py-0.5 text-xs text-violet-700 hover:bg-violet-100"
+                title="View meeting notes & summary"
+              >
+                <NotebookText className="h-3 w-3" /> Notes
+              </button>
+            )}
+            {canEdit && meeting.status === 'Completed' && !(meeting.recap || meeting.notes) && (
+              <button
+                onClick={() => setShowNotes(true)}
+                className="inline-flex items-center gap-1 rounded border px-2 py-0.5 text-xs text-muted-foreground hover:bg-muted"
+                title="Add meeting notes"
+              >
+                <Pencil className="h-3 w-3" /> Add Notes
+              </button>
+            )}
+            {canEdit && meeting.status === 'Scheduled' && (
+              <button
+                onClick={() => markComplete.mutate()}
+                disabled={markComplete.isPending}
+                className="inline-flex items-center gap-1 rounded border border-green-300 bg-green-50 px-2 py-0.5 text-xs text-green-700 hover:bg-green-100"
+              >
+                {markComplete.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle2 className="h-3 w-3" />}
+                Done
+              </button>
+            )}
+          </div>
+        </td>
+      </tr>
+      {showNotes && (
+        <MeetingNotesModal meeting={meeting} canEdit={canEdit} onClose={() => setShowNotes(false)} />
+      )}
+    </>
   )
 }
 
@@ -517,6 +542,296 @@ function AddMeetingDialog({ clients, onClose }: { clients: Client[]; onClose: ()
             className="inline-flex items-center gap-1 rounded bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
             {add.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
             Schedule
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Meeting Notes Modal ──────────────────────────────────────────────────────
+
+function MeetingNotesModal({
+  meeting,
+  canEdit,
+  onClose,
+}: { meeting: Meeting; canEdit: boolean; onClose: () => void }) {
+  const queryClient = useQueryClient()
+  const [editing, setEditing]     = useState(!meeting.recap && !meeting.notes && canEdit)
+  const [recap, setRecap]         = useState(meeting.recap ?? '')
+  const [attendees, setAttendees] = useState(meeting.attendees ?? '')
+  const [recapLink, setRecapLink] = useState(meeting.recap_link ?? '')
+  const [saving, setSaving]       = useState(false)
+  const [err, setErr]             = useState('')
+
+  const save = async () => {
+    setSaving(true)
+    setErr('')
+    const { error } = await supabase
+      .from('meetings')
+      .update({
+        recap:      recap || null,
+        attendees:  attendees || null,
+        recap_link: recapLink || null,
+      } as never)
+      .eq('id', meeting.id)
+    setSaving(false)
+    if (error) { setErr(error.message); return }
+    queryClient.invalidateQueries({ queryKey: ['meetings-all'] })
+    setEditing(false)
+    onClose()
+  }
+
+  const clientName = (meeting.clients as unknown as { name: string } | undefined)?.name ?? '—'
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="w-full max-w-lg rounded-lg bg-card border shadow-xl">
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b">
+          <div>
+            <h2 className="text-base font-semibold">{clientName} — {meeting.type}</h2>
+            <p className="text-xs text-muted-foreground mt-0.5">{formatDateEST(meeting.date)}</p>
+          </div>
+          <button onClick={onClose}><X className="h-5 w-5 text-muted-foreground" /></button>
+        </div>
+
+        <div className="p-5 space-y-4">
+          {err && <p className="text-sm text-red-600">{err}</p>}
+
+          {/* Attendees */}
+          <div>
+            <label className="text-xs font-medium text-muted-foreground">Attendees</label>
+            {editing ? (
+              <input
+                type="text"
+                value={attendees}
+                onChange={e => setAttendees(e.target.value)}
+                placeholder="e.g. John Smith, Jane Doe, Client Name"
+                className="mt-1 w-full rounded border border-input bg-background px-3 py-2 text-sm"
+              />
+            ) : (
+              <p className="mt-1 text-sm">{meeting.attendees || <span className="text-muted-foreground italic">Not recorded</span>}</p>
+            )}
+          </div>
+
+          {/* Summary / Recap */}
+          <div>
+            <label className="text-xs font-medium text-muted-foreground">Meeting Summary / Recap</label>
+            <div className="mt-1">
+              {editing ? (
+                <RichTextEditor
+                  value={recap}
+                  onChange={setRecap}
+                  placeholder="Key discussion points, decisions made, action items…"
+                  minRows={6}
+                />
+              ) : (
+                <RichTextDisplay html={recap} emptyText="No summary recorded." />
+              )}
+            </div>
+          </div>
+
+          {/* Internal notes */}
+          {meeting.notes && !editing && (
+            <div>
+              <label className="text-xs font-medium text-muted-foreground">Internal Notes</label>
+              <p className="mt-1 text-sm whitespace-pre-wrap">{meeting.notes}</p>
+            </div>
+          )}
+
+          {/* Recap doc link */}
+          <div>
+            <label className="text-xs font-medium text-muted-foreground">Recap Document URL</label>
+            {editing ? (
+              <input
+                type="url"
+                value={recapLink}
+                onChange={e => setRecapLink(e.target.value)}
+                placeholder="https://docs.google.com/…"
+                className="mt-1 w-full rounded border border-input bg-background px-3 py-2 text-sm"
+              />
+            ) : meeting.recap_link ? (
+              <a href={meeting.recap_link} target="_blank" rel="noopener noreferrer"
+                className="mt-1 inline-flex items-center gap-1 text-sm text-primary hover:underline">
+                <ExternalLink className="h-3.5 w-3.5" /> Open doc
+              </a>
+            ) : (
+              <p className="mt-1 text-sm text-muted-foreground italic">None</p>
+            )}
+          </div>
+        </div>
+
+        <div className="flex justify-end gap-2 px-5 pb-5">
+          {canEdit && !editing && (
+            <button
+              onClick={() => setEditing(true)}
+              className="inline-flex items-center gap-1.5 rounded border px-3 py-2 text-sm hover:bg-muted"
+            >
+              <Pencil className="h-3.5 w-3.5" /> Edit
+            </button>
+          )}
+          {editing && (
+            <>
+              <button onClick={() => { setEditing(false); setRecap(meeting.recap ?? ''); setAttendees(meeting.attendees ?? ''); setRecapLink(meeting.recap_link ?? '') }}
+                className="rounded border px-3 py-2 text-sm hover:bg-muted">
+                Cancel
+              </button>
+              <button onClick={save} disabled={saving}
+                className="inline-flex items-center gap-1.5 rounded bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
+                {saving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                <Save className="h-3.5 w-3.5" /> Save
+              </button>
+            </>
+          )}
+          {!editing && (
+            <button onClick={onClose} className="rounded border px-4 py-2 text-sm hover:bg-muted">Close</button>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Log Past Meeting Dialog ──────────────────────────────────────────────────
+
+function LogPastMeetingDialog({ clients, onClose }: { clients: Client[]; onClose: () => void }) {
+  useNavigationGuard(true)
+
+  const queryClient = useQueryClient()
+  const [form, setForm] = useState({
+    client_id: '',
+    type:       'Mid-Month Review' as Meeting['type'],
+    date:       '',
+    time:       '',
+    agenda:     '',
+    attendees:  '',
+    recap:      '',
+    recap_link: '',
+  })
+  const [error, setError] = useState('')
+
+  const save = useMutation({
+    mutationFn: async () => {
+      if (!form.client_id || !form.date) {
+        setError('Client and date are required.')
+        return
+      }
+      const { error: insertErr } = await supabase.from('meetings').insert({
+        client_id:  form.client_id,
+        type:       form.type,
+        date:       form.date,
+        time:       form.time || null,
+        agenda:     form.agenda || null,
+        attendees:  form.attendees || null,
+        recap:      form.recap || null,
+        recap_link: form.recap_link || null,
+        status:     'Completed',
+        owner_approval_required: false,
+        sla_hours:  24,
+        sla_met:    true,
+      } as never)
+      if (insertErr) throw insertErr
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['meetings-all'] })
+      onClose()
+    },
+    onError: (e: Error) => setError(e.message),
+  })
+
+  const today = todayDateEST()
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="w-full max-w-lg rounded-lg bg-card border shadow-xl p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-lg font-semibold">Log Past Meeting</h2>
+            <p className="text-xs text-muted-foreground mt-0.5">Record a meeting that already happened</p>
+          </div>
+          <button onClick={onClose}><X className="h-5 w-5 text-muted-foreground" /></button>
+        </div>
+
+        {error && <p className="text-sm text-red-600">{error}</p>}
+
+        <div className="space-y-3">
+          <div>
+            <label className="text-xs font-medium text-muted-foreground">Client *</label>
+            <select value={form.client_id} onChange={e => setForm(f => ({ ...f, client_id: e.target.value }))}
+              className="mt-1 w-full rounded border border-input bg-background px-3 py-2 text-sm">
+              <option value="">Select client…</option>
+              {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </div>
+
+          <div>
+            <label className="text-xs font-medium text-muted-foreground">Meeting Type</label>
+            <select value={form.type} onChange={e => setForm(f => ({ ...f, type: e.target.value as Meeting['type'] }))}
+              className="mt-1 w-full rounded border border-input bg-background px-3 py-2 text-sm">
+              {MEETING_TYPES.map(t => <option key={t}>{t}</option>)}
+            </select>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-medium text-muted-foreground">Date *</label>
+              <input type="date" value={form.date} max={today}
+                onChange={e => setForm(f => ({ ...f, date: e.target.value }))}
+                className="mt-1 w-full rounded border border-input bg-background px-3 py-2 text-sm" />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground">Time</label>
+              <input type="time" value={form.time}
+                onChange={e => setForm(f => ({ ...f, time: e.target.value }))}
+                className="mt-1 w-full rounded border border-input bg-background px-3 py-2 text-sm" />
+            </div>
+          </div>
+
+          <div>
+            <label className="text-xs font-medium text-muted-foreground">Agenda / Meeting Title</label>
+            <input type="text" value={form.agenda}
+              onChange={e => setForm(f => ({ ...f, agenda: e.target.value }))}
+              placeholder="e.g. Monthly review — SEO & PPC performance"
+              className="mt-1 w-full rounded border border-input bg-background px-3 py-2 text-sm" />
+          </div>
+
+          <div>
+            <label className="text-xs font-medium text-muted-foreground">Attendees</label>
+            <input type="text" value={form.attendees}
+              onChange={e => setForm(f => ({ ...f, attendees: e.target.value }))}
+              placeholder="e.g. John Smith, Jane Doe, Client Name"
+              className="mt-1 w-full rounded border border-input bg-background px-3 py-2 text-sm" />
+          </div>
+
+          <div>
+            <label className="text-xs font-medium text-muted-foreground">Meeting Summary / Notes</label>
+            <div className="mt-1">
+              <RichTextEditor
+                value={form.recap}
+                onChange={recap => setForm(f => ({ ...f, recap }))}
+                placeholder="Key discussion points, decisions made, action items, follow-ups…"
+                minRows={5}
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="text-xs font-medium text-muted-foreground">Recap Document URL (optional)</label>
+            <input type="url" value={form.recap_link}
+              onChange={e => setForm(f => ({ ...f, recap_link: e.target.value }))}
+              placeholder="https://docs.google.com/…"
+              className="mt-1 w-full rounded border border-input bg-background px-3 py-2 text-sm" />
+          </div>
+        </div>
+
+        <div className="flex justify-end gap-2 pt-2">
+          <button onClick={onClose} className="rounded border px-4 py-2 text-sm hover:bg-muted">Cancel</button>
+          <button onClick={() => save.mutate()} disabled={save.isPending}
+            className="inline-flex items-center gap-1.5 rounded bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
+            {save.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+            <CheckCircle2 className="h-4 w-4" />
+            Log Meeting
           </button>
         </div>
       </div>
@@ -1454,6 +1769,7 @@ export default function MeetingsPage() {
   const [reportTab, setReportTab]           = useState<ReportTab>('all')
   const [clientFilter, setClientFilter]     = useState('all')
   const [showAdd, setShowAdd]               = useState(false)
+  const [showLogPast, setShowLogPast]       = useState(false)
   const [showCreateReport, setShowCreateReport] = useState(false)
   const [viewingReport, setViewingReport]       = useState<Report | null>(null)
   const [actionMsg, setActionMsg]           = useState<{ ok: boolean; text: string } | null>(null)
@@ -1664,6 +1980,13 @@ export default function MeetingsPage() {
             >
               <FileText className="h-3.5 w-3.5" />
               + Create Report
+            </button>
+            <button
+              onClick={() => setShowLogPast(true)}
+              className="inline-flex items-center gap-2 rounded border border-primary/40 px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/10 transition-colors"
+            >
+              <NotebookText className="h-3.5 w-3.5" />
+              Log Past Meeting
             </button>
             <button
               onClick={() => setShowAdd(true)}
@@ -1951,6 +2274,9 @@ export default function MeetingsPage() {
 
       {/* Add Meeting Dialog */}
       {showAdd && <AddMeetingDialog clients={clients} onClose={() => setShowAdd(false)} />}
+
+      {/* Log Past Meeting Dialog */}
+      {showLogPast && <LogPastMeetingDialog clients={clients} onClose={() => setShowLogPast(false)} />}
     </div>
   )
 }

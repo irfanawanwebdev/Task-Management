@@ -18,6 +18,7 @@ import { cn } from '@/lib/utils'
 import { CreateTaskDialog } from './CreateTaskDialog'
 import { DailyReportModal } from './DailyReportModal'
 import { TaskFileUpload } from '@/components/TaskFileUpload'
+import { RichTextEditor, RichTextDisplay } from '@/components/RichTextEditor'
 import { useAuth } from '@/features/auth/AuthContext'
 import { HelpPopover } from '@/components/HelpPopover'
 
@@ -678,13 +679,12 @@ function TaskDetailDialog({
               </div>
               {editingDescription ? (
                 <div className="space-y-1.5">
-                  <textarea
-                    autoFocus
+                  <RichTextEditor
                     value={descriptionVal}
-                    onChange={e => setDescriptionVal(e.target.value)}
-                    rows={3}
+                    onChange={setDescriptionVal}
                     placeholder="Add a description…"
-                    className="w-full px-3 py-2 bg-background border border-input rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-ring resize-none"
+                    minRows={3}
+                    autoFocus
                   />
                   <div className="flex gap-2">
                     <button onClick={commitDescription} className="px-3 py-1 rounded text-xs bg-primary text-primary-foreground hover:bg-primary/90">Save</button>
@@ -692,7 +692,7 @@ function TaskDetailDialog({
                   </div>
                 </div>
               ) : (
-                <p className="text-sm text-muted-foreground">{descriptionVal || <span className="italic opacity-50">No description.</span>}</p>
+                <RichTextDisplay html={descriptionVal} emptyText="No description." />
               )}
             </div>
           )}
@@ -930,13 +930,12 @@ function TaskDetailDialog({
           {/* Notes */}
           <div>
             <p className="section-header flex items-center gap-1.5"><FileText className="h-3.5 w-3.5" /> Notes</p>
-            <textarea
+            <RichTextEditor
               value={notes}
-              onChange={e => setNotes(e.target.value)}
+              onChange={setNotes}
               onBlur={saveNotes}
-              rows={4}
               placeholder="Add notes, output documentation, or context…"
-              className="w-full px-3 py-2 bg-background border border-input rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-ring resize-none placeholder:text-muted-foreground"
+              minRows={4}
             />
             {savingNotes && (
               <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
