@@ -1202,7 +1202,7 @@ export default function TasksPage() {
 
   const { data: tasks = [], isLoading, isError } = useTasks(
     clientFilter,
-    isPMOrOwner ? undefined : profile?.user_id,
+    undefined, // all users see all tasks
   )
   const { data: clients = [] } = useClientList()
   const { data: profilesList = [] } = useQuery<{ user_id: string; full_name: string }[]>({

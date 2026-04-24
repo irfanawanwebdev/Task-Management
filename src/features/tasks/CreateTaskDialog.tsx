@@ -4,16 +4,29 @@
  * §8.3: Tasks always within a client; Assignee (person name) required.
  */
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useQueryClient, useMutation, useQuery } from '@tanstack/react-query'
-import { X, Loader2 } from 'lucide-react'
+import { X, Loader2, Upload, FileText, Image, File } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { RichTextEditor } from '@/components/RichTextEditor'
 import type { Client, Profile, Workstream } from '@/lib/types'
+import type { Attachment } from '@/components/TaskFileUpload'
 import { WORKSTREAMS } from '@/lib/types'
 import { todayDateEST } from '@/lib/timezone'
 import { useNavigationGuard } from '@/lib/useNavigationGuard'
 import { cn } from '@/lib/utils'
+
+function fileIcon(mime: string) {
+  if (mime.startsWith('image/'))  return <Image    className="h-3.5 w-3.5" />
+  if (mime === 'application/pdf') return <FileText className="h-3.5 w-3.5" />
+  return <File className="h-3.5 w-3.5" />
+}
+
+function formatBytes(b: number) {
+  if (b < 1024) return `${b} B`
+  if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)} KB`
+  return `${(b / (1024 * 1024)).toFixed(1)} MB`
+}
 
 interface CreateTaskForm {
   task_name: string
@@ -75,6 +88,9 @@ export function CreateTaskDialog({ open, onClose, presetClientId, clients = [] }
     ...BLANK, client_id: presetClientId ?? '', due_date: todayDateEST(),
   })
   const [error, setError] = useState<string | null>(null)
+  const [pendingFiles, setPendingFiles] = useState<File[]>([])
+  const [dragOver, setDragOver] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Fetch active team members for assignee dropdown
   const { data: profiles = [] } = useQuery<Profile[]>({
@@ -140,7 +156,24 @@ export function CreateTaskDialog({ open, onClose, presetClientId, clients = [] }
 
       if (taskErr) throw new Error(taskErr.message)
 
-      // 2. Insert task assignments for all assignees
+      // 2. Upload any queued files and save to task attachments
+      if (pendingFiles.length > 0 && inserted?.id) {
+        const uploaded: Attachment[] = []
+        for (const file of pendingFiles) {
+          const path = `${inserted.id}/${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`
+          const { data: up, error: upErr } = await supabase.storage
+            .from('task-attachments')
+            .upload(path, file, { upsert: false })
+          if (upErr) continue
+          const { data: { publicUrl } } = supabase.storage.from('task-attachments').getPublicUrl(up.path)
+          uploaded.push({ name: file.name, url: publicUrl, size: file.size, type: file.type, uploaded_at: new Date().toISOString() })
+        }
+        if (uploaded.length > 0) {
+          await supabase.from('delivery_tasks').update({ attachments: uploaded } as never).eq('id', inserted.id)
+        }
+      }
+
+      // 3. Insert task assignments for all assignees
       if (data.assignee_user_ids.length > 0 && inserted?.id) {
         const rows = data.assignee_user_ids.map(uid => ({
           task_id: inserted.id, user_id: uid, role_type: 'R',
@@ -204,6 +237,7 @@ export function CreateTaskDialog({ open, onClose, presetClientId, clients = [] }
       qc.invalidateQueries({ queryKey: ['client-detail'] })
       qc.invalidateQueries({ queryKey: ['task-assignments-workload'] })
       setForm({ ...BLANK, client_id: presetClientId ?? '', due_date: todayDateEST() })
+      setPendingFiles([])
       setError(null)
       onClose()
     },
@@ -448,6 +482,60 @@ export function CreateTaskDialog({ open, onClose, presetClientId, clients = [] }
               ))}
             </div>
           )}
+
+          {/* File Attachments */}
+          <div>
+            <label className="block text-xs font-medium mb-1.5">Attachments</label>
+            <div
+              onDragOver={e => { e.preventDefault(); setDragOver(true) }}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={e => {
+                e.preventDefault(); setDragOver(false)
+                const files = Array.from(e.dataTransfer.files).filter(f => f.size <= 10 * 1024 * 1024)
+                setPendingFiles(prev => [...prev, ...files])
+              }}
+              onClick={() => fileInputRef.current?.click()}
+              className={cn(
+                'border-2 border-dashed rounded-lg px-4 py-4 flex flex-col items-center gap-1.5 cursor-pointer transition-colors',
+                dragOver ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50 hover:bg-accent/30',
+              )}
+            >
+              <Upload className="h-4 w-4 text-muted-foreground" />
+              <p className="text-xs text-muted-foreground text-center">
+                Click or drag files · PDF, images, docs · max 10 MB each
+              </p>
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.html,.png,.jpg,.jpeg,.gif,.webp,.zip"
+                className="hidden"
+                onChange={e => {
+                  const files = Array.from(e.target.files ?? []).filter(f => f.size <= 10 * 1024 * 1024)
+                  setPendingFiles(prev => [...prev, ...files])
+                  e.target.value = ''
+                }}
+              />
+            </div>
+            {pendingFiles.length > 0 && (
+              <div className="mt-2 space-y-1">
+                {pendingFiles.map((f, i) => (
+                  <div key={i} className="flex items-center gap-2 px-3 py-1.5 bg-background border border-border rounded-md text-xs">
+                    <span className="text-muted-foreground shrink-0">{fileIcon(f.type)}</span>
+                    <span className="flex-1 truncate font-medium">{f.name}</span>
+                    <span className="text-muted-foreground shrink-0">{formatBytes(f.size)}</span>
+                    <button
+                      type="button"
+                      onClick={() => setPendingFiles(prev => prev.filter((_, j) => j !== i))}
+                      className="text-muted-foreground hover:text-destructive transition-colors shrink-0"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
 
           {error && <p className="text-xs text-destructive">{error}</p>}
         </form>
