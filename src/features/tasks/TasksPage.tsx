@@ -1196,7 +1196,7 @@ export default function TasksPage() {
   const [showDailyReport, setShowDailyReport] = useState(false)
   const [searchParams, setSearchParams]   = useSearchParams()
 
-  const { role, profile } = useAuth()
+  const { role } = useAuth()
   const isPMOrOwner = role === 'owner' || role === 'project_manager'
   const canDelete = !!role  // any authenticated user can delete tasks
 
