@@ -19,6 +19,7 @@ import type { DeliveryTask } from '@/lib/types'
 import { formatDateEST, todayDateEST } from '@/lib/timezone'
 import { format } from 'date-fns'
 import { cn } from '@/lib/utils'
+import { RichTextDisplay } from '@/components/RichTextEditor'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -211,6 +212,25 @@ function esc(str: string | null | undefined): string {
     .replace(/\n/g, '<br/>')
 }
 
+/** Strip HTML tags from rich-text content for plain-text email cells. */
+function richToText(html: string | null | undefined): string {
+  if (!html) return '—'
+  const stripped = html
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/p>/gi, '\n')
+    .replace(/<\/li>/gi, '\n')
+    .replace(/<\/tr>/gi, '\n')
+    .replace(/<\/td>/gi, ' | ')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&quot;/g, '"')
+    .trim()
+  return esc(stripped)
+}
+
 function buildReportHTML(
   groups: EmployeeGroup[],
   statusFilter: StatusFilter,
@@ -237,8 +257,8 @@ function buildReportHTML(
         <td>${esc(t.workstream)}</td>
         <td style="color:${statusColor(t.status)};font-weight:600">${t.status}</td>
         <td>${t.due_date ? formatDateEST(t.due_date) : '—'}</td>
-        <td class="notes-cell">${esc(t.description)}</td>
-        <td class="notes-cell">${esc(t.notes ?? null)}</td>
+        <td class="notes-cell">${richToText(t.description)}</td>
+        <td class="notes-cell">${richToText(t.notes ?? null)}</td>
         <td class="links-cell">${linksHTML}</td>
       </tr>`
     }).join('')
@@ -841,17 +861,15 @@ function DailyTaskRow({ task }: { task: EnrichedTask }) {
       <td className="px-4 py-2.5 text-muted-foreground whitespace-nowrap">
         {task.due_date ? formatDateEST(task.due_date) : '—'}
       </td>
-      <td className="px-4 py-2.5 text-muted-foreground max-w-[180px]">
-        {task.description
-          ? <span className="line-clamp-3 whitespace-pre-wrap break-words">{task.description}</span>
-          : <span className="opacity-40 italic">—</span>
-        }
+      <td className="px-4 py-2.5 text-muted-foreground max-w-[220px]">
+        <div className="line-clamp-4">
+          <RichTextDisplay html={task.description ?? ''} emptyText="—" />
+        </div>
       </td>
-      <td className="px-4 py-2.5 text-muted-foreground max-w-[180px]">
-        {task.notes
-          ? <span className="line-clamp-3 whitespace-pre-wrap break-words">{task.notes}</span>
-          : <span className="opacity-40 italic">—</span>
-        }
+      <td className="px-4 py-2.5 text-muted-foreground max-w-[220px]">
+        <div className="line-clamp-4">
+          <RichTextDisplay html={task.notes ?? ''} emptyText="—" />
+        </div>
       </td>
       <td className="px-4 py-2.5 max-w-[160px]">
         {task.links && task.links.length > 0
