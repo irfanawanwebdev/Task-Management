@@ -15,10 +15,7 @@ import StarterKit from '@tiptap/starter-kit'
 import Link from '@tiptap/extension-link'
 import Placeholder from '@tiptap/extension-placeholder'
 import Underline from '@tiptap/extension-underline'
-import { Table } from '@tiptap/extension-table'
-import { TableRow } from '@tiptap/extension-table-row'
-import { TableHeader } from '@tiptap/extension-table-header'
-import { TableCell } from '@tiptap/extension-table-cell'
+import { Table, TableRow, TableHeader, TableCell } from '@tiptap/extension-table'
 import { useCallback, useEffect } from 'react'
 import {
   Bold, Italic, UnderlineIcon, Strikethrough, Link2,
