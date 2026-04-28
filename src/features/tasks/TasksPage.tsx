@@ -4,7 +4,7 @@
  * Opens Task Detail Dialog on row click.
  */
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
@@ -1196,9 +1196,18 @@ export default function TasksPage() {
   const [showDailyReport, setShowDailyReport] = useState(false)
   const [searchParams, setSearchParams]   = useSearchParams()
 
-  const { role } = useAuth()
+  const { role, profile } = useAuth()
   const isPMOrOwner = role === 'owner' || role === 'project_manager'
   const canDelete = !!role  // any authenticated user can delete tasks
+
+  // Default employee filter to the logged-in user on first load
+  const defaultFilterSet = useRef(false)
+  useEffect(() => {
+    if (!defaultFilterSet.current && profile?.user_id) {
+      setEmployeeFilter(profile.user_id)
+      defaultFilterSet.current = true
+    }
+  }, [profile?.user_id])
 
   const { data: tasks = [], isLoading, isError } = useTasks(
     clientFilter,
@@ -1237,9 +1246,9 @@ export default function TasksPage() {
     return tasks.filter(t => t.due_date && t.due_date >= cutoffStr)
   })()
 
-  // ── Employee filtering (PM/Owner only) ──────────────────────────────────────
+  // ── Employee filter ─────────────────────────────────────────────────────────
   const employeeTasks = (() => {
-    if (!isPMOrOwner || employeeFilter === 'all') return dateTasks
+    if (employeeFilter === 'all') return dateTasks
     return dateTasks.filter(t =>
       (t.task_assignments ?? []).some(a => a.user_id === employeeFilter)
     )
