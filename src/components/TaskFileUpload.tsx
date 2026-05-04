@@ -167,11 +167,15 @@ export function TaskFileUpload({ taskId, attachments, onChange, disabled }: Prop
 
     if (newAttachments.length > 0) {
       const updated = [...attachments, ...newAttachments]
-      await supabase
+      const { error: dbErr } = await supabase
         .from('delivery_tasks')
         .update({ attachments: updated } as never)
         .eq('id', taskId)
-      onChange(updated)
+      if (dbErr) {
+        setError(`Saved to storage but failed to update task: ${dbErr.message}`)
+      } else {
+        onChange(updated)
+      }
     }
     setUploading(false)
   }
@@ -183,11 +187,12 @@ export function TaskFileUpload({ taskId, attachments, onChange, disabled }: Prop
       await supabase.storage.from('task-attachments').remove([decodeURIComponent(urlParts[1])])
     }
     const updated = attachments.filter((_, i) => i !== idx)
-    await supabase
+    const { error: dbErr } = await supabase
       .from('delivery_tasks')
       .update({ attachments: updated } as never)
       .eq('id', taskId)
-    onChange(updated)
+    if (!dbErr) onChange(updated)
+    else setError(`Remove failed: ${dbErr.message}`)
   }
 
   return (

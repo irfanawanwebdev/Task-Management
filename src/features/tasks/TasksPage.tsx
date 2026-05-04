@@ -338,6 +338,8 @@ function TaskDetailDialog({
   const [impactVal, setImpactVal]           = useState(task.impact_level)
   const [editingBlocker, setEditingBlocker]     = useState(false)
   const [blockerVal, setBlockerVal]             = useState(task.blocker_text ?? '')
+  const [showBlockedReason, setShowBlockedReason] = useState(false)
+  const [blockerReason, setBlockerReason]         = useState('')
   const [editingDescription, setEditingDescription] = useState(false)
   const [descriptionVal, setDescriptionVal]     = useState(task.description ?? '')
   const [editingAssignees, setEditingAssignees] = useState(false)
@@ -511,19 +513,23 @@ function TaskDetailDialog({
   })
 
   const updateStatus = useMutation({
-    mutationFn: async (status: DeliveryTask['status']) => {
+    mutationFn: async ({ status, reason }: { status: DeliveryTask['status']; reason?: string }) => {
       const upd: Record<string, unknown> = { status }
       if (status === 'Done') upd['completed_date'] = todayDateEST()
+      if (status === 'Blocked' && reason) upd['blocker_text'] = reason
+      if (status !== 'Blocked') upd['blocker_text'] = null
       const { error } = await supabase.from('delivery_tasks').update(upd as never).eq('id', task.id)
       if (error) throw error
     },
-    onMutate: (status) => { setCurrentStatus(status) },
-    onError:  ()       => { setCurrentStatus(task.status) },
-    onSuccess: async (_, status) => {
+    onMutate: ({ status }) => {
+      setCurrentStatus(status)
+      if (status !== 'Blocked') setBlockerVal('')
+    },
+    onError:  () => { setCurrentStatus(task.status) },
+    onSuccess: async (_, { status, reason }) => {
       setQaWarning(false)
       queryClient.invalidateQueries({ queryKey: ['tasks'] })
       queryClient.invalidateQueries({ queryKey: ['client-detail'] })
-      // Auto-create a blocker entry when a task is marked Blocked (if one doesn't already exist)
       if (status === 'Blocked') {
         const { data: existing } = await supabase
           .from('blockers')
@@ -536,7 +542,7 @@ function TaskDetailDialog({
             client_id:    task.client_id,
             task_id:      task.id,
             workstream:   task.workstream,
-            description:  `Blocked: ${task.task_name}`,
+            description:  reason ?? `Blocked: ${task.task_name}`,
             severity:     'Med',
             status:       'Open',
             created_date: todayDateEST(),
@@ -554,7 +560,7 @@ function TaskDetailDialog({
   function handleMarkDone() {
     if (currentStatus === 'Done') return
     if (needsQAGate) setQaWarning(true)
-    else updateStatus.mutate('Done')
+    else updateStatus.mutate({ status: 'Done' })
   }
 
   const saveOutputUrl = async () => {
@@ -1080,7 +1086,7 @@ function TaskDetailDialog({
                     Paste the output URL above before marking Done, or override to proceed anyway.
                   </p>
                   <div className="flex gap-2 mt-2">
-                    <button onClick={() => updateStatus.mutate('Done')} disabled={updateStatus.isPending}
+                    <button onClick={() => updateStatus.mutate({ status: 'Done' })} disabled={updateStatus.isPending}
                       className="px-3 py-1 rounded text-xs font-medium border border-destructive/50 text-destructive hover:bg-destructive/10">
                       Override — Mark Done Anyway
                     </button>
@@ -1091,9 +1097,32 @@ function TaskDetailDialog({
                 </div>
               </div>
             )}
+            {/* Resume banner — shown when task is currently Blocked */}
+            {currentStatus === 'Blocked' && (
+              <div className="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-destructive/8 border border-destructive/25 mb-1">
+                <AlertTriangle className="h-4 w-4 text-destructive shrink-0" />
+                <p className="text-xs text-destructive font-medium flex-1">This task is blocked. Remove the blocker to resume work.</p>
+                <button
+                  onClick={async () => {
+                    await supabase.from('delivery_tasks')
+                      .update({ status: 'In Progress', blocker_text: null } as never)
+                      .eq('id', task.id)
+                    setCurrentStatus('In Progress')
+                    setBlockerVal('')
+                    queryClient.invalidateQueries({ queryKey: ['tasks'] })
+                    queryClient.invalidateQueries({ queryKey: ['client-detail'] })
+                  }}
+                  disabled={updateStatus.isPending}
+                  className="shrink-0 inline-flex items-center gap-1 px-3 py-1 rounded border border-destructive/40 text-xs font-medium text-destructive hover:bg-destructive/10 transition-colors"
+                >
+                  Resume Task
+                </button>
+              </div>
+            )}
+
             <div className="flex gap-2 flex-wrap">
-              {(['Not Started', 'In Progress', 'Blocked'] as const).map(s => (
-                <button key={s} onClick={() => updateStatus.mutate(s)}
+              {(['Not Started', 'In Progress'] as const).map(s => (
+                <button key={s} onClick={() => updateStatus.mutate({ status: s })}
                   disabled={updateStatus.isPending || currentStatus === s}
                   className={cn('px-3 py-1.5 rounded-md text-xs font-medium border transition-colors',
                     currentStatus === s
@@ -1103,6 +1132,17 @@ function TaskDetailDialog({
                   {s}
                 </button>
               ))}
+              {/* Blocked — requires a reason */}
+              <button
+                onClick={() => { if (currentStatus !== 'Blocked') setShowBlockedReason(true) }}
+                disabled={updateStatus.isPending || currentStatus === 'Blocked'}
+                className={cn('px-3 py-1.5 rounded-md text-xs font-medium border transition-colors',
+                  currentStatus === 'Blocked'
+                    ? 'border-destructive/50 bg-destructive/10 text-destructive cursor-default'
+                    : 'border-border bg-muted text-muted-foreground hover:text-destructive hover:border-destructive/40'
+                )}>
+                Blocked
+              </button>
               <button onClick={handleMarkDone} disabled={updateStatus.isPending || currentStatus === 'Done'}
                 className={cn('px-3 py-1.5 rounded-md text-xs font-medium border transition-colors',
                   currentStatus === 'Done'
@@ -1114,6 +1154,42 @@ function TaskDetailDialog({
                 Done {needsQAGate && '⚠'}
               </button>
             </div>
+
+            {/* Blocked reason panel */}
+            {showBlockedReason && (
+              <div className="mt-3 border border-destructive/40 bg-destructive/5 rounded-lg p-3 space-y-2">
+                <p className="text-xs font-semibold text-destructive">Why is this task blocked? <span className="font-normal text-muted-foreground">(required)</span></p>
+                <textarea
+                  autoFocus
+                  value={blockerReason}
+                  onChange={e => setBlockerReason(e.target.value)}
+                  rows={2}
+                  placeholder="Describe the blocker or dependency…"
+                  className="w-full px-3 py-2 bg-background border border-input rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-ring resize-none"
+                />
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => {
+                      if (!blockerReason.trim()) return
+                      updateStatus.mutate({ status: 'Blocked', reason: blockerReason.trim() })
+                      setBlockerVal(blockerReason.trim())
+                      setShowBlockedReason(false)
+                      setBlockerReason('')
+                    }}
+                    disabled={!blockerReason.trim() || updateStatus.isPending}
+                    className="px-3 py-1 rounded text-xs font-medium bg-destructive text-destructive-foreground hover:bg-destructive/90 disabled:opacity-50"
+                  >
+                    Confirm Blocked
+                  </button>
+                  <button
+                    onClick={() => { setShowBlockedReason(false); setBlockerReason('') }}
+                    className="px-3 py-1 rounded text-xs text-muted-foreground hover:text-foreground"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
