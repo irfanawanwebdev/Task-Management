@@ -4,13 +4,18 @@
  * Shows assigned tasks, blockers, and meetings for the logged-in user.
  */
 
-import { useQuery } from '@tanstack/react-query'
+import { useState } from 'react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
-import { CheckSquare, Clock, AlertTriangle, Calendar, Loader2 } from 'lucide-react'
+import {
+  CheckSquare, Clock, AlertTriangle, Calendar, Loader2,
+  ChevronRight, ExternalLink, Paperclip,
+} from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/features/auth/AuthContext'
 import type { DeliveryTask, Meeting } from '@/lib/types'
 import { isOverdueEST, formatDateEST, todayDateEST, isDateTodayEST } from '@/lib/timezone'
+import { RichTextDisplay } from '@/components/RichTextEditor'
 import { cn } from '@/lib/utils'
 
 // ─── Data Hooks ───────────────────────────────────────────────────────────────
@@ -20,7 +25,6 @@ function useMyTasks(userId: string | undefined) {
     queryKey: ['my-tasks', userId],
     enabled: !!userId,
     queryFn: async () => {
-      // Tasks assigned to me via task_assignments
       const { data: assignments, error: aErr } = await supabase
         .from('task_assignments')
         .select('task_id')
@@ -32,7 +36,7 @@ function useMyTasks(userId: string | undefined) {
 
       const { data, error } = await supabase
         .from('delivery_tasks')
-        .select('*, clients(name)')
+        .select('*, clients(name), task_assignments(role_type, workstream, user_id)')
         .in('id', taskIds)
         .neq('status', 'Done')
         .order('due_date', { ascending: true, nullsFirst: false })
@@ -64,10 +68,160 @@ function useMyMeetings() {
   })
 }
 
+// ─── Task Row — expandable with rich text ────────────────────────────────────
+
+function TaskRow({ task, overdue = false }: { task: DeliveryTask; overdue?: boolean }) {
+  const navigate    = useNavigate()
+  const queryClient = useQueryClient()
+  const [expanded, setExpanded] = useState(false)
+
+  const hasDesc  = !!task.description && task.description !== '<p></p>'
+  const hasNotes = !!task.notes && task.notes !== '<p></p>'
+  const attachmentCount = ((task as DeliveryTask & { attachments?: unknown[] }).attachments ?? []).length
+
+  const updateStatus = useMutation({
+    mutationFn: async (status: DeliveryTask['status']) => {
+      const upd: Record<string, unknown> = { status }
+      if (status === 'Done') upd['completed_date'] = todayDateEST()
+      if (status !== 'Blocked') upd['blocker_text'] = null
+      const { error } = await supabase.from('delivery_tasks').update(upd as never).eq('id', task.id)
+      if (error) throw error
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['my-tasks'] })
+      queryClient.invalidateQueries({ queryKey: ['tasks'] })
+    },
+  })
+
+  return (
+    <div className={cn(
+      'rounded-lg border bg-card shadow-sm transition-all',
+      overdue && 'border-destructive/30',
+      task.status === 'Blocked' && 'border-l-4 border-l-destructive/60',
+    )}>
+      {/* Summary row — click to expand */}
+      <button
+        type="button"
+        onClick={() => setExpanded(v => !v)}
+        className="w-full flex items-start gap-2.5 px-3 py-2.5 text-left hover:bg-accent/30 transition-colors rounded-lg"
+      >
+        <ChevronRight className={cn(
+          'h-4 w-4 text-muted-foreground shrink-0 mt-0.5 transition-transform',
+          expanded && 'rotate-90',
+        )} />
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-medium truncate">{task.task_name}</p>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            {task.clients?.name} · {task.workstream}
+          </p>
+        </div>
+        <div className="flex flex-col items-end gap-1 shrink-0">
+          <span className={cn(
+            'status-badge',
+            task.status === 'In Progress' ? 'status-in-progress' :
+            task.status === 'Blocked'     ? 'status-blocked' :
+            'status-not-started'
+          )}>
+            {task.status}
+          </span>
+          {task.due_date && (
+            <span className={cn('text-xs', overdue ? 'text-destructive font-medium' : 'text-muted-foreground')}>
+              {formatDateEST(task.due_date)}
+            </span>
+          )}
+        </div>
+      </button>
+
+      {/* Expanded detail */}
+      {expanded && (
+        <div className="px-4 pb-4 pt-1 border-t border-border/40 space-y-3">
+
+          {/* Description */}
+          {hasDesc && (
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">Description</p>
+              <RichTextDisplay html={task.description ?? ''} />
+            </div>
+          )}
+
+          {/* Notes */}
+          {hasNotes && (
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">Notes</p>
+              <RichTextDisplay html={task.notes ?? ''} />
+            </div>
+          )}
+
+          {/* Blocker */}
+          {task.blocker_text && (
+            <div className="flex items-start gap-2 p-2.5 rounded-md bg-destructive/8 border border-destructive/20 text-xs text-destructive">
+              <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+              <span>{task.blocker_text}</span>
+            </div>
+          )}
+
+          {/* Output link */}
+          {task.output_link && (
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">Output</p>
+              <a
+                href={task.output_link}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+              >
+                <ExternalLink className="h-3 w-3" />
+                {task.output_link.length > 60 ? task.output_link.slice(0, 60) + '…' : task.output_link}
+              </a>
+            </div>
+          )}
+
+          {/* Meta row */}
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+            {task.impact_level === 'High' && <span className="severity-high">High Impact</span>}
+            {attachmentCount > 0 && (
+              <span className="inline-flex items-center gap-1">
+                <Paperclip className="h-3 w-3" /> {attachmentCount} file{attachmentCount !== 1 ? 's' : ''}
+              </span>
+            )}
+            {task.due_date && <span>Due {formatDateEST(task.due_date)}</span>}
+          </div>
+
+          {/* Quick status buttons */}
+          <div className="flex items-center gap-2 flex-wrap pt-0.5">
+            <span className="text-xs text-muted-foreground font-medium">Mark as:</span>
+            {(['Not Started', 'In Progress', 'Done'] as const).map(s => (
+              <button
+                key={s}
+                onClick={() => updateStatus.mutate(s)}
+                disabled={updateStatus.isPending || task.status === s}
+                className={cn(
+                  'px-2.5 py-1 rounded-md text-xs font-medium border transition-colors',
+                  task.status === s
+                    ? 'border-primary/50 bg-primary/10 text-primary cursor-default'
+                    : 'border-border bg-muted text-muted-foreground hover:text-foreground hover:border-primary/30',
+                )}
+              >
+                {s}
+              </button>
+            ))}
+            <button
+              onClick={() => navigate(`/tasks?task=${task.id}`)}
+              className="ml-auto inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-primary transition-colors"
+            >
+              <ExternalLink className="h-3 w-3" />
+              Full detail
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── Main Page ───────────────────────────────────────────────────────────────
 
 export default function SpecialistDashboard() {
-  const navigate = useNavigate()
   const { profile, role } = useAuth()
   const { data: tasks,    isLoading: tasksLoading }    = useMyTasks(profile?.user_id)
   const { data: meetings, isLoading: meetingsLoading } = useMyMeetings()
@@ -84,7 +238,6 @@ export default function SpecialistDashboard() {
   }) ?? []
 
   const isLoading = tasksLoading || meetingsLoading
-
   const firstName = profile?.full_name?.split(' ')[0] ?? 'there'
   const roleLabel = role?.replace('_', ' ') ?? ''
 
@@ -92,9 +245,7 @@ export default function SpecialistDashboard() {
     <div className="space-y-6">
       {/* Welcome header */}
       <div>
-        <h1 className="text-2xl font-bold">
-          Welcome back, {firstName}
-        </h1>
+        <h1 className="text-2xl font-bold">Welcome back, {firstName}</h1>
         <p className="text-sm text-muted-foreground mt-1 capitalize">
           {roleLabel} · {formatDateEST(todayDateEST())}
         </p>
@@ -150,7 +301,7 @@ export default function SpecialistDashboard() {
             <section>
               <p className="section-header">Due Today</p>
               <div className="space-y-2">
-                {dueToday.map(t => <TaskRow key={t.id} task={t} onOpen={() => navigate(`/tasks?task=${t.id}`)} />)}
+                {dueToday.map(t => <TaskRow key={t.id} task={t} />)}
               </div>
             </section>
           )}
@@ -160,12 +311,12 @@ export default function SpecialistDashboard() {
             <section>
               <p className="section-header text-destructive">Overdue ({overdue.length})</p>
               <div className="space-y-2">
-                {overdue.map(t => <TaskRow key={t.id} task={t} overdue onOpen={() => navigate(`/tasks?task=${t.id}`)} />)}
+                {overdue.map(t => <TaskRow key={t.id} task={t} overdue />)}
               </div>
             </section>
           )}
 
-          {/* All upcoming */}
+          {/* All tasks */}
           <section>
             <p className="section-header">All My Tasks</p>
             {!tasks || tasks.length === 0 ? (
@@ -175,7 +326,9 @@ export default function SpecialistDashboard() {
               </div>
             ) : (
               <div className="space-y-2">
-                {tasks.map(t => <TaskRow key={t.id} task={t} overdue={!!t.due_date && isOverdueEST(t.due_date)} onOpen={() => navigate(`/tasks?task=${t.id}`)} />)}
+                {tasks.map(t => (
+                  <TaskRow key={t.id} task={t} overdue={!!t.due_date && isOverdueEST(t.due_date)} />
+                ))}
               </div>
             )}
           </section>
@@ -222,50 +375,6 @@ export default function SpecialistDashboard() {
           )}
         </section>
       </div>
-    </div>
-  )
-}
-
-// ─── Task Row ─────────────────────────────────────────────────────────────────
-
-function TaskRow({ task, overdue = false, onOpen }: { task: DeliveryTask; overdue?: boolean; onOpen?: () => void }) {
-  return (
-    <div
-      onClick={onOpen}
-      className={cn(
-        'metric-card py-2.5 px-3',
-        overdue && 'border-destructive/30 bg-destructive/5',
-        onOpen && 'cursor-pointer hover:bg-accent/50 transition-colors',
-      )}
-    >
-      <div className="flex items-start gap-2">
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium truncate">{task.task_name}</p>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            {task.clients?.name} · {task.workstream} · Step {task.step}
-          </p>
-        </div>
-        <div className="flex flex-col items-end gap-1 shrink-0">
-          <span className={cn(
-            'status-badge',
-            task.status === 'In Progress' ? 'status-in-progress' :
-            task.status === 'Blocked'     ? 'status-blocked' :
-            'status-not-started'
-          )}>
-            {task.status}
-          </span>
-          {task.due_date && (
-            <span className={cn('text-xs', overdue ? 'text-destructive' : 'text-muted-foreground')}>
-              {formatDateEST(task.due_date)}
-            </span>
-          )}
-        </div>
-      </div>
-      {task.impact_level === 'High' && (
-        <div className="mt-1.5">
-          <span className="severity-high">High Impact</span>
-        </div>
-      )}
     </div>
   )
 }

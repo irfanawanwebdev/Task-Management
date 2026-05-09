@@ -127,6 +127,8 @@ interface Connector {
 
 // Google OAuth connectors that share a single token (google-calendar row)
 const GOOGLE_OAUTH_IDS = new Set(['google-calendar', 'google-meet', 'google-drive'])
+// Connectors that support disconnect
+const DISCONNECTABLE_IDS = new Set(['google-calendar', 'google-meet', 'google-drive', 'zoom'])
 
 const CONNECTORS: Connector[] = [
   {
@@ -163,7 +165,7 @@ const CONNECTORS: Connector[] = [
     id: 'zoom',
     name: 'Zoom',
     category: 'Communication',
-    description: 'Detect Zoom meeting links from calendar events and display them on meeting records. Clicking Connect redirects you to Zoom\'s consent screen directly — no Marketplace setup needed.',
+    description: 'Connect your Zoom account to automatically attach meeting links to client meeting records and pull meeting metadata into the hub.',
     docsUrl: 'https://developers.zoom.us',
     accentColor: 'border-t-sky-500',
     iconBg: 'bg-white/5 ring-1 ring-sky-500/20',
@@ -392,7 +394,7 @@ function ConnectorCard({
               <Check className="h-3 w-3" />
               Connected
             </div>
-            {GOOGLE_OAUTH_IDS.has(connector.id) && (
+            {DISCONNECTABLE_IDS.has(connector.id) && (
               <button
                 onClick={handleDisconnect}
                 className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium border border-destructive/30 text-destructive hover:bg-destructive/10 transition-colors"
@@ -679,9 +681,9 @@ export default function SettingsPage() {
         </div>
       )}
 
-      <div className="rounded-lg border border-amber-500/20 bg-amber-500/8 px-4 py-3 text-sm text-amber-300">
-        <span className="font-semibold text-amber-200">Implementation Status:</span>{' '}
-        Google Calendar, Meet &amp; Drive share one Google OAuth connection. Zoom is live. Calendly and Notion pending.
+      <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/8 px-4 py-3 text-sm text-emerald-300">
+        <span className="font-semibold text-emerald-200">Live Integrations:</span>{' '}
+        Google Calendar, Meet &amp; Drive (shared OAuth) · Zoom (published &amp; active). Otter.ai and Victor AI pending.
       </div>
 
       <div className="flex gap-2 flex-wrap">

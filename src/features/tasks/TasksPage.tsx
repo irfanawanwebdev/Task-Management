@@ -1361,6 +1361,28 @@ export default function TasksPage() {
     }
   })()
 
+  // ── Sorting: pending/in-progress by due date asc, done by completed_date desc ─
+  function sortGroupTasks(arr: DeliveryTask[]): DeliveryTask[] {
+    const pending = arr
+      .filter(t => t.status !== 'Done')
+      .sort((a, b) => {
+        if (!a.due_date && !b.due_date) return 0
+        if (!a.due_date) return 1
+        if (!b.due_date) return -1
+        return a.due_date < b.due_date ? -1 : a.due_date > b.due_date ? 1 : 0
+      })
+    const done = arr
+      .filter(t => t.status === 'Done')
+      .sort((a, b) => {
+        const ca = (t: DeliveryTask) => t.completed_date ?? t.due_date ?? ''
+        if (!ca(a) && !ca(b)) return 0
+        if (!ca(a)) return 1
+        if (!ca(b)) return -1
+        return ca(a) > ca(b) ? -1 : ca(a) < ca(b) ? 1 : 0
+      })
+    return [...pending, ...done]
+  }
+
   // ── Grouping ────────────────────────────────────────────────────────────────
   const grouped = (() => {
     if (activeView === 'workstream') {
@@ -1371,7 +1393,7 @@ export default function TasksPage() {
           acc[k].push(t)
           return acc
         }, {})
-      )
+      ).map(([k, v]) => [k, sortGroupTasks(v)] as [string, DeliveryTask[]])
     }
     // Default: group by step_name (timeline)
     return Object.entries(
@@ -1381,7 +1403,7 @@ export default function TasksPage() {
         acc[k].push(t)
         return acc
       }, {})
-    )
+    ).map(([k, v]) => [k, sortGroupTasks(v)] as [string, DeliveryTask[]])
   })()
 
   const VIEWS: { id: ViewTab; label: string; help: string }[] = [

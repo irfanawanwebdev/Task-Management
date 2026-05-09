@@ -12,9 +12,10 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/features/auth/AuthContext'
 import { cn } from '@/lib/utils'
 import {
-  Plus, Check, Trash2, ChevronDown, Loader2, ListTodo,
+  Plus, Check, Trash2, ChevronDown, ChevronRight, Loader2, ListTodo,
   Pencil, X, Building2, User,
 } from 'lucide-react'
+import { RichTextEditor, RichTextDisplay } from '@/components/RichTextEditor'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -209,14 +210,14 @@ function TaskForm({
         className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm
                    placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
       />
-      <textarea
-        value={v.description}
-        onChange={e => field('description', e.target.value)}
-        placeholder="Description (optional)…"
-        rows={2}
-        className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm
-                   placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary resize-none"
-      />
+      <div className="border border-border rounded-lg overflow-hidden focus-within:ring-1 focus-within:ring-primary">
+        <RichTextEditor
+          value={v.description}
+          onChange={html => setV(prev => ({ ...prev, description: html }))}
+          placeholder="Description (optional)…"
+          minRows={2}
+        />
+      </div>
       <div className="grid grid-cols-2 gap-3">
         <div className="flex flex-col gap-1">
           <label className="text-xs text-muted-foreground">Priority</label>
@@ -311,7 +312,7 @@ function AddTaskForm({
     const { error } = await supabase.from('personal_tasks').insert({
       user_id: userId,
       title: v.title.trim(),
-      description: v.description.trim() || null,
+      description: (v.description && v.description !== '<p></p>') ? v.description : null,
       priority: v.priority,
       due_date: v.due_date || null,
       company: v.company.trim() || null,
@@ -368,84 +369,114 @@ function TaskRow({
   const today = new Date().toISOString().slice(0, 10)
   const isOverdue = task.due_date && task.due_date < today && !isDone
   const assignees = Array.isArray(task.assignees) ? task.assignees : []
+  const hasDetails = !!(
+    (task.description && task.description !== '<p></p>') ||
+    task.due_date || task.company || assignees.length > 0
+  )
+  const [expanded, setExpanded] = useState(false)
 
   return (
     <div className={cn(
-      'flex items-start gap-3 p-3 rounded-xl border transition-all group',
+      'rounded-xl border transition-all group',
       isDone
         ? 'border-border/30 bg-muted/10 opacity-60'
         : 'border-border bg-card hover:border-primary/30 hover:shadow-sm',
     )}>
-      {/* Done toggle */}
-      <button
-        onClick={() => onToggleDone(task.id, !isDone)}
-        title={isDone ? 'Mark as To Do' : 'Mark as Done'}
-        className={cn(
-          'mt-0.5 h-5 w-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-all',
-          isDone
-            ? 'bg-emerald-500 border-emerald-500'
-            : 'border-muted-foreground/40 hover:border-primary',
-        )}
-      >
-        {isDone && <Check className="h-3 w-3 text-white" strokeWidth={3} />}
-      </button>
+      {/* Summary row */}
+      <div className="flex items-center gap-3 px-3 py-2.5">
+        {/* Done toggle */}
+        <button
+          onClick={() => onToggleDone(task.id, !isDone)}
+          title={isDone ? 'Mark as To Do' : 'Mark as Done'}
+          className={cn(
+            'h-5 w-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-all',
+            isDone
+              ? 'bg-emerald-500 border-emerald-500'
+              : 'border-muted-foreground/40 hover:border-primary',
+          )}
+        >
+          {isDone && <Check className="h-3 w-3 text-white" strokeWidth={3} />}
+        </button>
 
-      {/* Content */}
-      <div className="flex-1 min-w-0">
-        <p className={cn('text-sm font-medium', isDone && 'line-through text-muted-foreground')}>
-          {task.title}
-        </p>
-        {task.description && (
-          <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">{task.description}</p>
-        )}
-        <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-          <span className={cn('text-xs px-1.5 py-0.5 rounded-md font-medium', PRIORITY_STYLES[task.priority])}>
-            {task.priority}
+        {/* Title — click to expand if there's detail */}
+        <button
+          type="button"
+          onClick={() => hasDetails && setExpanded(v => !v)}
+          className={cn(
+            'flex-1 min-w-0 text-left flex items-center gap-1.5',
+            !hasDetails && 'cursor-default',
+          )}
+        >
+          {hasDetails && (
+            <ChevronRight className={cn(
+              'h-3.5 w-3.5 text-muted-foreground shrink-0 transition-transform',
+              expanded && 'rotate-90',
+            )} />
+          )}
+          <span className={cn('text-sm font-medium truncate', isDone && 'line-through text-muted-foreground')}>
+            {task.title}
           </span>
-          {/* Assignee badges (purple) */}
-          {assignees.map(a => (
-            <span
-              key={a.id}
-              className="inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded-md
-                         bg-violet-500/10 text-violet-400 border border-violet-500/20"
-            >
-              <User className="h-2.5 w-2.5" />
-              {a.name}
-            </span>
-          ))}
-          {/* Company — shown as muted arrow text */}
-          {task.company && (
-            <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-              <Building2 className="h-2.5 w-2.5" />
-              {task.company}
-            </span>
-          )}
-          {task.due_date && (
-            <span className={cn('text-xs', isOverdue ? 'text-red-400 font-medium' : 'text-muted-foreground')}>
-              {isOverdue ? '⚠ Overdue · ' : 'Due '}
-              {new Date(task.due_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-            </span>
-          )}
+        </button>
+
+        {/* Priority pill always visible */}
+        <span className={cn('text-xs px-1.5 py-0.5 rounded-md font-medium shrink-0', PRIORITY_STYLES[task.priority])}>
+          {task.priority}
+        </span>
+
+        {/* Edit + Delete */}
+        <div className="flex items-center gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+          <button
+            onClick={() => onEdit(task)}
+            className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-accent"
+            title="Edit task"
+          >
+            <Pencil className="h-3.5 w-3.5" />
+          </button>
+          <button
+            onClick={() => onDelete(task.id)}
+            className="p-1 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+            title="Delete task"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </button>
         </div>
       </div>
 
-      {/* Edit + Delete */}
-      <div className="flex items-center gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-        <button
-          onClick={() => onEdit(task)}
-          className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-accent"
-          title="Edit task"
-        >
-          <Pencil className="h-3.5 w-3.5" />
-        </button>
-        <button
-          onClick={() => onDelete(task.id)}
-          className="p-1 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-          title="Delete task"
-        >
-          <Trash2 className="h-3.5 w-3.5" />
-        </button>
-      </div>
+      {/* Expanded detail */}
+      {expanded && hasDetails && (
+        <div className="px-4 pb-3 pt-1 border-t border-border/40 space-y-2.5 ml-8">
+          {/* Description */}
+          {task.description && task.description !== '<p></p>' && (
+            <RichTextDisplay html={task.description} />
+          )}
+
+          {/* Meta */}
+          <div className="flex items-center gap-3 flex-wrap">
+            {assignees.map(a => (
+              <span
+                key={a.id}
+                className="inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded-md
+                           bg-violet-500/10 text-violet-400 border border-violet-500/20"
+              >
+                <User className="h-2.5 w-2.5" />
+                {a.name}
+              </span>
+            ))}
+            {task.company && (
+              <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                <Building2 className="h-2.5 w-2.5" />
+                {task.company}
+              </span>
+            )}
+            {task.due_date && (
+              <span className={cn('text-xs', isOverdue ? 'text-red-400 font-medium' : 'text-muted-foreground')}>
+                {isOverdue ? '⚠ Overdue · ' : 'Due '}
+                {new Date(task.due_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+              </span>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -580,7 +611,7 @@ export default function MyTasksPage() {
     mutationFn: async ({ id, v }: { id: string; v: TaskFormValues }) => {
       const { error } = await supabase.from('personal_tasks').update({
         title: v.title.trim(),
-        description: v.description.trim() || null,
+        description: (v.description && v.description !== '<p></p>') ? v.description : null,
         priority: v.priority,
         due_date: v.due_date || null,
         company: v.company.trim() || null,
@@ -602,6 +633,11 @@ export default function MyTasksPage() {
       Array.isArray(t.assignees) && t.assignees.some(a => a.id === assigneeFilter)
     )
   }
+  // Done tasks always sink to the bottom
+  filtered = [...filtered].sort((a, b) => {
+    if (a.status === b.status) return 0
+    return a.status === 'Done' ? 1 : -1
+  })
 
   const total = tasks.length
   const done = tasks.filter(t => t.status === 'Done').length
