@@ -1,7 +1,8 @@
 /**
  * zoom-callback
- * Receives the OAuth code from Zoom, exchanges it for tokens,
- * stores them in connector_tokens, then redirects back to the app.
+ * Called by the React /zoom-callback page (NOT directly by Zoom).
+ * Receives the OAuth code + state, exchanges for tokens, stores in connector_tokens.
+ * Returns JSON { success: true } or { error: "..." }.
  */
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
@@ -11,31 +12,41 @@ declare const Deno: {
   serve(handler: (req: Request) => Response | Promise<Response>): void
 }
 
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+}
+
 Deno.serve(async (req) => {
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', { headers: corsHeaders })
+  }
+
   const url = new URL(req.url)
   const code       = url.searchParams.get('code')
   const state      = url.searchParams.get('state')
   const oauthError = url.searchParams.get('error')
 
-  const appUrl = Deno.env.get('APP_URL') ?? 'http://localhost:5173'
-
   if (oauthError) {
-    return Response.redirect(`${appUrl}/settings?error=oauth_denied`, 302)
+    return new Response(JSON.stringify({ error: 'oauth_denied' }), {
+      status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    })
   }
 
   if (!code || !state) {
-    return Response.redirect(`${appUrl}/settings?error=missing_params`, 302)
+    return new Response(JSON.stringify({ error: 'missing_params' }), {
+      status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    })
   }
 
   try {
     const { user_id } = JSON.parse(atob(state)) as { user_id: string }
 
-    const redirectUri = `${Deno.env.get('SUPABASE_URL')}/functions/v1/zoom-callback`
+    const appUrl      = Deno.env.get('APP_URL') ?? 'https://jzworkspace.com'
+    const redirectUri = `${appUrl}/zoom-callback`
     const clientId     = Deno.env.get('ZOOM_CLIENT_ID')!
     const clientSecret = Deno.env.get('ZOOM_CLIENT_SECRET')!
-
-    // Zoom requires Basic auth (base64 clientId:clientSecret) for token exchange
-    const basicAuth = btoa(`${clientId}:${clientSecret}`)
+    const basicAuth    = btoa(`${clientId}:${clientSecret}`)
 
     const tokenRes = await fetch('https://zoom.us/oauth/token', {
       method: 'POST',
@@ -54,10 +65,11 @@ Deno.serve(async (req) => {
 
     if (tokens.error) {
       console.error('Zoom token exchange error:', tokens)
-      return Response.redirect(`${appUrl}/settings?error=token_exchange`, 302)
+      return new Response(JSON.stringify({ error: 'token_exchange', detail: tokens.error }), {
+        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
     }
 
-    // Fetch Zoom user info for display (email)
     let accountEmail: string | null = null
     try {
       const infoRes = await fetch('https://api.zoom.us/v2/users/me', {
@@ -86,13 +98,19 @@ Deno.serve(async (req) => {
 
     if (upsertError) {
       console.error('DB upsert error:', upsertError)
-      return Response.redirect(`${appUrl}/settings?error=db_error`, 302)
+      return new Response(JSON.stringify({ error: 'db_error' }), {
+        status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
     }
 
-    return Response.redirect(`${appUrl}/settings?connected=zoom`, 302)
+    return new Response(JSON.stringify({ success: true, email: accountEmail }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    })
 
   } catch (err) {
     console.error('Zoom callback error:', err)
-    return Response.redirect(`${appUrl}/settings?error=unexpected`, 302)
+    return new Response(JSON.stringify({ error: 'unexpected', detail: String(err) }), {
+      status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    })
   }
 })

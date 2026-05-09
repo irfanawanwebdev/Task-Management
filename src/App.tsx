@@ -32,6 +32,7 @@ const PrivacyPolicyPage    = lazy(() => import('@/features/public/PrivacyPolicyP
 const TermsPage            = lazy(() => import('@/features/public/TermsPage'))
 const SupportPage          = lazy(() => import('@/features/public/SupportPage'))
 const DocsPage             = lazy(() => import('@/features/public/DocsPage'))
+const ZoomCallbackPage     = lazy(() => import('@/features/settings/ZoomCallbackPage'))
 
 // ── Suspense fallback ──────────────────────────────────────────────────────────
 const PageLoader = () => (
@@ -54,6 +55,7 @@ const router = createBrowserRouter(
   [
     // Public (no login required)
     { path: '/login',          element: <LoginPage /> },
+    { path: '/zoom-callback',  element: <Suspense fallback={<PageLoader />}><ZoomCallbackPage /></Suspense> },
     { path: '/privacy-policy', element: <Suspense fallback={<PageLoader />}><PrivacyPolicyPage /></Suspense> },
     { path: '/terms',          element: <Suspense fallback={<PageLoader />}><TermsPage /></Suspense> },
     { path: '/support',        element: <Suspense fallback={<PageLoader />}><SupportPage /></Suspense> },
