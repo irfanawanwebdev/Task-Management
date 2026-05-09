@@ -44,7 +44,7 @@ Deno.serve(async (req) => {
     if (!userId) userId = url.searchParams.get('user_id')
 
     // Zoom redirects to the verified frontend domain; the React page forwards the code to the edge function
-    const appUrl = Deno.env.get('APP_URL') ?? 'https://jzworkspace.com'
+    const appUrl = (Deno.env.get('APP_URL') ?? 'https://jzworkspace.com').replace(/\/$/, '')
     const redirectUri = `${appUrl}/zoom-callback`
     const state = btoa(JSON.stringify({ user_id: userId, ts: Date.now() }))
 

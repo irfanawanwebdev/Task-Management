@@ -42,7 +42,7 @@ Deno.serve(async (req) => {
   try {
     const { user_id } = JSON.parse(atob(state)) as { user_id: string }
 
-    const appUrl      = Deno.env.get('APP_URL') ?? 'https://jzworkspace.com'
+    const appUrl      = (Deno.env.get('APP_URL') ?? 'https://jzworkspace.com').replace(/\/$/, '')
     const redirectUri = `${appUrl}/zoom-callback`
     const clientId     = Deno.env.get('ZOOM_CLIENT_ID')!
     const clientSecret = Deno.env.get('ZOOM_CLIENT_SECRET')!
