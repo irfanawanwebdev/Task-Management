@@ -9,7 +9,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Calendar, CheckCircle2, AlertTriangle, Plus, X, ExternalLink,
   ChevronDown, Loader2, FileText, Users, Zap, Bell, RefreshCw, Save,
-  Eye, Copy, Download, NotebookText, Pencil,
+  Eye, Copy, Download, NotebookText, Pencil, Trash2,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import type { Meeting, Report, DeliveryTask, Client, Blocker } from '@/lib/types'
@@ -146,6 +146,12 @@ function useOpenBlockers() {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+function extractZoomMeetingId(url: string): string | null {
+  // Handles https://zoom.us/j/87285178434 and regional variants
+  const match = url.match(/zoom\.us\/j\/(\d+)/)
+  return match ? match[1] : null
+}
+
 function getClientName(meeting: Meeting): string {
   return (meeting.clients as unknown as { name: string } | undefined)?.name ?? '—'
 }
@@ -220,10 +226,28 @@ function MeetingRow({ meeting, canEdit }: { meeting: Meeting; canEdit: boolean }
 
   const markComplete = useMutation({
     mutationFn: async () => {
-      const { error } = await supabase
-        .from('meetings')
-        .update({ status: 'Completed' } as never)
-        .eq('id', meeting.id)
+      const { error } = await supabase.from('meetings').update({ status: 'Completed' } as never).eq('id', meeting.id)
+      if (error) throw error
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['meetings-all'] }),
+  })
+
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const deleteMeeting = useMutation({
+    mutationFn: async () => {
+      // If this is a Zoom meeting, delete it from Zoom first
+      if (meeting.calendar_source === 'Zoom' && meeting.meeting_link) {
+        const zoomId = extractZoomMeetingId(meeting.meeting_link)
+        if (zoomId) {
+          const { data: { session } } = await supabase.auth.getSession()
+          await supabase.functions.invoke('zoom-delete-meeting', {
+            body: { meetingId: zoomId },
+            headers: { Authorization: `Bearer ${session?.access_token ?? ''}` },
+          })
+          // Continue with DB delete even if Zoom delete fails
+        }
+      }
+      const { error } = await supabase.from('meetings').delete().eq('id', meeting.id)
       if (error) throw error
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['meetings-all'] }),
@@ -285,6 +309,28 @@ function MeetingRow({ meeting, canEdit }: { meeting: Meeting; canEdit: boolean }
                 {markComplete.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle2 className="h-3 w-3" />}
                 Done
               </button>
+            )}
+            {canEdit && (
+              confirmDelete ? (
+                <span className="inline-flex items-center gap-1">
+                  <button
+                    onClick={() => deleteMeeting.mutate()}
+                    disabled={deleteMeeting.isPending}
+                    className="rounded border border-red-300 bg-red-50 px-2 py-0.5 text-xs text-red-700 hover:bg-red-100"
+                  >
+                    {deleteMeeting.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Confirm'}
+                  </button>
+                  <button onClick={() => setConfirmDelete(false)} className="text-xs text-muted-foreground hover:text-foreground px-1">Cancel</button>
+                </span>
+              ) : (
+                <button
+                  onClick={() => setConfirmDelete(true)}
+                  className="p-1 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                  title="Delete meeting"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              )
             )}
           </div>
         </td>
@@ -372,7 +418,7 @@ function AddMeetingDialog({ clients, onClose }: { clients: Client[]; onClose: ()
         }
       }
 
-      // Auto-create Zoom meeting
+      // Auto-create Zoom meeting, then add it to Google Calendar if connected
       if (autoCreate === 'zoom' && isZoomConnected) {
         try {
           const result = await callEdgeFunction('zoom-create-meeting', {
@@ -381,9 +427,25 @@ function AddMeetingDialog({ clients, onClose }: { clients: Client[]; onClose: ()
             time:   form.time || undefined,
             agenda: form.agenda || undefined,
           })
+          if (result.error) throw new Error(result.error)
           meetLink = result.joinUrl ?? meetLink
         } catch (zoomErr) {
           setError(`Zoom: ${(zoomErr as Error).message}. Meeting saved without Zoom link.`)
+        }
+
+        // Also create a Google Calendar event with the Zoom link
+        if (isGoogleConnected && meetLink) {
+          try {
+            const calResult = await callEdgeFunction('create-calendar-event', {
+              title:       `${clientName} — ${form.type}`,
+              date:        form.date,
+              time:        form.time || undefined,
+              agenda:      form.agenda || undefined,
+              meetingLink: meetLink,
+            })
+            calendarEventId   = calResult.calendarEventId   ?? null
+            calendarEventLink = calResult.calendarEventLink ?? null
+          } catch (_) { /* non-critical — Zoom link already saved */ }
         }
       }
 

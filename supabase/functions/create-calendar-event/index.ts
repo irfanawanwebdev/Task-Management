@@ -40,7 +40,7 @@ Deno.serve(async (req) => {
     }
 
     // ── Request body ──────────────────────────────────────────────────────────
-    const { title, date, time, agenda, timezone = 'America/New_York' } = await req.json()
+    const { title, date, time, agenda, timezone = 'America/New_York', meetingLink } = await req.json()
     if (!title || !date) {
       return new Response(JSON.stringify({ error: 'title and date are required' }), {
         status: 400, headers: { ...CORS, 'Content-Type': 'application/json' },
@@ -100,7 +100,14 @@ Deno.serve(async (req) => {
     const endHour = String(h + 1).padStart(2, '0')
     const endDateTime = `${date}T${endHour}:${String(m).padStart(2, '0')}:00`
 
-    const event = {
+    // If a Zoom link is supplied, embed it as a conference entry instead of generating Meet
+    const event = meetingLink ? {
+      summary: title,
+      description: `${agenda || ''}\n\nJoin Zoom: ${meetingLink}`.trim(),
+      start: { dateTime: startDateTime, timeZone: timezone },
+      end:   { dateTime: endDateTime,   timeZone: timezone },
+      location: meetingLink,
+    } : {
       summary: title,
       description: agenda || '',
       start: { dateTime: startDateTime, timeZone: timezone },
@@ -114,8 +121,11 @@ Deno.serve(async (req) => {
     }
 
     // ── Create event in Google Calendar ──────────────────────────────────────
-    const calRes = await fetch(
-      'https://www.googleapis.com/calendar/v3/calendars/primary/events?conferenceDataVersion=1',
+    const calendarUrl = meetingLink
+      ? 'https://www.googleapis.com/calendar/v3/calendars/primary/events'
+      : 'https://www.googleapis.com/calendar/v3/calendars/primary/events?conferenceDataVersion=1'
+
+    const calRes = await fetch(calendarUrl,
       {
         method: 'POST',
         headers: {
@@ -133,15 +143,16 @@ Deno.serve(async (req) => {
       })
     }
 
-    const meetLink = calData.conferenceData?.entryPoints?.find(
+    // For Zoom events, return the passed-in link; for Google Meet, extract from conference data
+    const generatedMeetLink = meetingLink ?? (calData.conferenceData?.entryPoints?.find(
       (e: { entryPointType: string; uri: string }) => e.entryPointType === 'video'
-    )?.uri ?? null
+    )?.uri ?? null)
 
     return new Response(
       JSON.stringify({
         calendarEventId:   calData.id,
         calendarEventLink: calData.htmlLink,
-        meetLink,
+        meetLink:          generatedMeetLink,
       }),
       { status: 200, headers: { ...CORS, 'Content-Type': 'application/json' } }
     )

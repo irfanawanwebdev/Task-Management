@@ -43,7 +43,7 @@ Deno.serve(async (req) => {
     // Get stored Zoom token for this user
     const { data: tokenRow } = await supabase
       .from('connector_tokens')
-      .select('access_token, expires_at')
+      .select('access_token, expires_at, account_email')
       .eq('user_id', user.id)
       .eq('connector_id', 'zoom')
       .maybeSingle()
@@ -51,6 +51,9 @@ Deno.serve(async (req) => {
     if (!tokenRow?.access_token) {
       return ok({ error: 'Zoom not connected. Connect Zoom in Settings first.' })
     }
+
+    // Use the account email as the host userId so the meeting appears in their Zoom dashboard
+    const hostId = tokenRow.account_email ?? 'me'
 
     const { title, date, time, agenda } = await req.json() as {
       title?: string
@@ -80,7 +83,7 @@ Deno.serve(async (req) => {
       },
     }
 
-    const zoomRes = await fetch('https://api.zoom.us/v2/users/me/meetings', {
+    const zoomRes = await fetch(`https://api.zoom.us/v2/users/${encodeURIComponent(hostId)}/meetings`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${tokenRow.access_token}`,
