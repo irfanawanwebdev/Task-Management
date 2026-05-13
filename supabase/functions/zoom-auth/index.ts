@@ -1,10 +1,9 @@
 /**
- * zoom-auth
- * Returns the Zoom OAuth consent URL for the calling user.
- * Frontend navigates to the returned URL → Zoom redirects to zoom-callback.
+ * zoom-auth  (Server-to-Server OAuth)
+ * Always returns HTTP 200 — errors are in the JSON body { error, detail }.
+ * This lets the Supabase client surface the actual error message to the frontend.
  */
 
-// @ts-types="https://esm.sh/@supabase/supabase-js@2/dist/module/index.d.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 declare const Deno: {
@@ -12,11 +11,16 @@ declare const Deno: {
   serve(handler: (req: Request) => Response | Promise<Response>): void
 }
 
-const SCOPES = 'meeting:read:list_meetings meeting:write:meeting user:read:email'
-
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+}
+
+function ok(body: unknown) {
+  return new Response(JSON.stringify(body), {
+    status: 200,
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  })
 }
 
 Deno.serve(async (req) => {
@@ -25,45 +29,77 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const url = new URL(req.url)
-    let userId: string | null = null
+    // Identify the calling user from their JWT
+    const authHeader = req.headers.get('Authorization') ?? ''
+    const token = authHeader.replace('Bearer ', '')
 
-    // 1. Try JWT from Authorization header
-    const authHeader = req.headers.get('Authorization')
-    if (authHeader) {
-      const token = authHeader.replace('Bearer ', '')
-      const supabase = createClient(
-        Deno.env.get('SUPABASE_URL')!,
-        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
-      )
-      const { data: { user } } = await supabase.auth.getUser(token)
-      if (user) userId = user.id
+    const supabase = createClient(
+      Deno.env.get('SUPABASE_URL')!,
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
+    )
+
+    const { data: { user }, error: userErr } = await supabase.auth.getUser(token)
+    if (userErr || !user) {
+      return ok({ error: 'Session expired. Please sign out and back in.' })
     }
 
-    // 2. Fall back to ?user_id query param
-    if (!userId) userId = url.searchParams.get('user_id')
+    const accountId    = Deno.env.get('ZOOM_ACCOUNT_ID')
+    const clientId     = Deno.env.get('ZOOM_CLIENT_ID')
+    const clientSecret = Deno.env.get('ZOOM_CLIENT_SECRET')
 
-    // Zoom redirects to the verified frontend domain; the React page forwards the code to the edge function
-    const appUrl = (Deno.env.get('APP_URL') ?? 'https://jzworkspace.com').replace(/\/$/, '')
-    const redirectUri = `${appUrl}/zoom-callback`
-    const state = btoa(JSON.stringify({ user_id: userId, ts: Date.now() }))
+    if (!accountId || !clientId || !clientSecret) {
+      return ok({ error: 'Zoom secrets missing. Set ZOOM_ACCOUNT_ID, ZOOM_CLIENT_ID, ZOOM_CLIENT_SECRET in Supabase.' })
+    }
 
-    const params = new URLSearchParams({
-      response_type: 'code',
-      client_id: Deno.env.get('ZOOM_CLIENT_ID')!,
-      redirect_uri: redirectUri,
-      state,
-      scope: SCOPES,
-    })
+    // Exchange account credentials for access token (S2S OAuth)
+    const basicAuth = btoa(`${clientId}:${clientSecret}`)
+    const tokenRes  = await fetch(
+      `https://zoom.us/oauth/token?grant_type=account_credentials&account_id=${accountId}`,
+      {
+        method: 'POST',
+        headers: { 'Authorization': `Basic ${basicAuth}` },
+      }
+    )
 
-    const authUrl = `https://zoom.us/oauth/authorize?${params}`
+    const tokenData = await tokenRes.json()
 
-    return new Response(JSON.stringify({ url: authUrl }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    })
+    if (!tokenRes.ok || tokenData.error) {
+      console.error('Zoom S2S token error:', tokenData)
+      return ok({ error: `Zoom rejected the credentials: ${tokenData.reason ?? tokenData.error ?? 'unknown'}` })
+    }
+
+    // Fetch account email for display
+    let accountEmail: string | null = null
+    try {
+      const meRes = await fetch('https://api.zoom.us/v2/users/me', {
+        headers: { Authorization: `Bearer ${tokenData.access_token}` },
+      })
+      const me = await meRes.json()
+      accountEmail = me.email ?? null
+    } catch (_) { /* non-critical */ }
+
+    // Store token in connector_tokens
+    const { error: upsertErr } = await supabase
+      .from('connector_tokens')
+      .upsert({
+        user_id:       user.id,
+        connector_id:  'zoom',
+        access_token:  tokenData.access_token,
+        refresh_token: null,
+        expires_at:    new Date(Date.now() + (tokenData.expires_in ?? 3600) * 1000).toISOString(),
+        account_email: accountEmail,
+        last_sync:     null,
+      }, { onConflict: 'user_id,connector_id' })
+
+    if (upsertErr) {
+      console.error('DB upsert error:', upsertErr)
+      return ok({ error: `Database error: ${upsertErr.message}` })
+    }
+
+    return ok({ success: true, email: accountEmail })
+
   } catch (err) {
-    return new Response(JSON.stringify({ error: String(err) }), {
-      status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    })
+    console.error('zoom-auth error:', err)
+    return ok({ error: `Unexpected error: ${String(err)}` })
   }
 })

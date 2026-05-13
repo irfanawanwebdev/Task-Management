@@ -262,7 +262,7 @@ function ConnectorCard({
       return
     }
 
-    // Zoom OAuth flow
+    // Zoom Server-to-Server OAuth — no redirect, connects directly
     if (connector.id === 'zoom') {
       setConnecting(true)
       try {
@@ -275,17 +275,15 @@ function ConnectorCard({
         const res = await supabase.functions.invoke('zoom-auth', {
           headers: { Authorization: `Bearer ${session.access_token}` },
         })
-        if (res.error) {
-          setConnectError(res.error.message ?? 'Edge function error. Check Supabase logs.')
+        if (res.error || res.data?.error) {
+          const msg = res.data?.detail ?? res.data?.error ?? res.error?.message ?? 'Connection failed.'
+          setConnectError(msg)
           setConnecting(false)
           return
         }
-        if (res.data?.url) {
-          window.location.href = res.data.url
-        } else {
-          setConnectError('Edge function returned no redirect URL. Ensure ZOOM_CLIENT_ID secret is set in Supabase.')
-          setConnecting(false)
-        }
+        // Success — refresh connector token display
+        setConnecting(false)
+        window.location.reload()
       } catch (err) {
         setConnectError(err instanceof Error ? err.message : 'Unexpected error.')
         setConnecting(false)
