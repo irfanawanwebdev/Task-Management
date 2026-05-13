@@ -365,6 +365,7 @@ function AddMeetingDialog({ clients, onClose }: { clients: Client[]; onClose: ()
   const [guestName, setGuestName] = useState('')
   const [guestEmail, setGuestEmail] = useState('')
   const [error, setError] = useState('')
+  const [fieldErrors, setFieldErrors] = useState<{ client?: string; date?: string }>({})
 
   const addGuest = () => {
     if (!guestEmail.trim()) return
@@ -391,10 +392,14 @@ function AddMeetingDialog({ clients, onClose }: { clients: Client[]; onClose: ()
 
   const add = useMutation({
     mutationFn: async () => {
-      if (!form.client_id || !form.date) {
-        setError('Client and date are required.')
-        return
+      const errs: { client?: string; date?: string } = {}
+      if (!form.client_id) errs.client = 'Please select a client.'
+      if (!form.date)      errs.date   = 'Please pick a date.'
+      if (Object.keys(errs).length > 0) {
+        setFieldErrors(errs)
+        throw new Error('validation')
       }
+      setFieldErrors({})
 
       let meetLink = form.meeting_link || null
       let calendarEventId: string | null = null
@@ -496,7 +501,7 @@ function AddMeetingDialog({ clients, onClose }: { clients: Client[]; onClose: ()
       queryClient.invalidateQueries({ queryKey: ['meetings-all'] })
       onClose()
     },
-    onError: (e: Error) => setError(e.message),
+    onError: (e: Error) => { if (e.message !== 'validation') setError(e.message) },
   })
 
   return (
@@ -507,16 +512,20 @@ function AddMeetingDialog({ clients, onClose }: { clients: Client[]; onClose: ()
           <button onClick={onClose}><X className="h-5 w-5 text-muted-foreground" /></button>
         </div>
 
-        {error && <p className="text-sm text-red-600">{error}</p>}
+        {error && <p className="text-sm text-destructive">{error}</p>}
 
         <div className="space-y-3">
           <div>
             <label className="text-xs font-medium text-muted-foreground">Client *</label>
-            <select value={form.client_id} onChange={e => setForm(f => ({ ...f, client_id: e.target.value }))}
-              className="mt-1 w-full rounded border border-input bg-background px-3 py-2 text-sm">
+            <select
+              value={form.client_id}
+              onChange={e => { setForm(f => ({ ...f, client_id: e.target.value })); setFieldErrors(fe => ({ ...fe, client: undefined })) }}
+              className={cn('mt-1 w-full rounded border bg-background px-3 py-2 text-sm', fieldErrors.client ? 'border-destructive ring-1 ring-destructive/40' : 'border-input')}
+            >
               <option value="">Select client…</option>
               {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
+            {fieldErrors.client && <p className="mt-1 text-xs text-destructive">{fieldErrors.client}</p>}
           </div>
 
           <div>
@@ -530,8 +539,13 @@ function AddMeetingDialog({ clients, onClose }: { clients: Client[]; onClose: ()
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs font-medium text-muted-foreground">Date *</label>
-              <input type="date" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))}
-                className="mt-1 w-full rounded border border-input bg-background px-3 py-2 text-sm" />
+              <input
+                type="date"
+                value={form.date}
+                onChange={e => { setForm(f => ({ ...f, date: e.target.value })); setFieldErrors(fe => ({ ...fe, date: undefined })) }}
+                className={cn('mt-1 w-full rounded border bg-background px-3 py-2 text-sm', fieldErrors.date ? 'border-destructive ring-1 ring-destructive/40' : 'border-input')}
+              />
+              {fieldErrors.date && <p className="mt-1 text-xs text-destructive">{fieldErrors.date}</p>}
             </div>
             <div>
               <label className="text-xs font-medium text-muted-foreground">Time</label>
