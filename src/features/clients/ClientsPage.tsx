@@ -51,6 +51,8 @@ interface AddClientForm {
   website_url: string
   drive_folder_url: string
   credentials_sheet_url: string
+  gbp_url: string
+  ad_accounts_url: string
   notes: string
   facebook_url: string
   instagram_url: string
@@ -67,6 +69,8 @@ const BLANK_FORM: AddClientForm = {
   website_url: '',
   drive_folder_url: '',
   credentials_sheet_url: '',
+  gbp_url: '',
+  ad_accounts_url: '',
   notes: '',
   facebook_url: '',
   instagram_url: '',
@@ -93,6 +97,8 @@ function AddClientDialog({ open, onClose }: { open: boolean; onClose: () => void
         website_url:           data.website_url.trim() || null,
         drive_folder_url:      data.drive_folder_url.trim() || null,
         credentials_sheet_url: data.credentials_sheet_url.trim() || null,
+        gbp_url:               data.gbp_url.trim() || null,
+        ad_accounts_url:       data.ad_accounts_url.trim() || null,
         notes:                 data.notes.trim() || null,
         facebook_url:          data.facebook_url.trim() || null,
         instagram_url:         data.instagram_url.trim() || null,
@@ -198,12 +204,16 @@ function AddClientDialog({ open, onClose }: { open: boolean; onClose: () => void
           {/* URLs */}
           <div className="space-y-3">
             {([
-              ['website_url',           'Website URL'],
-              ['drive_folder_url',      'Drive Folder URL'],
-              ['credentials_sheet_url', 'Credentials Sheet URL'],
-            ] as const).map(([field, label]) => (
+              ['website_url',           'Website URL',                    true],
+              ['drive_folder_url',      'Drive Folder URL',               true],
+              ['credentials_sheet_url', 'Credentials Sheet URL',          true],
+              ['gbp_url',               'Google Business Profile URL',    false],
+              ['ad_accounts_url',       'Ad Accounts URL',                false],
+            ] as const).map(([field, label, required]) => (
               <div key={field}>
-                <label className="block text-xs font-medium mb-1">{label} <span className="text-destructive">*</span></label>
+                <label className="block text-xs font-medium mb-1">
+                  {label} {required ? <span className="text-destructive">*</span> : <span className="text-muted-foreground">(optional)</span>}
+                </label>
                 <input
                   value={form[field]}
                   onChange={e => setForm(f => ({ ...f, [field]: e.target.value }))}

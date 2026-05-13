@@ -126,10 +126,20 @@ export interface Client {
   instagram_url: string | null
   linkedin_url: string | null
   youtube_url: string | null
+  landing_pages: LandingPage[] | null
   parent_client_id: string | null
   location_name: string | null
   created_at: string
   updated_at: string
+}
+
+export interface LandingPage {
+  id: string        // uuid generated client-side
+  name: string      // e.g. "Homepage", "Service Page"
+  url: string
+  username: string | null
+  password: string | null
+  notes: string | null
 }
 
 export interface DeliveryTask {

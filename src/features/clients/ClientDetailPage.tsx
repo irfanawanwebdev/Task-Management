@@ -10,11 +10,11 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   ArrowLeft, Plus, Loader2, CheckCircle2, AlertTriangle,
   Calendar, KeyRound, FileText, Star, BarChart2, ExternalLink, Pencil, X, ChevronRight,
-  Save, Link2,
+  Save, Link2, Trash2, Eye, EyeOff,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import type {
-  Client, DeliveryTask, Blocker, Meeting, Report, WeeklyReview,
+  Client, DeliveryTask, Blocker, Meeting, Report, WeeklyReview, LandingPage,
 } from '@/lib/types'
 import { isOverdueEST, formatDateEST, daysAgoEST, todayDateEST } from '@/lib/timezone'
 import { calcRiskScore } from '@/lib/riskEngine'
@@ -223,7 +223,176 @@ function CredLink({ href, label, sub }: { href: string; label: string; sub: stri
   )
 }
 
+const BLANK_LP: Omit<LandingPage, 'id'> = { name: '', url: '', username: null, password: null, notes: null }
+
+function LandingPageRow({ page, onEdit, onDelete }: {
+  page: LandingPage
+  onEdit: (p: LandingPage) => void
+  onDelete: (id: string) => void
+}) {
+  const [expanded, setExpanded] = useState(false)
+  const [showPw, setShowPw] = useState(false)
+
+  return (
+    <div className="border border-border rounded-lg overflow-hidden">
+      <div
+        className="flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-accent/30 transition-colors"
+        onClick={() => setExpanded(e => !e)}
+      >
+        <ChevronRight className={cn('h-3.5 w-3.5 text-muted-foreground transition-transform', expanded && 'rotate-90')} />
+        <span className="text-sm font-medium flex-1 truncate">{page.name || 'Unnamed Page'}</span>
+        {page.url && (
+          <a href={page.url} target="_blank" rel="noopener noreferrer"
+            onClick={e => e.stopPropagation()}
+            className="text-primary hover:underline text-xs flex items-center gap-1">
+            <ExternalLink className="h-3 w-3" /> Open
+          </a>
+        )}
+        <button onClick={e => { e.stopPropagation(); onEdit(page) }}
+          className="p-1 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors">
+          <Pencil className="h-3 w-3" />
+        </button>
+        <button onClick={e => { e.stopPropagation(); onDelete(page.id) }}
+          className="p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors">
+          <Trash2 className="h-3 w-3" />
+        </button>
+      </div>
+
+      {expanded && (
+        <div className="px-4 pb-3 pt-1 border-t border-border bg-muted/20 space-y-2 text-sm">
+          {page.url && (
+            <div>
+              <span className="text-xs text-muted-foreground">URL</span>
+              <p className="break-all text-xs">{page.url}</p>
+            </div>
+          )}
+          {page.username && (
+            <div>
+              <span className="text-xs text-muted-foreground">Username / Email</span>
+              <p className="font-mono text-xs">{page.username}</p>
+            </div>
+          )}
+          {page.password && (
+            <div>
+              <span className="text-xs text-muted-foreground">Password</span>
+              <div className="flex items-center gap-2">
+                <p className="font-mono text-xs flex-1">{showPw ? page.password : '••••••••'}</p>
+                <button onClick={() => setShowPw(v => !v)} className="text-muted-foreground hover:text-foreground">
+                  {showPw ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+                </button>
+              </div>
+            </div>
+          )}
+          {page.notes && (
+            <div>
+              <span className="text-xs text-muted-foreground">Notes</span>
+              <p className="text-xs whitespace-pre-wrap">{page.notes}</p>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function LandingPageForm({ initial, onSave, onCancel }: {
+  initial: Omit<LandingPage, 'id'>
+  onSave: (data: Omit<LandingPage, 'id'>) => void
+  onCancel: () => void
+}) {
+  const [form, setForm] = useState(initial)
+  const [showPw, setShowPw] = useState(false)
+  const f = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
+    setForm(prev => ({ ...prev, [k]: e.target.value || null }))
+
+  return (
+    <div className="border border-primary/40 rounded-lg p-3 space-y-3 bg-primary/5">
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="text-xs font-medium text-muted-foreground">Page Name <span className="text-destructive">*</span></label>
+          <input value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))}
+            placeholder="e.g. Homepage"
+            className="w-full mt-1 px-2 py-1.5 bg-background border border-input rounded text-sm focus:outline-none focus:ring-1 focus:ring-primary" />
+        </div>
+        <div>
+          <label className="text-xs font-medium text-muted-foreground">URL</label>
+          <input value={form.url} onChange={e => setForm(p => ({ ...p, url: e.target.value }))}
+            placeholder="https://…"
+            className="w-full mt-1 px-2 py-1.5 bg-background border border-input rounded text-sm focus:outline-none focus:ring-1 focus:ring-primary" />
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="text-xs font-medium text-muted-foreground">Username / Email</label>
+          <input value={form.username ?? ''} onChange={f('username')}
+            className="w-full mt-1 px-2 py-1.5 bg-background border border-input rounded text-sm font-mono focus:outline-none focus:ring-1 focus:ring-primary" />
+        </div>
+        <div>
+          <label className="text-xs font-medium text-muted-foreground">Password</label>
+          <div className="flex gap-1 mt-1">
+            <input type={showPw ? 'text' : 'password'} value={form.password ?? ''} onChange={f('password')}
+              className="flex-1 px-2 py-1.5 bg-background border border-input rounded text-sm font-mono focus:outline-none focus:ring-1 focus:ring-primary" />
+            <button type="button" onClick={() => setShowPw(v => !v)}
+              className="px-2 border border-input rounded text-muted-foreground hover:text-foreground bg-background">
+              {showPw ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+            </button>
+          </div>
+        </div>
+      </div>
+      <div>
+        <label className="text-xs font-medium text-muted-foreground">Notes</label>
+        <textarea value={form.notes ?? ''} onChange={f('notes')} rows={2}
+          className="w-full mt-1 px-2 py-1.5 bg-background border border-input rounded text-sm resize-none focus:outline-none focus:ring-1 focus:ring-primary" />
+      </div>
+      <div className="flex gap-2 justify-end">
+        <button onClick={onCancel}
+          className="px-3 py-1.5 text-xs rounded border border-border text-muted-foreground hover:bg-accent transition-colors">
+          Cancel
+        </button>
+        <button onClick={() => onSave(form)} disabled={!form.name.trim()}
+          className="px-3 py-1.5 text-xs rounded bg-primary text-primary-foreground font-medium hover:bg-primary/90 disabled:opacity-50 transition-colors">
+          Save
+        </button>
+      </div>
+    </div>
+  )
+}
+
 function CredentialsTab({ client }: { client: Client }) {
+  const qc = useQueryClient()
+  const [addingLP, setAddingLP] = useState(false)
+  const [editingLP, setEditingLP] = useState<LandingPage | null>(null)
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
+
+  const pages = client.landing_pages ?? []
+
+  const saveLandingPages = useMutation({
+    mutationFn: async (updated: LandingPage[]) => {
+      const { error } = await supabase.from('clients')
+        .update({ landing_pages: updated } as never)
+        .eq('id', client.id)
+      if (error) throw error
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['client-detail', client.id] }),
+  })
+
+  function handleAdd(data: Omit<LandingPage, 'id'>) {
+    const newPage: LandingPage = { ...data, id: crypto.randomUUID() }
+    saveLandingPages.mutate([...pages, newPage])
+    setAddingLP(false)
+  }
+
+  function handleEdit(data: Omit<LandingPage, 'id'>) {
+    if (!editingLP) return
+    saveLandingPages.mutate(pages.map(p => p.id === editingLP.id ? { ...data, id: p.id } : p))
+    setEditingLP(null)
+  }
+
+  function handleDelete(id: string) {
+    saveLandingPages.mutate(pages.filter(p => p.id !== id))
+    setConfirmDeleteId(null)
+  }
+
   const links = [
     client.credentials_sheet_url && { href: client.credentials_sheet_url, label: 'Credentials Sheet', sub: 'Google Sheets · Client credentials' },
     client.drive_folder_url      && { href: client.drive_folder_url,      label: 'Google Drive Folder', sub: 'Client files and documents' },
@@ -236,10 +405,72 @@ function CredentialsTab({ client }: { client: Client }) {
     client.youtube_url           && { href: client.youtube_url,           label: 'YouTube', sub: 'YouTube channel' },
   ].filter(Boolean) as { href: string; label: string; sub: string }[]
 
-  if (links.length === 0) return <p className="text-sm text-muted-foreground">No credentials or links added yet.</p>
   return (
-    <div className="space-y-3">
-      {links.map(l => <CredLink key={l.label} {...l} />)}
+    <div className="space-y-6">
+      {/* Account Links */}
+      {links.length > 0 && (
+        <div className="space-y-3">
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Account Links</p>
+          {links.map(l => <CredLink key={l.label} {...l} />)}
+        </div>
+      )}
+
+      {/* Landing Pages */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Landing Pages</p>
+          {!addingLP && !editingLP && (
+            <button onClick={() => setAddingLP(true)}
+              className="inline-flex items-center gap-1 px-2.5 py-1 text-xs rounded-md bg-primary/10 text-primary hover:bg-primary/20 font-medium transition-colors">
+              <Plus className="h-3 w-3" /> Add Page
+            </button>
+          )}
+        </div>
+
+        {addingLP && (
+          <LandingPageForm initial={{ ...BLANK_LP }} onSave={handleAdd} onCancel={() => setAddingLP(false)} />
+        )}
+
+        {pages.length === 0 && !addingLP && (
+          <p className="text-sm text-muted-foreground">No landing pages added yet.</p>
+        )}
+
+        {pages.map(page => (
+          <div key={page.id}>
+            {confirmDeleteId === page.id ? (
+              <div className="border border-destructive/40 rounded-lg p-3 flex items-center justify-between gap-3 bg-destructive/5">
+                <p className="text-sm text-destructive">Delete &quot;{page.name}&quot;?</p>
+                <div className="flex gap-2">
+                  <button onClick={() => setConfirmDeleteId(null)}
+                    className="px-2.5 py-1 text-xs rounded border border-border text-muted-foreground hover:bg-accent">Cancel</button>
+                  <button onClick={() => handleDelete(page.id)}
+                    className="px-2.5 py-1 text-xs rounded bg-destructive text-destructive-foreground font-medium hover:bg-destructive/90">Delete</button>
+                </div>
+              </div>
+            ) : editingLP?.id === page.id ? (
+              <LandingPageForm
+                initial={{ name: page.name, url: page.url, username: page.username, password: page.password, notes: page.notes }}
+                onSave={handleEdit}
+                onCancel={() => setEditingLP(null)}
+              />
+            ) : (
+              <LandingPageRow
+                page={page}
+                onEdit={p => setEditingLP(p)}
+                onDelete={id => setConfirmDeleteId(id)}
+              />
+            )}
+          </div>
+        ))}
+
+        {saveLandingPages.isError && (
+          <p className="text-xs text-destructive">{(saveLandingPages.error as Error).message}</p>
+        )}
+      </div>
+
+      {links.length === 0 && pages.length === 0 && !addingLP && (
+        <p className="text-sm text-muted-foreground">No credentials or links added yet.</p>
+      )}
     </div>
   )
 }
