@@ -508,8 +508,8 @@ function EditTaskOverlay({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm p-4">
-      <div className="w-full max-w-md bg-card border border-border rounded-xl shadow-xl">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+      <div className="w-full max-w-md bg-card border border-border rounded-xl shadow-xl flex flex-col max-h-[90vh]">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border shrink-0">
           <h3 className="font-semibold text-sm">Edit Task</h3>
           <button onClick={onCancel} className="text-muted-foreground hover:text-foreground">
             <X className="h-4 w-4" />
@@ -520,7 +520,7 @@ function EditTaskOverlay({
             {error}
           </p>
         )}
-        <div className="p-4">
+        <div className="overflow-y-auto flex-1 p-4">
           <TaskForm
             initial={{
               title: task.title,

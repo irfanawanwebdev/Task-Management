@@ -314,7 +314,7 @@ function AddMeetingDialog({ clients, onClose }: { clients: Client[]; onClose: ()
     agenda: '',
     meeting_link: '',
   })
-  const [createGoogleEvent, setCreateGoogleEvent] = useState(true)
+  const [autoCreate, setAutoCreate] = useState<'none' | 'google' | 'zoom'>('none')
   const [guests, setGuests] = useState<{ name: string; email: string }[]>([])
   const [guestName, setGuestName] = useState('')
   const [guestEmail, setGuestEmail] = useState('')
@@ -327,15 +327,18 @@ function AddMeetingDialog({ clients, onClose }: { clients: Client[]; onClose: ()
     setGuestEmail('')
   }
 
-  // Check if the current user has Google Calendar connected
   const { data: isGoogleConnected } = useQuery({
     queryKey: ['google-connected'],
     queryFn: async () => {
-      const { data } = await supabase
-        .from('connector_tokens')
-        .select('id')
-        .eq('connector_id', 'google-calendar')
-        .maybeSingle()
+      const { data } = await supabase.from('connector_tokens').select('id').eq('connector_id', 'google-calendar').maybeSingle()
+      return !!data
+    },
+  })
+
+  const { data: isZoomConnected } = useQuery({
+    queryKey: ['zoom-connected'],
+    queryFn: async () => {
+      const { data } = await supabase.from('connector_tokens').select('id').eq('connector_id', 'zoom').maybeSingle()
       return !!data
     },
   })
@@ -350,10 +353,10 @@ function AddMeetingDialog({ clients, onClose }: { clients: Client[]; onClose: ()
       let meetLink = form.meeting_link || null
       let calendarEventId: string | null = null
       let calendarEventLink: string | null = null
+      const clientName = clients.find(c => c.id === form.client_id)?.name ?? 'Client'
 
-      // Auto-create Google Calendar event + Meet link if connected
-      if (isGoogleConnected && createGoogleEvent) {
-        const clientName = clients.find(c => c.id === form.client_id)?.name ?? 'Client'
+      // Auto-create Google Calendar event + Meet link
+      if (autoCreate === 'google' && isGoogleConnected) {
         try {
           const result = await callEdgeFunction('create-calendar-event', {
             title:  `${clientName} — ${form.type}`,
@@ -366,7 +369,21 @@ function AddMeetingDialog({ clients, onClose }: { clients: Client[]; onClose: ()
           calendarEventLink = result.calendarEventLink ?? null
         } catch (calErr) {
           setError(`Google Calendar: ${(calErr as Error).message}. Meeting saved without calendar event.`)
-          // Fall through — save meeting without calendar data
+        }
+      }
+
+      // Auto-create Zoom meeting
+      if (autoCreate === 'zoom' && isZoomConnected) {
+        try {
+          const result = await callEdgeFunction('zoom-create-meeting', {
+            title:  `${clientName} — ${form.type}`,
+            date:   form.date,
+            time:   form.time || undefined,
+            agenda: form.agenda || undefined,
+          })
+          meetLink = result.joinUrl ?? meetLink
+        } catch (zoomErr) {
+          setError(`Zoom: ${(zoomErr as Error).message}. Meeting saved without Zoom link.`)
         }
       }
 
@@ -379,7 +396,7 @@ function AddMeetingDialog({ clients, onClose }: { clients: Client[]; onClose: ()
         meeting_link:       meetLink,
         calendar_event_link: calendarEventLink,
         google_event_id:    calendarEventId,
-        calendar_source:    calendarEventId ? 'Google' : null,
+        calendar_source:    calendarEventId ? 'Google' : autoCreate === 'zoom' && meetLink ? 'Zoom' : null,
         status:             'Scheduled',
         owner_approval_required: false,
         sla_hours:          24,
@@ -467,26 +484,40 @@ function AddMeetingDialog({ clients, onClose }: { clients: Client[]; onClose: ()
               rows={2} className="mt-1 w-full rounded border border-input bg-background px-3 py-2 text-sm resize-none" />
           </div>
 
-          {/* Google Calendar auto-create toggle */}
-          {isGoogleConnected ? (
-            <label className="flex items-center gap-2 cursor-pointer select-none">
-              <input type="checkbox" checked={createGoogleEvent}
-                onChange={e => setCreateGoogleEvent(e.target.checked)}
-                className="h-4 w-4 rounded border-input accent-primary" />
-              <span className="text-sm text-muted-foreground">
-                Create Google Calendar event + Meet link automatically
-              </span>
-            </label>
-          ) : (
-            <p className="text-xs text-muted-foreground">
-              Connect Google Calendar in Settings to auto-generate Meet links.
-            </p>
-          )}
+          {/* Auto-create options */}
+          <div>
+            <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Auto-create meeting link</label>
+            <div className="grid grid-cols-3 gap-2">
+              {[
+                { value: 'none',   label: 'Manual link', sub: 'Paste your own' },
+                { value: 'google', label: '📅 Google Meet', sub: isGoogleConnected ? 'Auto-generate' : 'Not connected' },
+                { value: 'zoom',   label: '🎥 Zoom',        sub: isZoomConnected   ? 'Auto-generate' : 'Not connected' },
+              ].map(opt => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  disabled={(opt.value === 'google' && !isGoogleConnected) || (opt.value === 'zoom' && !isZoomConnected)}
+                  onClick={() => setAutoCreate(opt.value as typeof autoCreate)}
+                  className={cn(
+                    'flex flex-col items-center gap-0.5 px-2 py-2 rounded-lg border text-xs transition-colors',
+                    autoCreate === opt.value
+                      ? 'border-primary bg-primary/10 text-primary'
+                      : 'border-border bg-muted/30 text-muted-foreground hover:border-primary/40',
+                    ((opt.value === 'google' && !isGoogleConnected) || (opt.value === 'zoom' && !isZoomConnected))
+                      && 'opacity-40 cursor-not-allowed',
+                  )}
+                >
+                  <span className="font-medium">{opt.label}</span>
+                  <span className="text-[10px] opacity-70">{opt.sub}</span>
+                </button>
+              ))}
+            </div>
+          </div>
 
-          {/* Manual link — shown when not auto-creating or Google not connected */}
-          {(!isGoogleConnected || !createGoogleEvent) && (
+          {/* Manual link — only shown when "Manual link" option selected */}
+          {autoCreate === 'none' && (
             <div>
-              <label className="text-xs font-medium text-muted-foreground">Meeting Link (Zoom/Meet)</label>
+              <label className="text-xs font-medium text-muted-foreground">Meeting Link</label>
               <input type="url" value={form.meeting_link} onChange={e => setForm(f => ({ ...f, meeting_link: e.target.value }))}
                 placeholder="https://…"
                 className="mt-1 w-full rounded border border-input bg-background px-3 py-2 text-sm" />
