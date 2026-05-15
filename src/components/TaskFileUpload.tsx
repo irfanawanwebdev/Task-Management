@@ -136,12 +136,26 @@ export function TaskFileUpload({ taskId, attachments, onChange, disabled }: Prop
     setUploading(true)
 
     const newAttachments: Attachment[] = []
+    const skipped: string[] = []
 
     for (const file of Array.from(files)) {
-      if (file.size > 10 * 1024 * 1024) {
-        setError(`${file.name} exceeds 10 MB limit.`)
+      if (file.size > 50 * 1024 * 1024) {
+        setError(`${file.name} exceeds 50 MB limit.`)
         continue
       }
+
+      // Deduplicate by name — fetch latest attachments from DB first
+      const { data: freshRow } = await supabase
+        .from('delivery_tasks')
+        .select('attachments')
+        .eq('id', taskId)
+        .single()
+      const currentAttachments: Attachment[] = (freshRow as { attachments?: Attachment[] } | null)?.attachments ?? attachments
+      if (currentAttachments.some(a => a.name === file.name)) {
+        skipped.push(file.name)
+        continue
+      }
+
       const path = `${taskId}/${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`
       const { data, error: uploadErr } = await supabase.storage
         .from('task-attachments')
@@ -165,8 +179,19 @@ export function TaskFileUpload({ taskId, attachments, onChange, disabled }: Prop
       })
     }
 
+    if (skipped.length > 0) {
+      setError(`Already exists: ${skipped.join(', ')}`)
+    }
+
     if (newAttachments.length > 0) {
-      const updated = [...attachments, ...newAttachments]
+      // Re-fetch latest to avoid race between concurrent uploads
+      const { data: latestRow } = await supabase
+        .from('delivery_tasks')
+        .select('attachments')
+        .eq('id', taskId)
+        .single()
+      const base: Attachment[] = (latestRow as { attachments?: Attachment[] } | null)?.attachments ?? attachments
+      const updated = [...base, ...newAttachments]
       const { error: dbErr } = await supabase
         .from('delivery_tasks')
         .update({ attachments: updated } as never)
@@ -218,7 +243,7 @@ export function TaskFileUpload({ taskId, attachments, onChange, disabled }: Prop
             <Upload className="h-5 w-5 text-muted-foreground" />
           )}
           <p className="text-xs text-muted-foreground text-center">
-            {uploading ? 'Uploading…' : 'Click or drag files here · PDF, images, docs · max 10 MB each'}
+            {uploading ? 'Uploading…' : 'Click or drag files here · PDF, images, docs · max 50 MB each'}
           </p>
           <input
             ref={inputRef}

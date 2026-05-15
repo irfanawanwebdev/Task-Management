@@ -715,7 +715,7 @@ export default function AdminPage() {
 
   // Owners always have edit rights; others need can_create_users flag (§7.2)
   const canEdit       = role === 'owner' || profile?.can_create_users === true
-  const canSeeActivity = role === 'owner' || role === 'project_manager' || role === 'account_manager'
+  const canSeeActivity = !!role  // all authenticated users can see team activity
 
   const activeCount   = members?.filter(m => m.is_active).length ?? 0
   const inactiveCount = members?.filter(m => !m.is_active).length ?? 0

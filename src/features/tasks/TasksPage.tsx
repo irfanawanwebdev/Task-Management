@@ -449,8 +449,55 @@ function TaskDetailDialog({
 
   const commitBlocker = async () => {
     const trimmed = blockerVal.trim()
-    if (trimmed !== (task.blocker_text ?? '')) {
-      await saveField('blocker_text', trimmed || null, task.blocker_text ?? null, trimmed || null, false)
+    const changed = trimmed !== (task.blocker_text ?? '')
+
+    if (changed) {
+      if (trimmed) {
+        // Save blocker text + flip status to Blocked in one update
+        await supabase
+          .from('delivery_tasks')
+          .update({ blocker_text: trimmed, status: 'Blocked' } as never)
+          .eq('id', task.id)
+
+        // Upsert into blockers table so it shows in Blockers tab
+        const { data: existing } = await supabase
+          .from('blockers')
+          .select('id')
+          .eq('task_id', task.id)
+          .in('status', ['Open', 'In Progress'])
+          .maybeSingle()
+
+        if (!existing) {
+          await supabase.from('blockers').insert({
+            client_id:    task.client_id,
+            task_id:      task.id,
+            workstream:   task.workstream,
+            description:  trimmed,
+            severity:     'Med',
+            status:       'Open',
+            created_date: new Date().toISOString().slice(0, 10),
+          } as never)
+        } else {
+          await supabase.from('blockers').update({ description: trimmed } as never).eq('id', existing.id)
+        }
+      } else {
+        // Blocker cleared — flip status back to In Progress and resolve blocker record
+        await supabase
+          .from('delivery_tasks')
+          .update({ blocker_text: null, status: 'In Progress' } as never)
+          .eq('id', task.id)
+
+        await supabase
+          .from('blockers')
+          .update({ status: 'Resolved' } as never)
+          .eq('task_id', task.id)
+          .in('status', ['Open', 'In Progress'])
+      }
+
+      queryClient.invalidateQueries({ queryKey: ['tasks'] })
+      queryClient.invalidateQueries({ queryKey: ['client-detail'] })
+      queryClient.invalidateQueries({ queryKey: ['blockers-page'] })
+      queryClient.invalidateQueries({ queryKey: ['all-blockers'] })
     }
     setEditingBlocker(false)
   }
@@ -1542,19 +1589,17 @@ export default function TasksPage() {
           ))}
         </select>
 
-        {/* Employee Filter — PM/Owner only */}
-        {isPMOrOwner && (
-          <select
-            value={employeeFilter}
-            onChange={e => setEmployeeFilter(e.target.value)}
-            className="px-3 py-1.5 bg-background border border-input rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-          >
-            <option value="all">All Employees</option>
-            {profilesList.map(p => (
-              <option key={p.user_id} value={p.user_id}>{p.full_name}</option>
-            ))}
-          </select>
-        )}
+        {/* Employee Filter — visible to all users */}
+        <select
+          value={employeeFilter}
+          onChange={e => setEmployeeFilter(e.target.value)}
+          className="px-3 py-1.5 bg-background border border-input rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+        >
+          <option value="all">All Team Members</option>
+          {profilesList.map(p => (
+            <option key={p.user_id} value={p.user_id}>{p.full_name}</option>
+          ))}
+        </select>
       </div>
 
       {/* QA Gate Banner */}
