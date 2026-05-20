@@ -295,15 +295,26 @@ function LandingPageRow({ page, onEdit, onDelete }: {
   )
 }
 
-function LandingPageForm({ initial, onSave, onCancel }: {
+function LandingPageForm({ initial, onSave, onCancel, saveError, saving }: {
   initial: Omit<LandingPage, 'id'>
   onSave: (data: Omit<LandingPage, 'id'>) => void
   onCancel: () => void
+  saveError?: string | null
+  saving?: boolean
 }) {
   const [form, setForm] = useState(initial)
   const [showPw, setShowPw] = useState(false)
+  const [touched, setTouched] = useState(false)
   const f = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
     setForm(prev => ({ ...prev, [k]: e.target.value || null }))
+
+  function handleSave() {
+    setTouched(true)
+    if (!form.name.trim()) return
+    onSave(form)
+  }
+
+  const nameInvalid = touched && !form.name.trim()
 
   return (
     <div className="border border-primary/40 rounded-lg p-3 space-y-3 bg-primary/5">
@@ -312,7 +323,11 @@ function LandingPageForm({ initial, onSave, onCancel }: {
           <label className="text-xs font-medium text-muted-foreground">Page Name <span className="text-destructive">*</span></label>
           <input value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))}
             placeholder="e.g. Homepage"
-            className="w-full mt-1 px-2 py-1.5 bg-background border border-input rounded text-sm focus:outline-none focus:ring-1 focus:ring-primary" />
+            className={cn(
+              'w-full mt-1 px-2 py-1.5 bg-background border rounded text-sm focus:outline-none focus:ring-1 focus:ring-primary',
+              nameInvalid ? 'border-destructive' : 'border-input',
+            )} />
+          {nameInvalid && <p className="text-xs text-destructive mt-0.5">Page name is required</p>}
         </div>
         <div>
           <label className="text-xs font-medium text-muted-foreground">URL</label>
@@ -344,13 +359,17 @@ function LandingPageForm({ initial, onSave, onCancel }: {
         <textarea value={form.notes ?? ''} onChange={f('notes')} rows={2}
           className="w-full mt-1 px-2 py-1.5 bg-background border border-input rounded text-sm resize-none focus:outline-none focus:ring-1 focus:ring-primary" />
       </div>
+      {saveError && (
+        <p className="text-xs text-destructive bg-destructive/10 px-2 py-1.5 rounded">{saveError}</p>
+      )}
       <div className="flex gap-2 justify-end">
-        <button onClick={onCancel}
-          className="px-3 py-1.5 text-xs rounded border border-border text-muted-foreground hover:bg-accent transition-colors">
+        <button onClick={onCancel} disabled={saving}
+          className="px-3 py-1.5 text-xs rounded border border-border text-muted-foreground hover:bg-accent transition-colors disabled:opacity-50">
           Cancel
         </button>
-        <button onClick={() => onSave(form)} disabled={!form.name.trim()}
-          className="px-3 py-1.5 text-xs rounded bg-primary text-primary-foreground font-medium hover:bg-primary/90 disabled:opacity-50 transition-colors">
+        <button onClick={handleSave} disabled={saving}
+          className="px-3 py-1.5 text-xs rounded bg-primary text-primary-foreground font-medium hover:bg-primary/90 disabled:opacity-50 transition-colors flex items-center gap-1">
+          {saving && <Loader2 className="h-3 w-3 animate-spin" />}
           Save
         </button>
       </div>
@@ -368,24 +387,30 @@ function CredentialsTab({ client }: { client: Client }) {
 
   const saveLandingPages = useMutation({
     mutationFn: async (updated: LandingPage[]) => {
-      const { error } = await supabase.from('clients')
-        .update({ landing_pages: updated } as never)
-        .eq('id', client.id)
-      if (error) throw error
+      const { error } = await (supabase.rpc as unknown as (fn: string, args: Record<string, unknown>) => Promise<{ error: { message: string } | null }>)(
+        'update_client_landing_pages',
+        { _client_id: client.id, _pages: updated },
+      )
+      if (error) throw new Error(error.message)
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['client-detail', client.id] }),
   })
 
+  const lpError = saveLandingPages.isError ? (saveLandingPages.error as Error).message : null
+
   function handleAdd(data: Omit<LandingPage, 'id'>) {
     const newPage: LandingPage = { ...data, id: crypto.randomUUID() }
-    saveLandingPages.mutate([...pages, newPage])
-    setAddingLP(false)
+    saveLandingPages.mutate([...pages, newPage], {
+      onSuccess: () => setAddingLP(false),
+    })
   }
 
   function handleEdit(data: Omit<LandingPage, 'id'>) {
     if (!editingLP) return
-    saveLandingPages.mutate(pages.map(p => p.id === editingLP.id ? { ...data, id: p.id } : p))
-    setEditingLP(null)
+    const target = editingLP
+    saveLandingPages.mutate(pages.map(p => p.id === target.id ? { ...data, id: p.id } : p), {
+      onSuccess: () => setEditingLP(null),
+    })
   }
 
   function handleDelete(id: string) {
@@ -428,7 +453,13 @@ function CredentialsTab({ client }: { client: Client }) {
         </div>
 
         {addingLP && (
-          <LandingPageForm initial={{ ...BLANK_LP }} onSave={handleAdd} onCancel={() => setAddingLP(false)} />
+          <LandingPageForm
+            initial={{ ...BLANK_LP }}
+            onSave={handleAdd}
+            onCancel={() => { setAddingLP(false); saveLandingPages.reset() }}
+            saveError={lpError}
+            saving={saveLandingPages.isPending}
+          />
         )}
 
         {pages.length === 0 && !addingLP && (
@@ -451,7 +482,9 @@ function CredentialsTab({ client }: { client: Client }) {
               <LandingPageForm
                 initial={{ name: page.name, url: page.url, username: page.username, password: page.password, notes: page.notes }}
                 onSave={handleEdit}
-                onCancel={() => setEditingLP(null)}
+                onCancel={() => { setEditingLP(null); saveLandingPages.reset() }}
+                saveError={lpError}
+                saving={saveLandingPages.isPending}
               />
             ) : (
               <LandingPageRow
@@ -463,9 +496,6 @@ function CredentialsTab({ client }: { client: Client }) {
           </div>
         ))}
 
-        {saveLandingPages.isError && (
-          <p className="text-xs text-destructive">{(saveLandingPages.error as Error).message}</p>
-        )}
       </div>
 
       {links.length === 0 && pages.length === 0 && !addingLP && (

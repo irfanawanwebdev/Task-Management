@@ -9,7 +9,7 @@ import { useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Loader2, AlertTriangle, CheckCircle2, X, ExternalLink, Plus, Copy, Trash2,
-  Link2, FileText, Save, BarChart2, Pencil, Check, History, Search, Paperclip,
+  Link2, FileText, Save, BarChart2, Pencil, Check, History, Search, Paperclip, RotateCcw,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import type { Client, DeliveryTask } from '@/lib/types'
@@ -284,6 +284,18 @@ type EditHistoryRow = {
   changed_at: string
   changed_by: string | null
   changer_name?: string
+}
+
+function calcNextDueDate(dueDate: string, recurrence: 'weekly' | 'biweekly' | 'monthly'): string {
+  const d = new Date(dueDate + 'T12:00:00')
+  if (recurrence === 'weekly')        d.setDate(d.getDate() + 7)
+  else if (recurrence === 'biweekly') d.setDate(d.getDate() + 14)
+  else {
+    const day = d.getDate()
+    d.setMonth(d.getMonth() + 1)
+    if (d.getDate() !== day) d.setDate(0)
+  }
+  return d.toISOString().split('T')[0]
 }
 
 function TaskDetailDialog({
@@ -596,6 +608,61 @@ function TaskDetailDialog({
           } as never)
           queryClient.invalidateQueries({ queryKey: ['blockers-page'] })
           queryClient.invalidateQueries({ queryKey: ['all-blockers'] })
+        }
+      }
+
+      // ── Recurrence chain: when a recurring task is marked Done,
+      //    create the next occurrence if no future pending task exists in the group.
+      if (
+        status === 'Done' &&
+        task.recurrence && task.recurrence !== 'none' &&
+        task.recurrence_group_id
+      ) {
+        const { data: future } = await supabase
+          .from('delivery_tasks')
+          .select('id')
+          .eq('recurrence_group_id' as never, task.recurrence_group_id)
+          .neq('id', task.id)
+          .neq('status' as never, 'Done')
+          .limit(1)
+
+        if (!future || future.length === 0) {
+          const nextDue = task.due_date
+            ? calcNextDueDate(task.due_date, task.recurrence as 'weekly' | 'biweekly' | 'monthly')
+            : todayDateEST()
+
+          const { data: newTask } = await supabase
+            .from('delivery_tasks')
+            .insert({
+              task_name:              task.task_name,
+              client_id:              task.client_id,
+              due_date:               nextDue,
+              impact_level:           task.impact_level,
+              workstream:             task.workstream,
+              description:            task.description ?? null,
+              blocker_text:           null,
+              status:                 'Not Started',
+              step:                   task.step,
+              step_name:              task.step_name,
+              timeline:               task.timeline,
+              ar_output_logged:       false,
+              recurrence:             task.recurrence,
+              recurrence_group_id:    task.recurrence_group_id,
+              recurrence_anchor_date: task.recurrence_anchor_date ?? task.due_date,
+            } as never)
+            .select('id')
+            .single()
+
+          if (newTask?.id) {
+            const assignments = (task.task_assignments ?? [])
+              .filter(a => a.user_id)
+              .map(a => ({ task_id: newTask.id, user_id: a.user_id, role_type: a.role_type }))
+            if (assignments.length > 0) {
+              await supabase.from('task_assignments').insert(assignments as never)
+            }
+            queryClient.invalidateQueries({ queryKey: ['tasks'] })
+            queryClient.invalidateQueries({ queryKey: ['client-detail'] })
+          }
         }
       }
     },
@@ -1269,7 +1336,15 @@ function TaskRow({ task, profilesList, onClick }: { task: DeliveryTask; profiles
       <td className="px-4 py-3 text-xs text-muted-foreground">{task.timeline}</td>
       <td className="px-4 py-3 text-xs">{task.workstream}</td>
       <td className="px-4 py-3">
-        <p className="text-sm font-medium line-clamp-1">{task.task_name}</p>
+        <div className="flex items-center gap-1.5">
+          <p className="text-sm font-medium line-clamp-1">{task.task_name}</p>
+          {task.recurrence && task.recurrence !== 'none' && (
+            <span title={`Repeats ${task.recurrence}`} className="shrink-0 inline-flex items-center gap-0.5 px-1 py-0.5 rounded text-[10px] font-medium bg-violet-500/10 text-violet-500">
+              <RotateCcw className="h-2.5 w-2.5" />
+              {task.recurrence === 'biweekly' ? '2wk' : task.recurrence === 'weekly' ? 'wkly' : 'mo'}
+            </span>
+          )}
+        </div>
       </td>
       <td className="px-4 py-3 text-xs text-muted-foreground max-w-32 truncate">{allAssignees || '—'}</td>
       <td className="px-4 py-3">
