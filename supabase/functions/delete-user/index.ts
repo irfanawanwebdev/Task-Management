@@ -1,5 +1,5 @@
 /**
- * delete-user — Supabase Edge Function
+ * delete-user - Supabase Edge Function
  *
  * Permanently deletes a team member from Supabase Auth (profiles/roles cascade via FK).
  * Caller must be authenticated and have owner role, project_manager role, or operations department.
