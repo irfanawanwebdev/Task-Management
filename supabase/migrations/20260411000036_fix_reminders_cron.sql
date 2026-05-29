@@ -20,7 +20,7 @@ WHERE EXISTS (
   SELECT 1 FROM cron.job WHERE jobname = 'daily-reminders'
 );
 
--- Re-schedule at 14:00 UTC (= 9 AM EST / 10 AM EDT) — no auth header needed
+-- Re-schedule at 14:00 UTC (= 9 AM EST / 10 AM EDT); no auth header needed
 -- once JWT verification is disabled on the function
 SELECT cron.schedule(
   'daily-reminders',

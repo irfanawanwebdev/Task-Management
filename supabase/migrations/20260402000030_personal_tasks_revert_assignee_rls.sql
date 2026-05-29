@@ -1,7 +1,7 @@
 -- Migration 30: revert personal_tasks RLS to owner-only
 --
 -- Migration 29 split the policy to let assignees see tasks assigned to them.
--- This is incorrect — My Tasks is a private list for the task creator only.
+-- This is incorrect. My Tasks is a private list for the task creator only.
 -- The assignees field is a personal organizational label (Alice noting who to remind),
 -- not a task-sharing mechanism. Assignees never see tasks tagged with their name.
 

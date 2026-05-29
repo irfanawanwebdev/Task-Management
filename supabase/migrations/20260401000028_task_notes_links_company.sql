@@ -1,12 +1,12 @@
 -- Migration 28: extend personal_tasks and delivery_tasks
 --
 -- personal_tasks:
---   company   text  — optional company/context label (private to task owner)
---   assignees jsonb — array of {id, name} objects (up to 3, private, no FK enforcement)
+--   company   text  - optional company/context label (private to task owner)
+--   assignees jsonb - array of {id, name} objects (up to 3, private, no FK enforcement)
 --
 -- delivery_tasks:
---   notes   text   — freeform notes / output documentation
---   links   jsonb  — array of {label, url} objects
+--   notes   text   - freeform notes / output documentation
+--   links   jsonb  - array of {label, url} objects
 
 ALTER TABLE personal_tasks
   ADD COLUMN IF NOT EXISTS company   text,

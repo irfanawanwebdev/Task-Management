@@ -85,7 +85,7 @@ CREATE POLICY "reports_all_pm_owner"
   );
 
 -- ─── sops ────────────────────────────────────────────────────────────────────
--- Standard Operating Procedures — internal reference documents for the team.
+-- Standard Operating Procedures: internal reference documents for the team.
 
 CREATE TABLE IF NOT EXISTS sops (
   id           UUID         PRIMARY KEY DEFAULT gen_random_uuid(),

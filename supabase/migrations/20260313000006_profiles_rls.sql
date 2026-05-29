@@ -39,4 +39,4 @@ CREATE POLICY "profiles_insert_own"
   TO authenticated
   WITH CHECK (auth.uid() = user_id);
 
--- No DELETE policy — profiles are deactivated, never deleted, to preserve audit trail
+-- No DELETE policy: profiles are deactivated, never deleted, to preserve audit trail

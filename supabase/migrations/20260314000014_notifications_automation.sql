@@ -66,7 +66,7 @@ CREATE POLICY "notifications_insert_service"
   WITH CHECK (true);
 
 -- ─── Helper: get_pm_owner_user_ids() ─────────────────────────────────────────
--- Returns all user_ids that have PM or owner role — used by send-reminders
+-- Returns all user_ids that have PM or owner role, used by send-reminders
 -- to fan-out notifications to all relevant staff.
 
 CREATE OR REPLACE FUNCTION get_pm_owner_user_ids()
@@ -86,7 +86,7 @@ $$;
 -- Then run this migration. The cron user requires the pg_cron extension to
 -- be in the search_path for net.http_post to resolve.
 
--- Daily 08:00 EST (13:00 UTC) — send-reminders
+-- Daily 08:00 EST (13:00 UTC): send-reminders
 SELECT cron.schedule(
   'daily-reminders',
   '0 13 * * *',
@@ -102,7 +102,7 @@ SELECT cron.schedule(
   $$
 );
 
--- 1st of each month 07:00 EST (12:00 UTC) — generate-meetings for new month
+-- 1st of each month 07:00 EST (12:00 UTC): generate-meetings for new month
 SELECT cron.schedule(
   'monthly-generate-meetings',
   '0 12 1 * *',
@@ -118,7 +118,7 @@ SELECT cron.schedule(
   $$
 );
 
--- Every Friday 09:00 EST (14:00 UTC) — compile weekly reports for each active client
+-- Every Friday 09:00 EST (14:00 UTC): compile weekly reports for each active client
 SELECT cron.schedule(
   'weekly-compile-reports',
   '0 14 * * 5',

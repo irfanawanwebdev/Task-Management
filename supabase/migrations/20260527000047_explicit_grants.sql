@@ -2,7 +2,7 @@
 -- Required before October 30, 2026 when Supabase stops auto-exposing public
 -- schema tables to PostgREST/supabase-js.
 --
--- anon  role = unauthenticated visitors (login page only — read-only where needed)
+-- anon  role = unauthenticated visitors (login page only, read-only where needed)
 -- authenticated role = any logged-in user (RLS policies still control row-level access)
 
 -- ── Core user tables ────────────────────────────────────────────────────────
@@ -46,5 +46,5 @@ GRANT SELECT, INSERT, UPDATE, DELETE  ON TABLE public.personal_tasks     TO auth
 GRANT SELECT, INSERT, UPDATE, DELETE  ON TABLE public.user_sessions      TO authenticated;
 
 -- Note: RLS policies on every table above remain fully in force.
--- These GRANTs only allow the Data API to reach the table at all —
+-- These GRANTs only allow the Data API to reach the table at all;
 -- what each user can actually read/write is still controlled by RLS.

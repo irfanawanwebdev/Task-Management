@@ -77,7 +77,7 @@ $$;
 --
 --   Delivery   (0–30): task incompletion + overdue + blocked penalties
 --   Sentiment  (0–25): latest weekly_review sentiment + adjustment_score
---   Performance (0–25): placeholder — no external metrics yet, defaults to 0
+--   Performance (0-25): placeholder, no external metrics yet, defaults to 0
 --   Visibility  (0–20): meeting compliance + report delivery rate
 --
 --   Health thresholds:  0–25 = Green | 26–45 = Yellow | 46–100 = Red

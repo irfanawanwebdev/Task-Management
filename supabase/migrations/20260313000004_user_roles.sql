@@ -1,5 +1,5 @@
 -- Migration 4: user_roles table
--- Junction table — a user can hold multiple roles (e.g. owner + project_manager)
+-- Junction table: a user can hold multiple roles (e.g. owner + project_manager)
 
 CREATE TABLE IF NOT EXISTS user_roles (
   id       UUID     PRIMARY KEY DEFAULT gen_random_uuid(),

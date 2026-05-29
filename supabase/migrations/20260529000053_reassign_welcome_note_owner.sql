@@ -12,7 +12,7 @@ BEGIN
   LIMIT 1;
 
   IF _irfan_id IS NULL THEN
-    RAISE NOTICE 'No profile matching Irfan found — skipping reassignment.';
+    RAISE NOTICE 'No profile matching Irfan found, skipping reassignment.';
     RETURN;
   END IF;
 

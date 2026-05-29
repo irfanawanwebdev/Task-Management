@@ -5,10 +5,10 @@
 -- Fix: drop and recreate note_shares with a denormalised note_owner column so
 -- policies are self-contained (no join back to notes required).
 
--- Drop the notes_select policy first — it references note_shares, blocking the DROP TABLE
+-- Drop the notes_select policy first: it references note_shares, blocking the DROP TABLE
 DROP POLICY IF EXISTS "notes_select" ON public.notes;
 
--- Drop old table (no real data yet — notes feature was broken)
+-- Drop old table (no real data yet; notes feature was broken)
 DROP TABLE IF EXISTS public.note_shares;
 
 CREATE TABLE public.note_shares (
@@ -24,7 +24,7 @@ CREATE INDEX IF NOT EXISTS idx_note_shares_owner  ON public.note_shares(note_own
 
 ALTER TABLE public.note_shares ENABLE ROW LEVEL SECURITY;
 
--- Policies: only check columns on note_shares itself — never JOIN back to notes.
+-- Policies: only check columns on note_shares itself, never JOIN back to notes.
 DROP POLICY IF EXISTS "note_shares_select" ON public.note_shares;
 CREATE POLICY "note_shares_select" ON public.note_shares
   FOR SELECT TO authenticated

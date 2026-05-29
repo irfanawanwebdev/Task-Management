@@ -1,5 +1,5 @@
 -- Migration 32: Allow all authenticated users to insert delivery tasks and task assignments.
--- Previously only PM/Owner could INSERT. This was too restrictive — specialists need
+-- Previously only PM/Owner could INSERT. This was too restrictive; specialists need
 -- to be able to create tasks for their own work.
 
 -- delivery_tasks: INSERT for all authenticated users

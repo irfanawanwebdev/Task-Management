@@ -42,7 +42,7 @@ CREATE POLICY "clients_all_pm_owner"
     has_role(auth.uid(), 'owner') OR has_role(auth.uid(), 'project_manager')
   );
 
--- Specialists + viewers: read-only (all clients — workstream filtering done in app layer)
+-- Specialists + viewers: read-only (all clients; workstream filtering done in app layer)
 CREATE POLICY "clients_select_specialists"
   ON clients FOR SELECT
   TO authenticated
