@@ -16,6 +16,7 @@ export type NotificationType =
   | 'report_compiled'
   | 'personal_task_due'
   | 'task_deadline_approaching'
+  | 'note_edit_request'
 
 export interface Notification {
   id:         string

@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Plus, Search, Pin, Globe, Lock, Share2, Copy, Trash2,
-  X, Tag, Loader2, FileText, Check, Users,
+  X, Tag, Loader2, FileText, Check, Users, PenLine, Clock, CheckCircle2, XCircle,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/features/auth/AuthContext'
@@ -22,7 +22,17 @@ interface Note {
   pinned: boolean
   created_at: string
   updated_at: string
-  note_shares?: { shared_with: string }[]
+  note_shares?: { shared_with: string; note_owner: string; can_edit: boolean }[]
+}
+
+interface NoteEditRequest {
+  id: string
+  note_id: string
+  requester_id: string
+  requester_name: string
+  note_owner: string
+  status: 'pending' | 'approved' | 'denied'
+  created_at: string
 }
 
 interface TeamMember {
@@ -268,6 +278,7 @@ export default function NotesPage() {
   const [saveStatus,     setSaveStatus]     = useState<SaveStatus>('saved')
   const [showShare,      setShowShare]      = useState(false)
   const [confirmDelete,  setConfirmDelete]  = useState(false)
+  const [showRequests,   setShowRequests]   = useState(false)
 
   // ── Fetch notes ──────────────────────────────────────────────────────────────
   const { data: notes = [], isLoading, error: notesError } = useQuery<Note[]>({
@@ -275,7 +286,7 @@ export default function NotesPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('notes')
-        .select('*, note_shares(shared_with)')
+        .select('*, note_shares(shared_with, note_owner, can_edit)')
         .order('pinned', { ascending: false })
         .order('updated_at', { ascending: false })
       if (error) throw error
@@ -314,7 +325,7 @@ export default function NotesPage() {
       const { data, error } = await supabase
         .from('notes')
         .insert({ created_by: currentUserId, title: '', content: '', tags: [], visibility: 'personal', pinned: false } as never)
-        .select('*, note_shares(shared_with)')
+        .select('*, note_shares(shared_with, note_owner, can_edit)')
         .single()
       if (error) throw error
       return data as unknown as Note
@@ -353,7 +364,7 @@ export default function NotesPage() {
           visibility: 'personal',
           pinned: false,
         } as never)
-        .select('*, note_shares(shared_with)')
+        .select('*, note_shares(shared_with, note_owner, can_edit)')
         .single()
       if (error) throw error
       return data as unknown as Note
@@ -408,8 +419,116 @@ export default function NotesPage() {
 
   // ── Computed ──────────────────────────────────────────────────────────────────
 
-  const selectedNote = notes.find(n => n.id === selectedId) ?? null
-  const isOwner      = selectedNote?.created_by === currentUserId
+  const selectedNote  = notes.find(n => n.id === selectedId) ?? null
+  const isOwner       = selectedNote?.created_by === currentUserId
+  const myShare       = selectedNote?.note_shares?.find(s => s.shared_with === currentUserId)
+  const canEditNote   = isOwner || (myShare?.can_edit ?? false)
+
+  // Pending edit requests (owner only — who wants to edit this note)
+  const { data: pendingRequests = [] } = useQuery<NoteEditRequest[]>({
+    queryKey: ['note-edit-requests', selectedId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('note_edit_requests')
+        .select('*')
+        .eq('note_id', selectedId!)
+        .eq('status', 'pending')
+        .order('created_at')
+      if (error) throw error
+      return (data ?? []) as unknown as NoteEditRequest[]
+    },
+    enabled: !!selectedId && isOwner,
+  })
+
+  // Current user's own request for this note (non-owners)
+  const { data: myRequest } = useQuery<NoteEditRequest | null>({
+    queryKey: ['my-edit-request', selectedId, currentUserId],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('note_edit_requests')
+        .select('id, status, note_id, requester_id, requester_name, note_owner, created_at')
+        .eq('note_id', selectedId!)
+        .eq('requester_id', currentUserId)
+        .maybeSingle()
+      return (data ?? null) as unknown as NoteEditRequest | null
+    },
+    enabled: !!selectedId && !isOwner,
+  })
+
+  const requestEdit = useMutation({
+    mutationFn: async () => {
+      if (!selectedNote || !profile) throw new Error('Missing data')
+      const { error: reqErr } = await supabase
+        .from('note_edit_requests')
+        .insert({
+          note_id:        selectedNote.id,
+          requester_id:   currentUserId,
+          requester_name: profile.full_name ?? 'Team member',
+          note_owner:     selectedNote.created_by,
+          status:         'pending',
+        } as never)
+      if (reqErr) throw reqErr
+      const { error: notifErr } = await supabase
+        .from('notifications')
+        .insert({
+          user_id: selectedNote.created_by,
+          type:    'note_edit_request',
+          title:   `${profile.full_name} wants to edit your note`,
+          message: `"${selectedNote.title || 'Untitled note'}" — approve or deny in Notes`,
+          link:    '/notes',
+        } as never)
+      if (notifErr) throw notifErr
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['my-edit-request', selectedId, currentUserId] })
+      toast.success('Edit request sent to the note owner.')
+    },
+    onError: (e: Error) => toast.error(`Request failed: ${e.message}`),
+  })
+
+  const approveRequest = useMutation({
+    mutationFn: async (req: NoteEditRequest) => {
+      const { error: updErr } = await supabase
+        .from('note_edit_requests')
+        .update({ status: 'approved', updated_at: new Date().toISOString() } as never)
+        .eq('id', req.id)
+      if (updErr) throw updErr
+      // Upsert note_shares with can_edit = true so the requester can edit
+      const { error: shareErr } = await supabase
+        .from('note_shares')
+        .upsert({ note_id: req.note_id, shared_with: req.requester_id, note_owner: req.note_owner, can_edit: true } as never)
+      if (shareErr) throw shareErr
+      // Notify requester
+      await supabase.from('notifications').insert({
+        user_id: req.requester_id,
+        type:    'note_edit_request',
+        title:   'Edit access granted',
+        message: `You can now edit "${selectedNote?.title || 'Untitled note'}"`,
+        link:    '/notes',
+      } as never)
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['note-edit-requests', selectedId] })
+      queryClient.invalidateQueries({ queryKey: ['notes'] })
+      toast.success('Edit access granted.')
+    },
+    onError: (e: Error) => toast.error(`Approve failed: ${e.message}`),
+  })
+
+  const denyRequest = useMutation({
+    mutationFn: async (reqId: string) => {
+      const { error } = await supabase
+        .from('note_edit_requests')
+        .update({ status: 'denied', updated_at: new Date().toISOString() } as never)
+        .eq('id', reqId)
+      if (error) throw error
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['note-edit-requests', selectedId] })
+      toast.info('Request denied.')
+    },
+    onError: (e: Error) => toast.error(`Deny failed: ${e.message}`),
+  })
 
   const allTags = Array.from(new Set(notes.flatMap(n => n.tags))).sort()
 
@@ -451,7 +570,13 @@ export default function NotesPage() {
   }
 
   const toggleVisibility = () => {
-    setLocalVisibility(v => v === 'personal' ? 'global' : 'personal')
+    if (!selectedId) return
+    const next = localVisibility === 'personal' ? 'global' : 'personal'
+    setLocalVisibility(next)
+    skipNextSaveRef.current = true
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
+    dirtyRef.current = false
+    saveNote.mutate({ ...draftRef.current, id: selectedId, visibility: next })
   }
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -635,6 +760,43 @@ export default function NotesPage() {
 
               {/* Right: actions */}
               <div className="flex items-center gap-1">
+                {/* Request Edit (non-owner without edit access) */}
+                {!isOwner && !canEditNote && (
+                  myRequest?.status === 'pending' ? (
+                    <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-amber-500/10 border border-amber-500/30 text-amber-400">
+                      <Clock className="h-3 w-3" /> Request pending…
+                    </span>
+                  ) : myRequest?.status === 'approved' ? null : (
+                    <button
+                      onClick={() => requestEdit.mutate()}
+                      disabled={requestEdit.isPending}
+                      title="Ask the owner for edit access"
+                      className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-violet-500/10 border border-violet-500/30 text-violet-400 hover:bg-violet-500/15 disabled:opacity-50 transition-colors"
+                    >
+                      {requestEdit.isPending
+                        ? <Loader2 className="h-3 w-3 animate-spin" />
+                        : <PenLine className="h-3 w-3" />}
+                      Request Edit
+                    </button>
+                  )
+                )}
+
+                {/* Pending requests badge (owner) */}
+                {isOwner && pendingRequests.length > 0 && (
+                  <button
+                    onClick={() => setShowRequests(r => !r)}
+                    className={cn(
+                      'flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium border transition-colors',
+                      showRequests
+                        ? 'bg-violet-500/15 border-violet-500/40 text-violet-400'
+                        : 'bg-violet-500/10 border-violet-500/30 text-violet-400 hover:bg-violet-500/15'
+                    )}
+                  >
+                    <PenLine className="h-3 w-3" />
+                    {pendingRequests.length} edit {pendingRequests.length === 1 ? 'request' : 'requests'}
+                  </button>
+                )}
+
                 {/* Save status */}
                 <span className={cn(
                   'text-xs mr-1 min-w-[52px] text-right',
@@ -721,6 +883,48 @@ export default function NotesPage() {
               </div>
             </div>
 
+            {/* Pending requests panel (owner only, collapsible) */}
+            {isOwner && showRequests && pendingRequests.length > 0 && (
+              <div className="border-b border-border bg-violet-500/5 px-6 py-3 space-y-2 shrink-0">
+                <p className="text-xs font-semibold text-violet-400 mb-1">Edit Access Requests</p>
+                {pendingRequests.map(req => (
+                  <div key={req.id} className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div className="h-6 w-6 rounded-full bg-violet-500/20 flex items-center justify-center shrink-0">
+                        <span className="text-[10px] font-bold text-violet-400">
+                          {req.requester_name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
+                        </span>
+                      </div>
+                      <span className="text-xs font-medium truncate">{req.requester_name}</span>
+                      <span className="text-[10px] text-muted-foreground shrink-0">{timeAgo(req.created_at)}</span>
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button
+                        onClick={() => approveRequest.mutate(req)}
+                        disabled={approveRequest.isPending}
+                        className="flex items-center gap-1 px-2 py-0.5 bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs rounded hover:bg-emerald-500/20 disabled:opacity-50 transition-colors"
+                      >
+                        {approveRequest.isPending
+                          ? <Loader2 className="h-3 w-3 animate-spin" />
+                          : <CheckCircle2 className="h-3 w-3" />}
+                        Approve
+                      </button>
+                      <button
+                        onClick={() => denyRequest.mutate(req.id)}
+                        disabled={denyRequest.isPending}
+                        className="flex items-center gap-1 px-2 py-0.5 bg-destructive/10 border border-destructive/30 text-destructive text-xs rounded hover:bg-destructive/20 disabled:opacity-50 transition-colors"
+                      >
+                        {denyRequest.isPending
+                          ? <Loader2 className="h-3 w-3 animate-spin" />
+                          : <XCircle className="h-3 w-3" />}
+                        Deny
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
             {/* Note body */}
             <div className="flex-1 overflow-y-auto px-8 py-5 space-y-3">
               {/* Title */}
@@ -728,7 +932,7 @@ export default function NotesPage() {
                 value={localTitle}
                 onChange={e => setLocalTitle(e.target.value)}
                 placeholder="Note title…"
-                readOnly={!isOwner}
+                readOnly={!canEditNote}
                 className="w-full text-2xl font-bold bg-transparent border-none outline-none placeholder:text-muted-foreground/30 read-only:cursor-default"
               />
 
@@ -741,7 +945,7 @@ export default function NotesPage() {
                     className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20 text-xs font-medium"
                   >
                     {tag}
-                    {isOwner && (
+                    {canEditNote && (
                       <button
                         onClick={() => setLocalTags(prev => prev.filter(t => t !== tag))}
                         className="hover:text-destructive transition-colors ml-0.5"
@@ -751,7 +955,7 @@ export default function NotesPage() {
                     )}
                   </span>
                 ))}
-                {isOwner && (
+                {canEditNote && (
                   <input
                     value={tagInput}
                     onChange={e => setTagInput(e.target.value)}
@@ -771,7 +975,7 @@ export default function NotesPage() {
               <div className="border-t border-border/30" />
 
               {/* Content */}
-              {isOwner ? (
+              {canEditNote ? (
                 <RichTextEditor
                   value={localContent}
                   onChange={setLocalContent}
