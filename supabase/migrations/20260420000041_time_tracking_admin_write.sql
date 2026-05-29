@@ -1,6 +1,7 @@
 -- Migration 41: Allow owner and project_manager to update/delete any user's sessions
 -- Previously they could only SELECT other users' sessions, not correct them
 
+DROP POLICY IF EXISTS "pm_owner_update_all_sessions" ON user_sessions;
 CREATE POLICY "pm_owner_update_all_sessions" ON user_sessions
   FOR UPDATE TO authenticated
   USING (
@@ -18,6 +19,7 @@ CREATE POLICY "pm_owner_update_all_sessions" ON user_sessions
     )
   );
 
+DROP POLICY IF EXISTS "pm_owner_delete_all_sessions" ON user_sessions;
 CREATE POLICY "pm_owner_delete_all_sessions" ON user_sessions
   FOR DELETE TO authenticated
   USING (
@@ -28,6 +30,7 @@ CREATE POLICY "pm_owner_delete_all_sessions" ON user_sessions
     )
   );
 
+DROP POLICY IF EXISTS "pm_owner_insert_sessions" ON user_sessions;
 CREATE POLICY "pm_owner_insert_sessions" ON user_sessions
   FOR INSERT TO authenticated
   WITH CHECK (

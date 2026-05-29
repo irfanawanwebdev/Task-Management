@@ -20,11 +20,13 @@ CREATE INDEX IF NOT EXISTS user_sessions_user_date
 ALTER TABLE user_sessions ENABLE ROW LEVEL SECURITY;
 
 -- Users can insert/update their own sessions; owners/PMs can read all
+DROP POLICY IF EXISTS "users_own_sessions" ON user_sessions;
 CREATE POLICY "users_own_sessions" ON user_sessions
   FOR ALL TO authenticated
   USING (user_id = auth.uid())
   WITH CHECK (user_id = auth.uid());
 
+DROP POLICY IF EXISTS "pm_owner_read_all_sessions" ON user_sessions;
 CREATE POLICY "pm_owner_read_all_sessions" ON user_sessions
   FOR SELECT TO authenticated
   USING (

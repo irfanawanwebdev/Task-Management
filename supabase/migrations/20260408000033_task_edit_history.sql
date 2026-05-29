@@ -18,12 +18,14 @@ CREATE INDEX IF NOT EXISTS task_edit_history_changed_at_idx ON task_edit_history
 ALTER TABLE task_edit_history ENABLE ROW LEVEL SECURITY;
 
 -- Any authenticated user can insert their own history entries
+DROP POLICY IF EXISTS "task_edit_history_insert" ON task_edit_history;
 CREATE POLICY "task_edit_history_insert"
   ON task_edit_history FOR INSERT
   TO authenticated
   WITH CHECK (changed_by = auth.uid());
 
 -- PM/Owner can read all history (audit log)
+DROP POLICY IF EXISTS "task_edit_history_select_pm_owner" ON task_edit_history;
 CREATE POLICY "task_edit_history_select_pm_owner"
   ON task_edit_history FOR SELECT
   TO authenticated

@@ -68,6 +68,9 @@ ALTER TABLE opportunities      ENABLE ROW LEVEL SECURITY;
 ALTER TABLE opportunity_tasks  ENABLE ROW LEVEL SECURITY;
 ALTER TABLE opportunity_notes  ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "opp_all_auth"       ON opportunities;
+DROP POLICY IF EXISTS "opp_tasks_all_auth" ON opportunity_tasks;
+DROP POLICY IF EXISTS "opp_notes_all_auth" ON opportunity_notes;
 CREATE POLICY "opp_all_auth"       ON opportunities      FOR ALL TO authenticated USING (true) WITH CHECK (true);
 CREATE POLICY "opp_tasks_all_auth" ON opportunity_tasks  FOR ALL TO authenticated USING (true) WITH CHECK (true);
 CREATE POLICY "opp_notes_all_auth" ON opportunity_notes  FOR ALL TO authenticated USING (true) WITH CHECK (true);

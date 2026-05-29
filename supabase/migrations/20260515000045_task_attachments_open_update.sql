@@ -6,6 +6,7 @@
 -- edit access for sensitive fields (status, blocker_text, etc.), it is safe to
 -- allow any authenticated user to UPDATE delivery_tasks.
 
+DROP POLICY IF EXISTS "delivery_tasks_update_any_authenticated" ON delivery_tasks;
 CREATE POLICY "delivery_tasks_update_any_authenticated"
   ON delivery_tasks FOR UPDATE
   TO authenticated

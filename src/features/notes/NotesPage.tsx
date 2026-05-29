@@ -8,6 +8,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/features/auth/AuthContext'
 import { RichTextEditor, RichTextDisplay } from '@/components/RichTextEditor'
 import { cn } from '@/lib/utils'
+import { toast } from '@/lib/toast'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -77,15 +78,21 @@ function ShareDialog({ note, onClose }: { note: Note; onClose: () => void }) {
     mutationFn: async () => {
       await supabase.from('note_shares').delete().eq('note_id', note.id)
       if (selected.size > 0) {
-        const rows = [...selected].map(uid => ({ note_id: note.id, shared_with: uid }))
+        const rows = [...selected].map(uid => ({
+          note_id: note.id,
+          shared_with: uid,
+          note_owner: note.created_by,
+        }))
         const { error } = await supabase.from('note_shares').insert(rows as never)
         if (error) throw error
       }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['notes'] })
+      toast.success('Sharing updated.')
       onClose()
     },
+    onError: (e: Error) => toast.error(`Share failed: ${e.message}`),
   })
 
   const others = members.filter(m => m.user_id !== profile?.user_id)
@@ -263,7 +270,7 @@ export default function NotesPage() {
   const [confirmDelete,  setConfirmDelete]  = useState(false)
 
   // ── Fetch notes ──────────────────────────────────────────────────────────────
-  const { data: notes = [], isLoading } = useQuery<Note[]>({
+  const { data: notes = [], isLoading, error: notesError } = useQuery<Note[]>({
     queryKey: ['notes'],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -275,6 +282,11 @@ export default function NotesPage() {
       return (data ?? []) as unknown as Note[]
     },
   })
+
+  // Surface query errors as toasts (fires once per error change)
+  useEffect(() => {
+    if (notesError) toast.error(`Failed to load notes: ${(notesError as Error).message}`)
+  }, [notesError])
 
   // ── Mutations ────────────────────────────────────────────────────────────────
 
@@ -290,10 +302,15 @@ export default function NotesPage() {
       queryClient.invalidateQueries({ queryKey: ['notes'] })
       setSaveStatus('saved')
     },
+    onError: (e: Error) => {
+      setSaveStatus('unsaved')
+      toast.error(`Save failed: ${e.message}`)
+    },
   })
 
   const createNote = useMutation({
     mutationFn: async () => {
+      if (!currentUserId) throw new Error('Not logged in — please refresh the page.')
       const { data, error } = await supabase
         .from('notes')
         .insert({ created_by: currentUserId, title: '', content: '', tags: [], visibility: 'personal', pinned: false } as never)
@@ -306,6 +323,7 @@ export default function NotesPage() {
       queryClient.invalidateQueries({ queryKey: ['notes'] })
       loadNote(note)
     },
+    onError: (e: Error) => toast.error(`Could not create note: ${e.message}`),
   })
 
   const deleteNote = useMutation({
@@ -319,10 +337,12 @@ export default function NotesPage() {
       setConfirmDelete(false)
       dirtyRef.current = false
     },
+    onError: (e: Error) => toast.error(`Delete failed: ${e.message}`),
   })
 
   const duplicateNote = useMutation({
     mutationFn: async (note: Note) => {
+      if (!currentUserId) throw new Error('Not logged in — please refresh the page.')
       const { data, error } = await supabase
         .from('notes')
         .insert({
@@ -342,6 +362,7 @@ export default function NotesPage() {
       queryClient.invalidateQueries({ queryKey: ['notes'] })
       loadNote(note)
     },
+    onError: (e: Error) => toast.error(`Duplicate failed: ${e.message}`),
   })
 
   // ── Auto-save ─────────────────────────────────────────────────────────────────
