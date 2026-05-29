@@ -185,16 +185,19 @@ function NoteListItem({
   note,
   isSelected,
   currentUserId,
+  ownerName,
   onClick,
 }: {
   note: Note
   isSelected: boolean
   currentUserId: string
+  ownerName: string | null
   onClick: () => void
 }) {
   const preview      = stripHtml(note.content).slice(0, 70) || 'Empty note'
   const isOwn        = note.created_by === currentUserId
   const isSharedWith = !isOwn && note.visibility !== 'global'
+  const showOwner    = !isOwn && ownerName
 
   return (
     <button
@@ -221,18 +224,24 @@ function NoteListItem({
       {/* Preview */}
       <p className="text-xs text-muted-foreground truncate leading-relaxed">{preview}</p>
 
-      {/* Tags + time */}
+      {/* Owner + tags + time */}
       <div className="flex items-center justify-between mt-1.5 gap-1">
-        <div className="flex gap-1 overflow-hidden">
-          {note.tags.slice(0, 2).map(tag => (
-            <span
-              key={tag}
-              className="text-[10px] px-1.5 py-0 rounded-full bg-primary/10 text-primary truncate max-w-[72px]"
-            >
-              {tag}
+        <div className="flex gap-1 overflow-hidden items-center">
+          {showOwner ? (
+            <span className="text-[10px] text-muted-foreground/80 truncate max-w-[100px]">
+              by {ownerName}
             </span>
-          ))}
-          {note.tags.length > 2 && (
+          ) : (
+            note.tags.slice(0, 2).map(tag => (
+              <span
+                key={tag}
+                className="text-[10px] px-1.5 py-0 rounded-full bg-primary/10 text-primary truncate max-w-[72px]"
+              >
+                {tag}
+              </span>
+            ))
+          )}
+          {!showOwner && note.tags.length > 2 && (
             <span className="text-[10px] text-muted-foreground">+{note.tags.length - 2}</span>
           )}
         </div>
@@ -279,6 +288,21 @@ export default function NotesPage() {
   const [showShare,      setShowShare]      = useState(false)
   const [confirmDelete,  setConfirmDelete]  = useState(false)
   const [showRequests,   setShowRequests]   = useState(false)
+
+  // ── Fetch profiles (for owner names) ─────────────────────────────────────────
+  const { data: profileList = [] } = useQuery<TeamMember[]>({
+    queryKey: ['profiles-simple'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('user_id, full_name, department')
+        .eq('is_active', true)
+      if (error) throw error
+      return (data ?? []) as unknown as TeamMember[]
+    },
+    staleTime: 5 * 60_000,
+  })
+  const profileMap = Object.fromEntries(profileList.map(p => [p.user_id, p.full_name]))
 
   // ── Fetch notes ──────────────────────────────────────────────────────────────
   const { data: notes = [], isLoading, error: notesError } = useQuery<Note[]>({
@@ -690,6 +714,7 @@ export default function NotesPage() {
               note={note}
               isSelected={note.id === selectedId}
               currentUserId={currentUserId}
+              ownerName={profileMap[note.created_by] ?? null}
               onClick={() => loadNote(note)}
             />
           ))}
@@ -747,6 +772,13 @@ export default function NotesPage() {
                     {selectedNote?.visibility === 'global'
                       ? <><Globe className="h-3 w-3" /> Global</>
                       : <><Share2 className="h-3 w-3" /> Shared with you</>}
+                  </span>
+                )}
+
+                {/* Owner name (non-owner view) */}
+                {!isOwner && selectedNote && profileMap[selectedNote.created_by] && (
+                  <span className="text-xs text-muted-foreground">
+                    by <span className="font-medium text-foreground/80">{profileMap[selectedNote.created_by]}</span>
                   </span>
                 )}
 
