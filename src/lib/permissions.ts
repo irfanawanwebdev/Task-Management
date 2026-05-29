@@ -25,6 +25,7 @@ export const PAGE_KEYS = {
   CLAUDE:          'claude',
   OPPORTUNITIES:   'opportunities',
   TIME_TRACKING:   'time_tracking',
+  NOTES:           'notes',
 } as const
 
 /** Maps route paths → page key (for access checks) */
@@ -44,6 +45,7 @@ const ROUTE_TO_PAGE_KEY: Record<string, string> = {
   '/claude':          PAGE_KEYS.CLAUDE,
   '/opportunities':   PAGE_KEYS.OPPORTUNITIES,
   '/time-tracking':   PAGE_KEYS.TIME_TRACKING,
+  '/notes':           PAGE_KEYS.NOTES,
 }
 
 // ─── All Nav Items (full catalogue) ───────────────────────────────────────
@@ -71,6 +73,7 @@ const ALL_NAV_ITEMS: NavItem[] = [
   { label: 'Claude AI',           path: '/claude',        icon: 'Bot',            pageKey: PAGE_KEYS.CLAUDE },
   { label: 'Opportunities',       path: '/opportunities', icon: 'Target',         pageKey: PAGE_KEYS.OPPORTUNITIES },
   { label: 'Time Tracking',       path: '/time-tracking', icon: 'Clock',          pageKey: PAGE_KEYS.TIME_TRACKING },
+  { label: 'Notes',               path: '/notes',         icon: 'StickyNote',     pageKey: PAGE_KEYS.NOTES },
 ]
 
 // ─── Per-User Page Access ──────────────────────────────────────────────────
@@ -92,6 +95,7 @@ export function hasPageAccess(
   if (path === '/claude') return true
   if (path === '/opportunities') return true
   if (path === '/time-tracking') return true
+  if (path === '/notes') return true
 
   const pageAccess = profile?.page_access ?? []
   if (profile && pageAccess.length > 0) {
@@ -125,16 +129,17 @@ export function getNavForProfile(profile: Profile | null, role: AppRole | null):
     // Always include these pages regardless of page_access config
     const alwaysIncluded = new Set<string>([
       PAGE_KEYS.SPECIALIST, PAGE_KEYS.MY_TASKS, PAGE_KEYS.CLAUDE, PAGE_KEYS.OPPORTUNITIES,
-      PAGE_KEYS.TIME_TRACKING,
+      PAGE_KEYS.TIME_TRACKING, PAGE_KEYS.NOTES,
     ])
     const specialistItem     = ALL_NAV_ITEMS.find(item => item.pageKey === PAGE_KEYS.SPECIALIST)!
     const myTasksItem        = ALL_NAV_ITEMS.find(item => item.pageKey === PAGE_KEYS.MY_TASKS)!
     const opportunitiesItem  = ALL_NAV_ITEMS.find(item => item.pageKey === PAGE_KEYS.OPPORTUNITIES)!
     const timeTrackingItem   = ALL_NAV_ITEMS.find(item => item.pageKey === PAGE_KEYS.TIME_TRACKING)!
+    const notesItem          = ALL_NAV_ITEMS.find(item => item.pageKey === PAGE_KEYS.NOTES)!
     const rest = ALL_NAV_ITEMS.filter(item =>
       !alwaysIncluded.has(item.pageKey) && pageAccess.includes(item.pageKey)
     )
-    return [specialistItem, ...rest, opportunitiesItem, timeTrackingItem, myTasksItem]
+    return [specialistItem, ...rest, opportunitiesItem, timeTrackingItem, myTasksItem, notesItem]
   }
   // Fallback to role-based
   return getNavForRole(role ?? 'viewer')
@@ -166,6 +171,7 @@ export function canAccessRoute(role: AppRole, path: string): boolean {
     '/claude':          allAuth,
     '/opportunities':   pmOwner,
     '/time-tracking':   allAuth,
+    '/notes':           allAuth,
   }
 
   for (const [route, roles] of Object.entries(routeMap)) {
@@ -213,6 +219,7 @@ export function getNavForRole(role: AppRole): NavItem[] {
     { label: 'Opportunities',       path: '/opportunities',icon: 'Target',          pageKey: PAGE_KEYS.OPPORTUNITIES },
     { label: 'Time Tracking',       path: '/time-tracking',icon: 'Clock',           pageKey: PAGE_KEYS.TIME_TRACKING },
     { label: 'My Tasks',            path: '/my-tasks',     icon: 'ListTodo',        pageKey: PAGE_KEYS.MY_TASKS },
+    { label: 'Notes',               path: '/notes',        icon: 'StickyNote',      pageKey: PAGE_KEYS.NOTES },
     { label: 'Claude AI',           path: '/claude',       icon: 'Bot',             pageKey: PAGE_KEYS.CLAUDE },
   ]
 
@@ -220,6 +227,7 @@ export function getNavForRole(role: AppRole): NavItem[] {
     { label: 'My Dashboard',  path: '/specialist',    icon: 'LayoutDashboard', pageKey: PAGE_KEYS.SPECIALIST },
     { label: 'Tasks',         path: '/tasks',         icon: 'CheckSquare',     pageKey: PAGE_KEYS.TASKS },
     { label: 'My Tasks',      path: '/my-tasks',      icon: 'ListTodo',        pageKey: PAGE_KEYS.MY_TASKS },
+    { label: 'Notes',         path: '/notes',         icon: 'StickyNote',      pageKey: PAGE_KEYS.NOTES },
     { label: 'Time Tracking', path: '/time-tracking', icon: 'Clock',           pageKey: PAGE_KEYS.TIME_TRACKING },
     { label: 'Claude AI',     path: '/claude',        icon: 'Bot',             pageKey: PAGE_KEYS.CLAUDE },
     { label: 'Meetings',      path: '/meetings',      icon: 'Calendar',        pageKey: PAGE_KEYS.MEETINGS },

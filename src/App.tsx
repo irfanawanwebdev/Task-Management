@@ -28,6 +28,7 @@ const MyTasksPage          = lazy(() => import('@/features/mytasks/MyTasksPage')
 const ClaudePage           = lazy(() => import('@/features/ai/ClaudePage'))
 const OpportunitiesPage    = lazy(() => import('@/features/opportunities/OpportunitiesPage'))
 const TimeTrackingPage     = lazy(() => import('@/features/timetracking/TimeTrackingPage'))
+const NotesPage            = lazy(() => import('@/features/notes/NotesPage'))
 const PrivacyPolicyPage    = lazy(() => import('@/features/public/PrivacyPolicyPage'))
 const TermsPage            = lazy(() => import('@/features/public/TermsPage'))
 const SupportPage          = lazy(() => import('@/features/public/SupportPage'))
@@ -148,6 +149,10 @@ const router = createBrowserRouter(
         {
           path: '/time-tracking',
           element: <Suspense fallback={<PageLoader />}><TimeTrackingPage /></Suspense>,
+        },
+        {
+          path: '/notes',
+          element: <Suspense fallback={<PageLoader />}><NotesPage /></Suspense>,
         },
       ],
     },

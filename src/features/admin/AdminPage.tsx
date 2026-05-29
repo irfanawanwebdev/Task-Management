@@ -7,7 +7,7 @@
 
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { UserPlus, X, Loader2, ShieldCheck, Users, ChevronDown, ChevronUp, Pencil, Check, Activity } from 'lucide-react'
+import { UserPlus, X, Loader2, ShieldCheck, Users, ChevronDown, ChevronUp, Pencil, Check, Activity, Trash2 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import type { AppDepartment, AppRole, Profile } from '@/lib/types'
 import { ALL_ROLES } from '@/lib/types'
@@ -59,6 +59,7 @@ const PAGE_ACCESS_OPTIONS: { key: string; label: string }[] = [
   { key: PAGE_KEYS.ADMIN,           label: 'User Management' },
   { key: PAGE_KEYS.SETTINGS,        label: 'Settings' },
   { key: PAGE_KEYS.OPPORTUNITIES,   label: 'Opportunities' },
+  { key: PAGE_KEYS.NOTES,           label: 'Notes' },
 ]
 
 // ─── Data Hooks ─────────────────────────────────────────────────────────────
@@ -297,10 +298,23 @@ function AddUserDialog({ onClose, onSuccess }: AddUserDialogProps) {
 
 // ─── Member Card ─────────────────────────────────────────────────────────────
 
-function MemberCard({ member, canEdit }: { member: TeamMember; canEdit: boolean }) {
+function MemberCard({ member, canEdit, canDelete }: { member: TeamMember; canEdit: boolean; canDelete: boolean }) {
   const queryClient = useQueryClient()
   const [showPageAccess, setShowPageAccess] = useState(false)
   const [editingAccess, setEditingAccess]   = useState<string[]>(member.page_access ?? [])
+  const [confirmDelete, setConfirmDelete]   = useState(false)
+  const [deleteError, setDeleteError]       = useState<string | null>(null)
+
+  const deleteUser = useMutation({
+    mutationFn: async () => {
+      const { error } = await supabase.functions.invoke('delete-user', {
+        body: { user_id: member.user_id },
+      })
+      if (error) throw new Error(error.message)
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['team-members'] }),
+    onError: (e: Error) => { setDeleteError(e.message); setConfirmDelete(false) },
+  })
 
   // ── Profile edit (name + department) ─────────────────────────────────────
   const [isEditingProfile, setIsEditingProfile] = useState(false)
@@ -480,7 +494,42 @@ function MemberCard({ member, canEdit }: { member: TeamMember; canEdit: boolean 
             />
           </button>
         )}
+
+        {/* Delete button */}
+        {canDelete && !isEditingProfile && (
+          confirmDelete ? (
+            <div className="flex items-center gap-1 shrink-0">
+              <span className="text-xs text-destructive font-medium">Delete?</span>
+              <button
+                onClick={() => deleteUser.mutate()}
+                disabled={deleteUser.isPending}
+                className="text-xs px-1.5 py-0.5 bg-destructive text-destructive-foreground rounded hover:opacity-90 disabled:opacity-50"
+              >
+                {deleteUser.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Yes'}
+              </button>
+              <button
+                onClick={() => setConfirmDelete(false)}
+                className="text-xs px-1.5 py-0.5 bg-muted rounded hover:bg-accent"
+              >
+                No
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => { setDeleteError(null); setConfirmDelete(true) }}
+              className="text-muted-foreground hover:text-destructive transition-colors shrink-0"
+              title="Delete user"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
+          )
+        )}
       </div>
+
+      {/* Delete error */}
+      {deleteError && (
+        <p className="text-xs text-destructive">{deleteError}</p>
+      )}
 
       {/* Roles */}
       <div className="flex flex-wrap gap-1.5 items-center">
@@ -628,11 +677,20 @@ function UserActivityPanel({ members }: { members: TeamMember[] }) {
   const onlineCount = active.filter(m => getActivityStatus(m.last_seen_at) === 'online').length
   const awayCount   = active.filter(m => getActivityStatus(m.last_seen_at) === 'away').length
 
-  // Sort: online first, then away, then offline — alphabetically within each group
+  // Sort: online first, then away, then offline.
+  // Within online/away: alphabetical. Within offline: most recently seen first, Never last.
   const sorted = [...active].sort((a, b) => {
     const order = { online: 0, away: 1, offline: 2 }
-    const diff  = order[getActivityStatus(a.last_seen_at)] - order[getActivityStatus(b.last_seen_at)]
-    return diff !== 0 ? diff : a.full_name.localeCompare(b.full_name)
+    const statusA = getActivityStatus(a.last_seen_at)
+    const statusB = getActivityStatus(b.last_seen_at)
+    const diff = order[statusA] - order[statusB]
+    if (diff !== 0) return diff
+    if (statusA !== 'offline') return a.full_name.localeCompare(b.full_name)
+    // Both offline: sort by last_seen_at desc; null (Never) sinks to bottom
+    if (!a.last_seen_at && !b.last_seen_at) return a.full_name.localeCompare(b.full_name)
+    if (!a.last_seen_at) return 1
+    if (!b.last_seen_at) return -1
+    return new Date(b.last_seen_at).getTime() - new Date(a.last_seen_at).getTime()
   })
 
   return (
@@ -714,7 +772,9 @@ export default function AdminPage() {
   const { data: members, isLoading, error } = useTeamMembers()
 
   // Owners always have edit rights; others need can_create_users flag (§7.2)
-  const canEdit       = role === 'owner' || profile?.can_create_users === true
+  const canEdit        = role === 'owner' || profile?.can_create_users === true
+  // Delete is restricted to owner, project_manager, and operations department
+  const canDelete      = role === 'owner' || role === 'project_manager' || profile?.department === 'operations'
   const canSeeActivity = !!role  // all authenticated users can see team activity
 
   const activeCount   = members?.filter(m => m.is_active).length ?? 0
@@ -799,7 +859,7 @@ export default function AdminPage() {
       {members && members.length > 0 && (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {members.map(m => (
-            <MemberCard key={m.id} member={m} canEdit={canEdit} />
+            <MemberCard key={m.id} member={m} canEdit={canEdit} canDelete={canDelete} />
           ))}
         </div>
       )}
