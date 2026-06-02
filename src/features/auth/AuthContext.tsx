@@ -84,20 +84,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [state.user, loadProfile])
 
   useEffect(() => {
-    // Initial session check
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) {
-        setState(prev => ({ ...prev, session, user: session.user }))
-        loadProfile(session.user.id)
-      } else {
-        setState(prev => ({ ...prev, isLoading: false }))
-      }
-    })
+    // Use onAuthStateChange exclusively (no separate getSession call).
+    // INITIAL_SESSION fires on mount with the stored session (or null) — replaces getSession().
+    // PASSWORD_RECOVERY fires when a recovery link is opened; we must NOT call loadProfile
+    // in that case, otherwise isAuthenticated becomes true and the user is auto-navigated
+    // away from the reset-password form before they can set a new password.
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      // PASSWORD_RECOVERY fires on already-open tabs (broadcasted via localStorage).
+      // INITIAL_SESSION fires on the tab that opened the recovery link — by then
+      // createClient has already cleared the hash, so we rely on the sessionStorage
+      // flag set in supabase.ts before createClient ran.
+      const recoveryPending = sessionStorage.getItem('sb_recovery_pending') === '1'
 
-    // Listen for auth changes (token refresh, sign-in/out)
-    // Do NOT set isLoading: true here — that would unmount all open dialogs/modals
-    // via ProtectedRoute's loading spinner. isLoading is only true on initial mount.
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (event === 'PASSWORD_RECOVERY' || (event === 'INITIAL_SESSION' && recoveryPending)) {
+        sessionStorage.removeItem('sb_recovery_pending')
+        // Store session so supabase.auth.updateUser() works, but do not authenticate.
+        setState(prev => ({ ...prev, session, user: session?.user ?? null, isLoading: false }))
+        return
+      }
+
       if (session?.user) {
         setState(prev => ({ ...prev, session, user: session.user }))
         loadProfile(session.user.id)

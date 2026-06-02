@@ -7,7 +7,7 @@
 
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { UserPlus, X, Loader2, ShieldCheck, Users, ChevronDown, ChevronUp, Pencil, Check, Activity, Trash2 } from 'lucide-react'
+import { UserPlus, X, Loader2, ShieldCheck, Users, ChevronDown, ChevronUp, Pencil, Check, Activity, Trash2, KeyRound, Eye, EyeOff } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import type { AppDepartment, AppRole, Profile } from '@/lib/types'
 import { ALL_ROLES } from '@/lib/types'
@@ -386,6 +386,42 @@ function MemberCard({ member, canEdit, canDelete }: { member: TeamMember; canEdi
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['team-members'] }),
   })
 
+  // Set password
+  const [isSettingPassword, setIsSettingPassword] = useState(false)
+  const [newPwd, setNewPwd]         = useState('')
+  const [confirmPwd, setConfirmPwd] = useState('')
+  const [pwdError, setPwdError]     = useState<string | null>(null)
+  const [showNewPwd, setShowNewPwd]         = useState(false)
+  const [showConfirmPwd, setShowConfirmPwd] = useState(false)
+
+  const resetPassword = useMutation({
+    mutationFn: async () => {
+      if (newPwd.length < 8) throw new Error('Password must be at least 8 characters.')
+      if (newPwd !== confirmPwd) throw new Error('Passwords do not match.')
+      const { error } = await supabase.functions.invoke('reset-user-password', {
+        body: { user_id: member.user_id, password: newPwd },
+      })
+      if (error) {
+        // Extract the real message from the Edge Function JSON body
+        let message = error.message
+        try {
+          const body = await (error as unknown as { context: Response }).context.json()
+          if (body?.error) message = body.error
+        } catch { /* fall back to generic message */ }
+        throw new Error(message)
+      }
+    },
+    onSuccess: () => {
+      setIsSettingPassword(false)
+      setNewPwd('')
+      setConfirmPwd('')
+      setPwdError(null)
+      setShowNewPwd(false)
+      setShowConfirmPwd(false)
+    },
+    onError: (e: Error) => setPwdError(e.message),
+  })
+
   const [addingRole, setAddingRole]     = useState(false)
   const [selectedRole, setSelectedRole] = useState<AppRole>('viewer')
 
@@ -457,13 +493,22 @@ function MemberCard({ member, canEdit, canDelete }: { member: TeamMember; canEdi
               <div className="flex items-center gap-1.5">
                 <p className="font-medium text-sm truncate">{member.full_name}</p>
                 {canEdit && (
-                  <button
-                    onClick={() => { setEditName(member.full_name); setEditDept(member.department ?? 'operations'); setIsEditingProfile(true) }}
-                    className="text-muted-foreground hover:text-foreground transition-colors shrink-0"
-                    title="Edit name and department"
-                  >
-                    <Pencil className="h-3 w-3" />
-                  </button>
+                  <>
+                    <button
+                      onClick={() => { setEditName(member.full_name); setEditDept(member.department ?? 'operations'); setIsEditingProfile(true) }}
+                      className="text-muted-foreground hover:text-foreground transition-colors shrink-0"
+                      title="Edit name and department"
+                    >
+                      <Pencil className="h-3 w-3" />
+                    </button>
+                    <button
+                      onClick={() => { setIsSettingPassword(v => !v); setNewPwd(''); setConfirmPwd(''); setPwdError(null); setShowNewPwd(false); setShowConfirmPwd(false) }}
+                      className="text-muted-foreground hover:text-foreground transition-colors shrink-0"
+                      title="Set password"
+                    >
+                      <KeyRound className="h-3 w-3" />
+                    </button>
+                  </>
                 )}
               </div>
               <p className="text-xs text-muted-foreground capitalize">
@@ -529,6 +574,64 @@ function MemberCard({ member, canEdit, canDelete }: { member: TeamMember; canEdi
       {/* Delete error */}
       {deleteError && (
         <p className="text-xs text-destructive">{deleteError}</p>
+      )}
+
+      {/* Set Password inline form */}
+      {isSettingPassword && (
+        <div className="rounded-md border border-border bg-muted/40 p-3 space-y-2">
+          <p className="text-xs font-medium text-foreground">Set new password for {member.full_name}</p>
+          <div className="relative">
+            <input
+              type={showNewPwd ? 'text' : 'password'}
+              value={newPwd}
+              onChange={e => setNewPwd(e.target.value)}
+              placeholder="New password (min 8 chars)"
+              className="w-full px-2 py-1.5 pr-7 bg-background border border-input rounded text-xs focus:outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground"
+            />
+            <button
+              type="button"
+              onClick={() => setShowNewPwd(v => !v)}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              tabIndex={-1}
+            >
+              {showNewPwd ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+            </button>
+          </div>
+          <div className="relative">
+            <input
+              type={showConfirmPwd ? 'text' : 'password'}
+              value={confirmPwd}
+              onChange={e => setConfirmPwd(e.target.value)}
+              placeholder="Confirm password"
+              className="w-full px-2 py-1.5 pr-7 bg-background border border-input rounded text-xs focus:outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground"
+            />
+            <button
+              type="button"
+              onClick={() => setShowConfirmPwd(v => !v)}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              tabIndex={-1}
+            >
+              {showConfirmPwd ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+            </button>
+          </div>
+          {pwdError && <p className="text-xs text-destructive">{pwdError}</p>}
+          <div className="flex gap-1.5">
+            <button
+              onClick={() => resetPassword.mutate()}
+              disabled={resetPassword.isPending || !newPwd || !confirmPwd}
+              className="flex items-center gap-1 text-xs px-2.5 py-1 bg-primary text-primary-foreground rounded hover:opacity-90 disabled:opacity-50"
+            >
+              {resetPassword.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
+              Set Password
+            </button>
+            <button
+              onClick={() => { setIsSettingPassword(false); setNewPwd(''); setConfirmPwd(''); setPwdError(null); setShowNewPwd(false); setShowConfirmPwd(false) }}
+              className="text-xs px-2.5 py-1 bg-muted rounded hover:bg-accent border border-border"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
       )}
 
       {/* Roles */}

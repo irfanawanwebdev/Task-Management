@@ -11,6 +11,12 @@ if (!supabaseUrl || !supabaseAnonKey) {
   )
 }
 
+// Must run BEFORE createClient — Supabase processes and removes the hash during
+// initialization, so this is the only point where type=recovery is still in the URL.
+if (typeof window !== 'undefined' && window.location.hash.includes('type=recovery')) {
+  sessionStorage.setItem('sb_recovery_pending', '1')
+}
+
 export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
   auth: {
     persistSession: true,
