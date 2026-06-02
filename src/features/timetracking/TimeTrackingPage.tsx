@@ -7,7 +7,7 @@
 
 import { useState, useRef, useEffect } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Clock, ChevronLeft, ChevronRight, User, TrendingUp, Pencil, Trash2, Check, X } from 'lucide-react'
+import { Clock, ChevronLeft, ChevronRight, User, Pencil, Trash2, Check, X, Info } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/features/auth/AuthContext'
 import { todayDateEST } from '@/lib/timezone'
@@ -179,44 +179,39 @@ function DayCell({
 
   if (editing) {
     return (
-      <div className="rounded-lg p-2 text-center border border-primary bg-primary/10 min-h-[80px] flex flex-col justify-between">
-        <p className="text-xs font-medium text-primary mb-1">{dayLabel(date)}</p>
+      <div className="rounded-xl p-2 text-center border-2 border-primary bg-primary/10 flex flex-col gap-1.5">
+        {/* Day label */}
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-wider text-primary">
+            {format(date, 'EEE')}
+          </p>
+          <p className="text-sm font-bold text-primary leading-none">{format(date, 'd')}</p>
+        </div>
         <input
           ref={inputRef}
           value={input}
           onChange={e => { setInput(e.target.value); setError(false) }}
           onKeyDown={handleKey}
-          placeholder="e.g. 2h 30m"
+          placeholder="2h 30m"
           className={cn(
-            'w-full text-center text-xs bg-background border rounded px-1 py-0.5 font-mono',
+            'w-full text-center text-xs bg-background border rounded-md px-1 py-1 font-mono',
             error ? 'border-destructive' : 'border-border',
           )}
         />
-        {error && <p className="text-[10px] text-destructive mt-0.5">Invalid format</p>}
-        <div className="flex items-center justify-center gap-1 mt-1.5">
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className="p-1 rounded bg-primary/20 hover:bg-primary/30 text-primary transition-colors"
-            title="Save"
-          >
+        {error && <p className="text-[9px] text-destructive">Invalid</p>}
+        <div className="flex items-center justify-center gap-1">
+          <button onClick={handleSave} disabled={saving}
+            className="p-1 rounded-md bg-primary/20 hover:bg-primary/30 text-primary transition-colors" title="Save">
             <Check className="h-3 w-3" />
           </button>
           {sessions.length > 0 && (
-            <button
-              onClick={handleDelete}
-              disabled={saving}
-              className="p-1 rounded bg-destructive/20 hover:bg-destructive/30 text-destructive transition-colors"
-              title="Delete all sessions for this day"
-            >
+            <button onClick={handleDelete} disabled={saving}
+              className="p-1 rounded-md bg-destructive/20 hover:bg-destructive/30 text-destructive transition-colors" title="Delete">
               <Trash2 className="h-3 w-3" />
             </button>
           )}
-          <button
-            onClick={() => setEditing(false)}
-            className="p-1 rounded hover:bg-accent transition-colors text-muted-foreground"
-            title="Cancel"
-          >
+          <button onClick={() => setEditing(false)}
+            className="p-1 rounded-md hover:bg-accent transition-colors text-muted-foreground" title="Cancel">
             <X className="h-3 w-3" />
           </button>
         </div>
@@ -224,37 +219,67 @@ function DayCell({
     )
   }
 
+  const pct = barWidth(minutes)
+
   return (
     <div
       className={cn(
-        'rounded-lg p-3 text-center border group relative',
+        'rounded-xl text-center border group relative flex flex-col overflow-hidden',
         isToday
-          ? 'bg-primary/10 border-primary/30'
+          ? 'border-primary/50 bg-primary/5 shadow-sm shadow-primary/10'
           : isFuture
-            ? 'border-border/40 opacity-50'
+            ? 'border-border/30 opacity-40'
             : minutes > 0
-              ? 'bg-accent border-border'
-              : 'border-border',
-        canEdit && !isFuture && 'cursor-pointer hover:border-primary/40 transition-colors',
+              ? 'border-border bg-accent/40'
+              : 'border-border/50',
+        canEdit && !isFuture && 'cursor-pointer hover:border-primary/50 hover:bg-accent/60 transition-colors',
       )}
       onClick={() => canEdit && !isFuture && setEditing(true)}
       title={canEdit && !isFuture ? 'Click to edit' : undefined}
     >
-      <p className={cn('text-xs font-medium mb-1', isToday ? 'text-primary' : 'text-muted-foreground')}>
-        {dayLabel(date)}
-      </p>
-      <p className="text-sm font-mono font-semibold">{formatHM(minutes)}</p>
+      {/* Filled bar background — grows from bottom */}
       {minutes > 0 && (
-        <div className="mt-1.5 h-1 w-full bg-border rounded-full overflow-hidden">
-          <div
-            className={cn('h-full rounded-full', isToday ? 'bg-primary' : 'bg-primary/50')}
-            style={{ width: `${barWidth(minutes)}%` }}
-          />
-        </div>
+        <div
+          className={cn(
+            'absolute bottom-0 left-0 right-0 transition-all',
+            isToday ? 'bg-primary/15' : 'bg-primary/8',
+          )}
+          style={{ height: `${pct}%` }}
+        />
       )}
+
+      <div className="relative z-10 p-2 flex flex-col items-center gap-0.5">
+        {/* Day name */}
+        <p className={cn(
+          'text-[10px] font-bold uppercase tracking-wider leading-none',
+          isToday ? 'text-primary' : 'text-muted-foreground/70',
+        )}>
+          {format(date, 'EEE')}
+        </p>
+        {/* Date number */}
+        <p className={cn(
+          'text-sm font-bold leading-none',
+          isToday ? 'text-primary' : 'text-foreground/80',
+        )}>
+          {format(date, 'd')}
+        </p>
+        {/* Divider */}
+        <div className={cn('w-4 h-px my-0.5', isToday ? 'bg-primary/40' : 'bg-border')} />
+        {/* Time value */}
+        <p className={cn(
+          'text-xs font-mono font-semibold leading-none',
+          minutes > 0
+            ? isToday ? 'text-primary' : 'text-foreground'
+            : 'text-muted-foreground/40',
+        )}>
+          {formatHM(minutes)}
+        </p>
+      </div>
+
+      {/* Edit indicator */}
       {canEdit && !isFuture && (
-        <div className="absolute top-1.5 right-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-          <Pencil className="h-2.5 w-2.5 text-muted-foreground" />
+        <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity">
+          <Pencil className="h-2 w-2 text-muted-foreground" />
         </div>
       )}
     </div>
@@ -379,14 +404,14 @@ function UserRow({
       </button>
 
       {expanded && (
-        <div className="border-t border-border px-5 py-4">
+        <div className="border-t border-border px-4 py-4 space-y-3">
           {canEdit && (
-            <p className="text-xs text-muted-foreground mb-3 flex items-center gap-1.5">
-              <Pencil className="h-3 w-3" />
-              Click any past day to edit or remove its time
+            <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+              <Pencil className="h-3 w-3 shrink-0" />
+              Tap any past day to edit or remove its time
             </p>
           )}
-          <div className="grid grid-cols-7 gap-2">
+          <div className="grid grid-cols-7 gap-1.5">
             {days.map(d => {
               const key      = format(d, 'yyyy-MM-dd')
               const mins     = dayMap[key] ?? 0
@@ -407,9 +432,6 @@ function UserRow({
               )
             })}
           </div>
-          <p className="text-xs text-muted-foreground mt-3 text-right">
-            Bar fills at 8h = 100%. Idle time (&gt;15 min) and sleep/hibernate are not counted.
-          </p>
         </div>
       )}
     </div>
@@ -487,20 +509,6 @@ export default function TimeTrackingPage() {
         )}
       </div>
 
-      <div className="grid grid-cols-7 gap-2 px-5">
-        {days.map(d => {
-          const isToday = format(d, 'yyyy-MM-dd') === todayDateEST()
-          return (
-            <div key={d.toISOString()} className="text-center">
-              <p className={cn('text-xs font-semibold', isToday ? 'text-primary' : 'text-muted-foreground')}>
-                {dayLabel(d)}
-              </p>
-              {isToday && <div className="mx-auto mt-1 h-1 w-4 rounded-full bg-primary" />}
-            </div>
-          )
-        })}
-      </div>
-
       {isLoading ? (
         <div className="flex items-center gap-2 text-muted-foreground text-sm py-8 justify-center">
           <Clock className="h-4 w-4 animate-pulse" /> Loading sessions…
@@ -526,28 +534,32 @@ export default function TimeTrackingPage() {
         </div>
       )}
 
-      <div className="flex items-center gap-4 text-xs text-muted-foreground pt-2 border-t border-border">
-        <div className="flex items-center gap-1.5">
-          <div className="h-3 w-3 rounded-sm bg-primary" />
-          <span>Today</span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <div className="h-3 w-3 rounded-sm bg-primary/50" />
-          <span>Active</span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <div className="h-3 w-3 rounded-sm bg-border" />
-          <span>No activity</span>
-        </div>
-        {isPMOrOwner && (
+      <div className="pt-3 border-t border-border space-y-2">
+        {/* Colour legend */}
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-muted-foreground">
           <div className="flex items-center gap-1.5">
-            <Pencil className="h-3 w-3" />
-            <span>Click a day (expanded) to edit</span>
+            <div className="h-3 w-3 rounded-sm bg-primary shrink-0" />
+            <span>Today</span>
           </div>
-        )}
-        <div className="flex items-center gap-1.5 ml-auto">
-          <TrendingUp className="h-3.5 w-3.5" />
-          <span>Idle &gt;15 min and sleep/hibernate not counted</span>
+          <div className="flex items-center gap-1.5">
+            <div className="h-3 w-3 rounded-sm bg-primary/50 shrink-0" />
+            <span>Active day</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <div className="h-3 w-3 rounded-sm border border-border/60 shrink-0" />
+            <span>No activity</span>
+          </div>
+          {isPMOrOwner && (
+            <div className="flex items-center gap-1.5">
+              <Pencil className="h-3 w-3 shrink-0" />
+              <span>Tap a day (expanded) to edit</span>
+            </div>
+          )}
+        </div>
+        {/* Info note */}
+        <div className="flex items-start gap-1.5 text-xs text-muted-foreground/60">
+          <Info className="h-3 w-3 shrink-0 mt-0.5" />
+          <span>Bar height fills at 8h = 100%. Idle time (&gt;15 min) and sleep/hibernate are not counted.</span>
         </div>
       </div>
     </div>

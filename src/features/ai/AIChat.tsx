@@ -175,7 +175,7 @@ export function AIChat() {
       <button
         onClick={() => setOpen(true)}
         className={cn(
-          'fixed bottom-6 right-6 z-50 flex h-12 w-12 items-center justify-center rounded-full shadow-xl transition-all duration-300',
+          'fixed bottom-20 right-4 sm:bottom-6 sm:right-6 z-50 flex h-12 w-12 items-center justify-center rounded-full shadow-xl transition-all duration-300',
           'bg-primary text-primary-foreground hover:bg-primary/90 hover:scale-105',
           open && 'scale-0 opacity-0 pointer-events-none',
         )}
@@ -188,9 +188,14 @@ export function AIChat() {
       {/* Chat panel */}
       <div
         className={cn(
-          'fixed bottom-6 right-6 z-50 flex flex-col rounded-2xl border border-border bg-card shadow-2xl',
-          'w-[420px] transition-all duration-300 origin-bottom-right',
-          open ? 'h-[600px] scale-100 opacity-100' : 'h-0 scale-90 opacity-0 pointer-events-none',
+          'fixed z-50 flex flex-col rounded-2xl border border-border bg-card shadow-2xl',
+          'transition-all duration-300 origin-bottom-right',
+          // Mobile: stretch across screen with small gap on each side
+          // Desktop: fixed 420px width anchored bottom-right
+          'bottom-2 left-2 right-2 sm:bottom-6 sm:left-auto sm:right-6 sm:w-[420px]',
+          open
+            ? 'h-[calc(100dvh-4rem)] sm:h-[600px] scale-100 opacity-100'
+            : 'h-0 scale-90 opacity-0 pointer-events-none',
         )}
       >
         {/* Header */}

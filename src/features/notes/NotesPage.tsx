@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Plus, Search, Pin, Globe, Lock, Share2, Copy, Trash2,
-  X, Tag, Loader2, FileText, Check, Users, PenLine, Clock, CheckCircle2, XCircle,
+  X, Tag, Loader2, FileText, Check, Users, PenLine, Clock, CheckCircle2, XCircle, ArrowLeft,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/features/auth/AuthContext'
@@ -265,6 +265,9 @@ export default function NotesPage() {
   const [filterTab, setFilterTab] = useState<FilterTab>('all')
   const [tagFilter, setTagFilter] = useState<string | null>(null)
 
+  // ── Mobile panel toggle (list vs editor) ───────────────────────────────────
+  const [mobilePanel, setMobilePanel] = useState<'list' | 'editor'>('list')
+
   // ── Selected note + editor state ────────────────────────────────────────────
   const [selectedId,      setSelectedId]      = useState<string | null>(null)
   const [localTitle,      setLocalTitle]      = useState('')
@@ -429,6 +432,7 @@ export default function NotesPage() {
     flushSave()
     skipNextSaveRef.current = true
     setSelectedId(note.id)
+    setMobilePanel('editor')
     setLocalTitle(note.title)
     setLocalContent(note.content)
     setLocalTags(note.tags ?? [])
@@ -606,10 +610,14 @@ export default function NotesPage() {
   // ─────────────────────────────────────────────────────────────────────────────
 
   return (
-    <div className="flex h-[calc(100vh-4rem)] overflow-hidden -m-6">
+    <div className="flex h-[calc(100vh-4rem)] overflow-hidden -m-4 md:-m-6">
 
       {/* ── Left panel: note list ─────────────────────────────── */}
-      <div className="w-72 shrink-0 flex flex-col border-r border-border bg-card/50">
+      <div className={cn(
+        'shrink-0 flex flex-col border-r border-border bg-card/50',
+        'w-full md:w-72',
+        mobilePanel === 'editor' ? 'hidden md:flex' : 'flex',
+      )}>
 
         {/* Header */}
         <div className="px-4 pt-4 pb-2 space-y-2.5 shrink-0">
@@ -722,7 +730,10 @@ export default function NotesPage() {
       </div>
 
       {/* ── Right panel: editor ───────────────────────────────── */}
-      <div className="flex-1 flex flex-col overflow-hidden bg-background">
+      <div className={cn(
+        'flex-1 flex flex-col overflow-hidden bg-background',
+        mobilePanel === 'list' ? 'hidden md:flex' : 'flex',
+      )}>
 
         {!selectedId ? (
           /* Empty state */
@@ -743,7 +754,15 @@ export default function NotesPage() {
         ) : (
           <>
             {/* Toolbar */}
-            <div className="flex items-center justify-between px-6 py-2.5 border-b border-border shrink-0 gap-4">
+            <div className="flex items-center justify-between px-3 md:px-6 py-2.5 border-b border-border shrink-0 gap-2 md:gap-4">
+
+              {/* Back button — mobile only */}
+              <button
+                onClick={() => setMobilePanel('list')}
+                className="md:hidden flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground shrink-0"
+              >
+                <ArrowLeft className="h-4 w-4" />
+              </button>
 
               {/* Left: visibility badge */}
               <div className="flex items-center gap-2">

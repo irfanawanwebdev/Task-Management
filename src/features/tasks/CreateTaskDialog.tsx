@@ -8,6 +8,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useQueryClient, useMutation, useQuery } from '@tanstack/react-query'
 import { X, Loader2, Upload, FileText, Image, File } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
+import { useAuth } from '@/features/auth/AuthContext'
 import { RichTextEditor } from '@/components/RichTextEditor'
 import type { Client, Profile, Workstream } from '@/lib/types'
 import type { Attachment } from '@/components/TaskFileUpload'
@@ -84,6 +85,7 @@ export function CreateTaskDialog({ open, onClose, presetClientId, clients = [] }
   useNavigationGuard(open)
 
   const qc = useQueryClient()
+  const { user } = useAuth()
   const [form, setForm] = useState<CreateTaskForm>({
     ...BLANK, client_id: presetClientId ?? '', due_date: todayDateEST(),
   })
@@ -150,6 +152,7 @@ export function CreateTaskDialog({ open, onClose, presetClientId, clients = [] }
           step_name: 'Ad-hoc',
           timeline: 'TBD',
           ar_output_logged: false,
+          created_by: user?.id ?? null,
         } as never)
         .select('id')
         .single()

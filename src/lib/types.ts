@@ -163,6 +163,7 @@ export interface DeliveryTask {
   recurrence_anchor_date?: string | null
   notes?: string | null
   links?: { label: string; url: string }[]
+  created_by: string | null
   created_at: string
   updated_at: string
   // Joined fields

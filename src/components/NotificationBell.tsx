@@ -5,6 +5,7 @@
  */
 
 import { useState, useRef, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { Bell, CheckCheck, AlertTriangle, Calendar, FileText, ShieldAlert, Zap, Loader2, ListTodo, Clock, PenLine } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
@@ -80,6 +81,7 @@ function NotifRow({ notif, onRead }: { notif: Notification; onRead: () => void }
 export function NotificationBell({ placement = 'down' }: { placement?: 'down' | 'right' }) {
   const [open, setOpen]       = useState(false)
   const [marking, setMarking] = useState(false)
+  const [dropPos, setDropPos] = useState<{ top?: number; bottom?: number; left: number }>({ left: 0 })
   const wrapRef               = useRef<HTMLDivElement>(null)
   const qc                    = useQueryClient()
 
@@ -112,7 +114,18 @@ export function NotificationBell({ placement = 'down' }: { placement?: 'down' | 
     <div ref={wrapRef} className="relative">
       {/* Bell button */}
       <button
-        onClick={() => setOpen(o => !o)}
+        onClick={() => {
+          if (!open && wrapRef.current) {
+            const rect = wrapRef.current.getBoundingClientRect()
+            if (placement === 'right') {
+              // Bottom of popup aligns with the bell icon
+              setDropPos({ bottom: window.innerHeight - rect.bottom, left: rect.right + 12 })
+            } else {
+              setDropPos({ top: rect.bottom + 8, left: Math.max(8, rect.right - 320) })
+            }
+          }
+          setOpen(o => !o)
+        }}
         className="relative flex h-8 w-8 items-center justify-center rounded-md hover:bg-accent transition-colors"
         aria-label="Notifications"
       >
@@ -124,14 +137,18 @@ export function NotificationBell({ placement = 'down' }: { placement?: 'down' | 
         )}
       </button>
 
-      {/* Dropdown */}
-      {open && (
-        <div className={cn(
-          'absolute w-80 rounded-xl border bg-card shadow-lg overflow-hidden z-50',
-          placement === 'right'
-            ? 'left-full bottom-0 ml-3'
-            : 'top-full right-0 mt-2',
-        )}>
+      {/* Dropdown — rendered via portal so overflow:hidden on sidebar never clips it */}
+      {open && createPortal(
+        <div
+          style={{
+            position: 'fixed',
+            ...(dropPos.top    !== undefined ? { top:    dropPos.top }    : {}),
+            ...(dropPos.bottom !== undefined ? { bottom: dropPos.bottom } : {}),
+            left: dropPos.left,
+            zIndex: 9999,
+          }}
+          className="w-80 rounded-xl border bg-card shadow-2xl overflow-hidden"
+        >
           {/* Header */}
           <div className="flex items-center justify-between px-4 py-2.5 border-b bg-muted/30">
             <span className="text-xs font-semibold">Notifications</span>
@@ -167,7 +184,8 @@ export function NotificationBell({ placement = 'down' }: { placement?: 'down' | 
               ))
             )}
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   )

@@ -533,21 +533,36 @@ export function DailyReportModal({ open, onClose }: DailyReportModalProps) {
   if (!open) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm p-4">
-      <div className="relative w-full max-w-5xl bg-card border border-border rounded-xl shadow-2xl flex flex-col max-h-[90vh]">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-background/80 backdrop-blur-sm sm:p-4">
+      <div className="relative w-full sm:max-w-5xl bg-card border-t sm:border border-border rounded-t-2xl sm:rounded-xl shadow-2xl flex flex-col h-[92dvh] sm:max-h-[90vh]">
 
         {/* ── Header ── */}
-        <div className="sticky top-0 bg-card border-b border-border px-5 py-4 flex items-center justify-between gap-4 rounded-t-xl">
-          <div className="flex items-center gap-3">
-            <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center">
-              <FileText className="h-4 w-4 text-primary" />
+        <div className="sticky top-0 bg-card border-b border-border px-4 py-3 rounded-t-xl shrink-0">
+          {/* Row 1: title + close (always visible) */}
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                <FileText className="h-4 w-4 text-primary" />
+              </div>
+              <div className="min-w-0">
+                <h2 className="text-sm font-semibold">Daily Task Report</h2>
+                <p className="text-xs text-muted-foreground truncate">
+                  Updated: {dateLabel} · Grouped by employee
+                </p>
+              </div>
             </div>
-            <div>
-              <h2 className="text-base font-semibold">Daily Task Report</h2>
-              <p className="text-xs text-muted-foreground">Updated: {dateLabel} · Grouped by employee</p>
-            </div>
+            {/* Close button — always pinned top-right */}
+            <button
+              onClick={onClose}
+              className="shrink-0 p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+              aria-label="Close"
+            >
+              <X className="h-4 w-4" />
+            </button>
           </div>
-          <div className="flex items-center gap-2">
+
+          {/* Row 2: action buttons — wrap on mobile */}
+          <div className="flex items-center gap-2 mt-2.5 flex-wrap">
             <button
               onClick={() => downloadDailyReport(groups, statusFilter, selectedEmployees, dateLabel)}
               disabled={groups.length === 0}
@@ -557,43 +572,34 @@ export function DailyReportModal({ open, onClose }: DailyReportModalProps) {
               Download HTML
             </button>
 
-            {/* Send to Jordan — manual + auto countdown */}
-            <div className="flex items-center gap-2">
-              <button
-                onClick={handleSendToJordan}
-                disabled={groups.length === 0 || sendState === 'sending'}
-                title={`Send report now to ${JORDAN_EMAIL}`}
-                className={cn(
-                  'flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors disabled:opacity-50',
-                  sendState === 'sent'
-                    ? 'bg-green-600 text-white'
-                    : sendState === 'error'
-                      ? 'bg-destructive text-destructive-foreground'
-                      : 'bg-secondary text-foreground hover:bg-accent border border-border',
-                )}
-              >
-                {sendState === 'sending' && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                {sendState === 'sent' && <CheckCircle className="h-3.5 w-3.5" />}
-                {sendState === 'error' && <AlertCircle className="h-3.5 w-3.5" />}
-                {sendState === 'idle' && <Send className="h-3.5 w-3.5" />}
-                {sendState === 'sending' ? 'Sending…'
-                  : sendState === 'sent' ? 'Sent!'
-                    : sendState === 'error' ? 'Failed'
-                      : 'Send to Jordan'}
-              </button>
-              {nextReportIn && (
-                <span className="text-[10px] text-muted-foreground/60 whitespace-nowrap">
-                  Auto in <span className="font-mono text-primary/70">{nextReportIn}</span>
-                </span>
-              )}
-            </div>
-
             <button
-              onClick={onClose}
-              className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+              onClick={handleSendToJordan}
+              disabled={groups.length === 0 || sendState === 'sending'}
+              title={`Send report now to ${JORDAN_EMAIL}`}
+              className={cn(
+                'flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors disabled:opacity-50',
+                sendState === 'sent'
+                  ? 'bg-green-600 text-white'
+                  : sendState === 'error'
+                    ? 'bg-destructive text-destructive-foreground'
+                    : 'bg-secondary text-foreground hover:bg-accent border border-border',
+              )}
             >
-              <X className="h-4 w-4" />
+              {sendState === 'sending' && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+              {sendState === 'sent'    && <CheckCircle className="h-3.5 w-3.5" />}
+              {sendState === 'error'   && <AlertCircle className="h-3.5 w-3.5" />}
+              {sendState === 'idle'    && <Send className="h-3.5 w-3.5" />}
+              {sendState === 'sending' ? 'Sending…'
+                : sendState === 'sent'  ? 'Sent!'
+                : sendState === 'error' ? 'Failed'
+                : 'Send to Jordan'}
             </button>
+
+            {nextReportIn && (
+              <span className="text-[10px] text-muted-foreground/60 whitespace-nowrap">
+                Auto in <span className="font-mono text-primary/70">{nextReportIn}</span>
+              </span>
+            )}
           </div>
         </div>
 

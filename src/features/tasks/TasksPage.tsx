@@ -732,7 +732,7 @@ function TaskDetailDialog({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm p-4">
-      <div className="relative w-full max-w-2xl bg-card border border-border rounded-xl shadow-xl flex flex-col max-h-[90vh]">
+      <div className="relative w-full max-w-2xl bg-card border border-border rounded-xl shadow-xl flex flex-col max-h-[90vh] overflow-hidden">
 
         {/* ── Header ── */}
         <div className="sticky top-0 z-10 bg-card border-b border-border px-5 py-4 flex items-start justify-between gap-3">
@@ -785,7 +785,7 @@ function TaskDetailDialog({
           </button>
         </div>
 
-        <div className="overflow-y-auto flex-1 p-5 space-y-5">
+        <div className="overflow-y-auto overflow-x-hidden flex-1 p-5 space-y-5">
           {/* Description — editable for anyone who can edit */}
           {(descriptionVal || canEdit) && (
             <div>
@@ -903,6 +903,16 @@ function TaskDetailDialog({
               <div className="flex justify-between border-b border-border/40 py-1.5">
                 <span className="text-muted-foreground">Completed</span>
                 <span className="font-medium">{task.completed_date ? formatDateEST(task.completed_date) : '—'}</span>
+              </div>
+
+              {/* Created by */}
+              <div className="flex justify-between py-1.5">
+                <span className="text-muted-foreground">Created by</span>
+                <span className="font-medium">
+                  {task.created_by
+                    ? (profilesList.find(p => p.user_id === task.created_by)?.full_name ?? '—')
+                    : '—'}
+                </span>
               </div>
             </div>
           </div>
@@ -1070,10 +1080,10 @@ function TaskDetailDialog({
             {links.length > 0 && (
               <div className="space-y-1.5 mb-3">
                 {links.map((l, i) => (
-                  <div key={i} className="flex items-center gap-2 text-sm">
+                  <div key={i} className="flex items-center gap-2 text-sm min-w-0">
                     <a href={l.url} target="_blank" rel="noopener noreferrer"
-                      className="flex items-center gap-1.5 text-primary hover:underline flex-1 min-w-0 truncate">
-                      <ExternalLink className="h-3 w-3 shrink-0" />{l.label}
+                      className="flex items-start gap-1.5 text-primary hover:underline flex-1 min-w-0 break-all">
+                      <ExternalLink className="h-3 w-3 shrink-0 mt-0.5" />{l.label}
                     </a>
                     <button onClick={() => removeLink(i)} className="text-muted-foreground hover:text-destructive shrink-0">
                       <X className="h-3 w-3" />
@@ -1082,12 +1092,12 @@ function TaskDetailDialog({
                 ))}
               </div>
             )}
-            <div className="flex gap-2">
+            <div className="flex gap-2 flex-wrap">
               <input value={newLinkLabel} onChange={e => setNewLinkLabel(e.target.value)} placeholder="Label (optional)"
-                className="w-32 px-2 py-1.5 bg-background border border-input rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-primary" />
+                className="w-28 min-w-0 px-2 py-1.5 bg-background border border-input rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-primary" />
               <input value={newLinkUrl} onChange={e => setNewLinkUrl(e.target.value)} placeholder="https://…"
                 onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addLink() } }}
-                className="flex-1 px-2 py-1.5 bg-background border border-input rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-primary" />
+                className="flex-1 min-w-[140px] px-2 py-1.5 bg-background border border-input rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-primary" />
               <button onClick={addLink} disabled={!newLinkUrl.trim() || savingLinks}
                 className="px-2.5 py-1.5 rounded-md bg-primary/10 text-primary border border-primary/20 text-xs font-medium hover:bg-primary/20 disabled:opacity-50 transition-colors">
                 {savingLinks ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />}
@@ -1604,7 +1614,7 @@ export default function TasksPage() {
       </div>
 
       {/* Controls */}
-      <div className="flex items-center gap-3 flex-wrap">
+      <div className="flex items-center gap-2 flex-wrap">
         {/* View Tabs */}
         <div className="flex gap-1 flex-wrap">
           {VIEWS.map(v => (
@@ -1635,7 +1645,7 @@ export default function TasksPage() {
         </div>
 
         {/* Date Filter Pills */}
-        <div className="flex gap-1 ml-auto">
+        <div className="flex gap-1 sm:ml-auto flex-wrap">
           {(['all', 'today', '7', '14', '30'] as const).map(f => (
             <button
               key={f}
@@ -1656,7 +1666,7 @@ export default function TasksPage() {
         <select
           value={clientFilter}
           onChange={e => setClientFilter(e.target.value)}
-          className="px-3 py-1.5 bg-background border border-input rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+          className="flex-1 sm:flex-none min-w-0 px-3 py-1.5 bg-background border border-input rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-ring"
         >
           <option value="all">All Clients</option>
           {clients.map(c => (
@@ -1668,7 +1678,7 @@ export default function TasksPage() {
         <select
           value={employeeFilter}
           onChange={e => setEmployeeFilter(e.target.value)}
-          className="px-3 py-1.5 bg-background border border-input rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+          className="flex-1 sm:flex-none min-w-0 px-3 py-1.5 bg-background border border-input rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-ring"
         >
           <option value="all">All Team Members</option>
           {profilesList.map(p => (

@@ -253,7 +253,7 @@ export function RichTextDisplay({ html, className, emptyText = 'Nothing here yet
 
   return (
     <div
-      className={cn('rich-display text-sm', className)}
+      className={cn('rich-display text-sm break-words overflow-hidden', className)}
       // eslint-disable-next-line react/no-danger
       dangerouslySetInnerHTML={{ __html: html }}
       onClick={handleClick}
