@@ -13,8 +13,17 @@ dist-ssr
 *.local
 
 # ── Supabase ──────────────────────────────────────────────────────────────────
-# Local CLI state — contains DB connection strings and version pins, not for VCS
+# Local CLI state: contains DB connection strings and version pins, not for VCS
 supabase/.temp
+
+# ── Personal files ────────────────────────────────────────────────────────────
+learning-roadmap.html
+
+# ── SQL files ─────────────────────────────────────────────────────────────────
+# Ignore all SQL files (backups, dumps, exports) — may contain sensitive data
+*.sql
+# Keep migration files: they are the source of truth for the database schema
+!supabase/migrations/*.sql
 
 # ── Claude Code ───────────────────────────────────────────────────────────────
 # Machine-specific permission settings — not for VCS
