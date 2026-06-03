@@ -50,10 +50,25 @@ function utcToESTDate(utcTs: string): string {
   }).format(new Date(utcTs))
 }
 
-/** Returns the best date to use for filtering a task — updated_at in EST, falling back to completed_date. */
+/**
+ * Returns the relevant activity date for a task based on its status:
+ * - Done        → completed_date (the day it was marked complete, not any later edits)
+ * - In Progress → updated_at (best proxy for when work started)
+ * - Blocked     → updated_at (when it was flagged)
+ * - Not Started → null (no meaningful activity date — excluded from date filters)
+ */
 function taskFilterDate(task: DeliveryTask): string | null {
-  if (task.updated_at) return utcToESTDate(task.updated_at)
-  return task.completed_date ?? null
+  if (task.status === 'Done') {
+    // Only use completed_date — no fallback to updated_at.
+    // Old Done tasks without a completed_date have an unknown completion date
+    // and must not appear in date-filtered views.
+    return task.completed_date ?? null
+  }
+  if (task.status === 'In Progress' || task.status === 'Blocked') {
+    return task.updated_at ? utcToESTDate(task.updated_at) : null
+  }
+  // Not Started — exclude from all date-range filtering
+  return null
 }
 
 /** Offset from TODAY in Miami/EST time (not system clock). */
@@ -327,7 +342,7 @@ function buildReportHTML(
   <div class="header">
     <h1>Daily Task Report</h1>
     <div class="meta">
-      <span>📅 Updated: ${dateLabel}</span>
+      <span>📅 Activity: ${dateLabel}</span>
       <span>🔍 Status: <span class="badge badge-purple">${statusLabel}</span></span>
       <span>👤 Employees: <span class="badge badge-blue">${esc(employeeLabel)}</span></span>
       <span>📋 ${totalTasks} total tasks across ${groups.length} employees/teams</span>
@@ -547,7 +562,7 @@ export function DailyReportModal({ open, onClose }: DailyReportModalProps) {
               <div className="min-w-0">
                 <h2 className="text-sm font-semibold">Daily Task Report</h2>
                 <p className="text-xs text-muted-foreground truncate">
-                  Updated: {dateLabel} · Grouped by employee
+                  Activity: {dateLabel} · Grouped by employee
                 </p>
               </div>
             </div>
@@ -616,7 +631,7 @@ export function DailyReportModal({ open, onClose }: DailyReportModalProps) {
           <div className="flex items-center gap-1.5 flex-wrap">
             <div className="flex items-center gap-1 shrink-0">
               <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
-              <span className="text-xs text-muted-foreground mr-1">Updated:</span>
+              <span className="text-xs text-muted-foreground mr-1">Completed / Active:</span>
             </div>
             {DATE_PRESETS.map(p => (
               <button
