@@ -152,6 +152,7 @@ const TOOLS: Anthropic.Tool[] = [
         impact_level: { type: 'string', enum: ['Low', 'Medium', 'High'] },
         description: { type: 'string' },
         notes: { type: 'string' },
+        created_by_name: { type: 'string', description: 'Creator label shown in task detail (e.g. "Claude AI", "Irfan Awan")' },
         assigned_to_name: { type: 'string', description: 'Replace all assignees with this person (full name or partial match)' },
       },
       required: ['task_id'],
@@ -383,13 +384,14 @@ async function executeTool(name: string, input: Record<string, any>, supabase: a
       // ── update_task ────────────────────────────────────────────────────────────
       case 'update_task': {
         const updates: Record<string, unknown> = {}
-        if (input.task_name    !== undefined) updates.task_name    = input.task_name
-        if (input.status       !== undefined) updates.status       = input.status
-        if (input.due_date     !== undefined) updates.due_date     = input.due_date
-        if (input.workstream   !== undefined) updates.workstream   = input.workstream
-        if (input.impact_level !== undefined) updates.impact_level = input.impact_level
-        if (input.description  !== undefined) updates.description  = input.description
-        if (input.notes        !== undefined) updates.notes        = input.notes
+        if (input.task_name      !== undefined) updates.task_name      = input.task_name
+        if (input.status         !== undefined) updates.status         = input.status
+        if (input.due_date       !== undefined) updates.due_date       = input.due_date
+        if (input.workstream     !== undefined) updates.workstream     = input.workstream
+        if (input.impact_level   !== undefined) updates.impact_level   = input.impact_level
+        if (input.description    !== undefined) updates.description    = input.description
+        if (input.notes          !== undefined) updates.notes          = input.notes
+        if (input.created_by_name !== undefined) updates.created_by_name = input.created_by_name
 
         if (Object.keys(updates).length > 0) {
           const { error } = await supabase.from('delivery_tasks').update(updates).eq('id', input.task_id)
