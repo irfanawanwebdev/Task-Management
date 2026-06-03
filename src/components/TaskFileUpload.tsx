@@ -120,6 +120,7 @@ export function TaskFileUpload({ taskId, attachments, onChange, disabled }: Prop
   const [error, setError]             = useState('')
   const [dragOver, setDragOver]       = useState(false)
   const [lightbox, setLightbox]       = useState<Attachment | null>(null)
+  const [pasteHint, setPasteHint]     = useState(false)
 
   function handleAttachmentClick(att: Attachment) {
     if (att.type.startsWith('image/')) {
@@ -130,7 +131,7 @@ export function TaskFileUpload({ taskId, attachments, onChange, disabled }: Prop
     }
   }
 
-  const uploadFiles = async (files: FileList | null) => {
+  const uploadFiles = async (files: FileList | File[] | null) => {
     if (!files || files.length === 0) return
     setError('')
     setUploading(true)
@@ -205,6 +206,40 @@ export function TaskFileUpload({ taskId, attachments, onChange, disabled }: Prop
     setUploading(false)
   }
 
+  // Ref keeps paste handler in sync without re-registering the listener
+  const uploadFilesRef = useRef(uploadFiles)
+  uploadFilesRef.current = uploadFiles
+
+  // Document-level paste listener — fires regardless of which element is focused,
+  // but skips paste events inside text inputs / rich-text editors.
+  useEffect(() => {
+    if (disabled) return
+    const handler = (e: ClipboardEvent) => {
+      const target = e.target as HTMLElement
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) return
+
+      const items = Array.from(e.clipboardData?.items ?? [])
+      const fileItems = Array.from(e.clipboardData?.files ?? [])
+      const imgItem = items.find(it => it.type.startsWith('image/'))
+      const rawFile = imgItem?.getAsFile() ?? fileItems.find(f => f.type.startsWith('image/')) ?? null
+      if (!rawFile) return
+      e.preventDefault()
+
+      // Give generic browser filenames something meaningful
+      const needsName = !rawFile.name || rawFile.name === 'image.png' || rawFile.name === 'blob'
+      const ext = rawFile.type.split('/')[1] || 'png'
+      const named = needsName
+        ? new window.File([rawFile], `screenshot-${Date.now()}.${ext}`, { type: rawFile.type })
+        : rawFile
+
+      setPasteHint(true)
+      setTimeout(() => setPasteHint(false), 800)
+      uploadFilesRef.current([named])
+    }
+    document.addEventListener('paste', handler)
+    return () => document.removeEventListener('paste', handler)
+  }, [disabled]) // eslint-disable-line react-hooks/exhaustive-deps
+
   const removeAttachment = async (idx: number) => {
     const att = attachments[idx]
     const urlParts = att.url.split('/task-attachments/')
@@ -230,20 +265,26 @@ export function TaskFileUpload({ taskId, attachments, onChange, disabled }: Prop
           onDrop={e => { e.preventDefault(); setDragOver(false); uploadFiles(e.dataTransfer.files) }}
           onClick={() => !disabled && inputRef.current?.click()}
           className={cn(
-            'border-2 border-dashed rounded-lg px-4 py-5 flex flex-col items-center gap-2 cursor-pointer transition-colors',
-            dragOver
-              ? 'border-primary bg-primary/5'
+            'border-2 border-dashed rounded-lg px-4 py-5 flex flex-col items-center gap-2 cursor-pointer transition-all duration-150',
+            dragOver || pasteHint
+              ? 'border-primary bg-primary/5 scale-[1.01]'
               : 'border-border hover:border-primary/50 hover:bg-accent/30',
             disabled && 'opacity-50 pointer-events-none',
           )}
         >
           {uploading ? (
             <Loader2 className="h-5 w-5 text-primary animate-spin" />
+          ) : pasteHint ? (
+            <Image className="h-5 w-5 text-primary animate-pulse" />
           ) : (
             <Upload className="h-5 w-5 text-muted-foreground" />
           )}
           <p className="text-xs text-muted-foreground text-center">
-            {uploading ? 'Uploading…' : 'Click or drag files here · PDF, images, docs · max 50 MB each'}
+            {uploading
+              ? 'Uploading…'
+              : pasteHint
+                ? 'Image pasted!'
+                : 'Click or drag files · Ctrl+V to paste image · max 50 MB'}
           </p>
           <input
             ref={inputRef}
