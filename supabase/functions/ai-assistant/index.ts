@@ -258,7 +258,7 @@ async function executeTool(name: string, input: Record<string, any>, supabase: a
           workstream: string; due_date: string; impact_level: string
           clients: { name: string } | null
         }) =>
-          `• [${t.status}] "${t.task_name}" | Client: ${t.clients?.name ?? '?'} | Step ${t.step} | Due: ${t.due_date ?? 'None'} | Priority: ${t.impact_level} | Assigned: ${(amap[t.id] ?? []).join(', ') || 'Unassigned'}`
+          `• ID: ${t.id} | [${t.status}] "${t.task_name}" | Client: ${t.clients?.name ?? '?'} | Step ${t.step} | Due: ${t.due_date ?? 'None'} | Priority: ${t.impact_level} | Assigned: ${(amap[t.id] ?? []).join(', ') || 'Unassigned'}`
         ).join('\n')
         return `Found ${tasks.length} task(s):\n${rows}`
       }
