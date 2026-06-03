@@ -3,7 +3,7 @@
  * Powered by Claude Opus 4.6 — reads and writes to the Operations Hub database.
  *
  * Tools: query_tasks, query_clients, query_meetings, query_blockers,
- *        add_task, update_meeting, add_blocker, bulk_create_tasks
+ *        add_task, update_task, update_meeting, add_blocker, bulk_create_tasks
  */
 
 import Anthropic from 'npm:@anthropic-ai/sdk'
@@ -136,6 +136,25 @@ const TOOLS: Anthropic.Tool[] = [
         severity: { type: 'string', enum: ['Low', 'Med', 'High'] },
       },
       required: ['client_id', 'title'],
+    },
+  },
+  {
+    name: 'update_task',
+    description: 'Update an existing task — change status, assignee, due date, workstream, or other fields. Call query_tasks first to get the task ID. To reassign: provide assigned_to_name (replaces all current assignees).',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        task_id: { type: 'string', description: 'UUID of the task to update (from query_tasks)' },
+        task_name: { type: 'string', description: 'New task name' },
+        status: { type: 'string', enum: ['Not Started', 'In Progress', 'Done', 'Blocked'] },
+        due_date: { type: 'string', description: 'ISO date YYYY-MM-DD' },
+        workstream: { type: 'string' },
+        impact_level: { type: 'string', enum: ['Low', 'Medium', 'High'] },
+        description: { type: 'string' },
+        notes: { type: 'string' },
+        assigned_to_name: { type: 'string', description: 'Replace all assignees with this person (full name or partial match)' },
+      },
+      required: ['task_id'],
     },
   },
   {
@@ -358,6 +377,44 @@ async function executeTool(name: string, input: Record<string, any>, supabase: a
         }
 
         return `Task created: "${data.task_name}" (ID: ${data.id}).${assignMsg}`
+      }
+
+      // ── update_task ────────────────────────────────────────────────────────────
+      case 'update_task': {
+        const updates: Record<string, unknown> = {}
+        if (input.task_name    !== undefined) updates.task_name    = input.task_name
+        if (input.status       !== undefined) updates.status       = input.status
+        if (input.due_date     !== undefined) updates.due_date     = input.due_date
+        if (input.workstream   !== undefined) updates.workstream   = input.workstream
+        if (input.impact_level !== undefined) updates.impact_level = input.impact_level
+        if (input.description  !== undefined) updates.description  = input.description
+        if (input.notes        !== undefined) updates.notes        = input.notes
+
+        if (Object.keys(updates).length > 0) {
+          const { error } = await supabase.from('delivery_tasks').update(updates).eq('id', input.task_id)
+          if (error) return `Error updating task: ${error.message}`
+        }
+
+        let assignMsg = ''
+        if (input.assigned_to_name) {
+          const { data: profs } = await supabase
+            .from('profiles').select('user_id, full_name')
+            .ilike('full_name', `%${input.assigned_to_name}%`).limit(1)
+          if (!profs || profs.length === 0) {
+            assignMsg = ` (Warning: no team member found matching "${input.assigned_to_name}" — assignee unchanged.)`
+          } else {
+            const assignee = profs[0] as { user_id: string; full_name: string }
+            await supabase.from('task_assignments').delete().eq('task_id', input.task_id)
+            const { error: aErr } = await supabase.from('task_assignments').insert({
+              task_id: input.task_id, user_id: assignee.user_id, role_type: 'R',
+            })
+            assignMsg = aErr
+              ? ` (Warning: reassignment failed — ${aErr.message})`
+              : ` Reassigned to ${assignee.full_name}.`
+          }
+        }
+
+        return `Task updated successfully.${assignMsg}`
       }
 
       // ── update_meeting ─────────────────────────────────────────────────────

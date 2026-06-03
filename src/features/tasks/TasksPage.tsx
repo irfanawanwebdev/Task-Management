@@ -1457,6 +1457,9 @@ export default function TasksPage() {
   // ── Employee filter ─────────────────────────────────────────────────────────
   const employeeTasks = (() => {
     if (employeeFilter === 'all') return dateTasks
+    if (employeeFilter === 'unassigned') return dateTasks.filter(t =>
+      (t.task_assignments ?? []).filter(a => a.user_id).length === 0
+    )
     return dateTasks.filter(t =>
       (t.task_assignments ?? []).some(a => a.user_id === employeeFilter)
     )
@@ -1681,6 +1684,7 @@ export default function TasksPage() {
           className="flex-1 sm:flex-none min-w-0 px-3 py-1.5 bg-background border border-input rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-ring"
         >
           <option value="all">All Team Members</option>
+          <option value="unassigned">Unassigned</option>
           {profilesList.map(p => (
             <option key={p.user_id} value={p.user_id}>{p.full_name}</option>
           ))}
