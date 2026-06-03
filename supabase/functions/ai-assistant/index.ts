@@ -140,11 +140,12 @@ const TOOLS: Anthropic.Tool[] = [
   },
   {
     name: 'bulk_create_tasks',
-    description: 'Create multiple tasks from a week-based timeline file. Calculates due dates: Week 1 = next Wednesday from reference_date, Week 2 = +7d, etc.',
+    description: 'Create multiple tasks from a week-based timeline file. Calculates due dates: Week 1 = next Wednesday from reference_date, Week 2 = +7d, etc. Use assigned_to_name at the top level as a default assignee for all tasks, or per task to override.',
     input_schema: {
       type: 'object' as const,
       properties: {
         client_id: { type: 'string', description: 'UUID from query_clients' },
+        assigned_to_name: { type: 'string', description: 'Default assignee for ALL tasks (full name or partial). Individual tasks can override this.' },
         tasks: {
           type: 'array',
           items: {
@@ -156,6 +157,7 @@ const TOOLS: Anthropic.Tool[] = [
               workstream: { type: 'string' },
               description: { type: 'string' },
               priority: { type: 'string', enum: ['Low', 'Medium', 'High', 'Critical'] },
+              assigned_to_name: { type: 'string', description: 'Assignee for this specific task — overrides the top-level default' },
             },
             required: ['title', 'week'],
           },
@@ -386,10 +388,13 @@ async function executeTool(name: string, input: Record<string, any>, supabase: a
       // ── bulk_create_tasks ──────────────────────────────────────────────────
       case 'bulk_create_tasks': {
         const refDate = (input.reference_date as string) ?? new Date().toISOString().split('T')[0]
+        const defaultAssigneeName = input.assigned_to_name as string | undefined
         const tasks = input.tasks as Array<{
           title: string; week: number; step?: number
           workstream?: string; description?: string; priority?: string
+          assigned_to_name?: string
         }>
+
         const rows = tasks.map(t => ({
           client_id: input.client_id,
           task_name: t.title,
@@ -402,12 +407,39 @@ async function executeTool(name: string, input: Record<string, any>, supabase: a
           due_date: getWeekDueDate(t.week, refDate),
           impact_level: t.priority ?? 'Medium',
         }))
+
         const { data, error } = await supabase.from('delivery_tasks').insert(rows).select('id, task_name, due_date')
         if (error) return `Error creating tasks: ${error.message}`
-        const created = (data ?? []).map((t: { task_name: string; due_date: string }) =>
-          `• "${t.task_name}" — due ${t.due_date}`
-        ).join('\n')
-        return `Created ${(data ?? []).length} task(s):\n${created}`
+
+        // Resolve all unique assignee names to user_ids
+        const allNames = new Set<string>()
+        if (defaultAssigneeName) allNames.add(defaultAssigneeName)
+        for (const t of tasks) if (t.assigned_to_name) allNames.add(t.assigned_to_name)
+
+        const nameToUserId: Record<string, string> = {}
+        for (const name of allNames) {
+          const { data: profs } = await supabase
+            .from('profiles').select('user_id, full_name')
+            .ilike('full_name', `%${name}%`).limit(1)
+          if (profs && profs.length > 0) nameToUserId[name] = (profs[0] as { user_id: string }).user_id
+        }
+
+        // Insert task_assignments for each created task
+        const assignments: Array<{ task_id: string; user_id: string; role_type: string }> = []
+        const createdTasks = (data ?? []) as Array<{ id: string; task_name: string; due_date: string }>
+        for (let i = 0; i < createdTasks.length; i++) {
+          const effectiveName = tasks[i].assigned_to_name ?? defaultAssigneeName
+          if (effectiveName && nameToUserId[effectiveName]) {
+            assignments.push({ task_id: createdTasks[i].id, user_id: nameToUserId[effectiveName], role_type: 'R' })
+          }
+        }
+        if (assignments.length > 0) await supabase.from('task_assignments').insert(assignments)
+
+        const assignNote = assignments.length > 0
+          ? ` ${assignments.length} assigned.`
+          : allNames.size > 0 ? ` (Warning: assignee not found — tasks unassigned.)` : ''
+        const created = createdTasks.map(t => `• "${t.task_name}" — due ${t.due_date}`).join('\n')
+        return `Created ${createdTasks.length} task(s).${assignNote}\n${created}`
       }
 
       default:
