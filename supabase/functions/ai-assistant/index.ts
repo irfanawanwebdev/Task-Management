@@ -343,14 +343,15 @@ async function executeTool(name: string, input: Record<string, any>, supabase: a
         const { data, error } = await supabase.from('delivery_tasks').insert({
           client_id: input.client_id,
           task_name: input.task_name,
-          step_name: input.task_name,
-          timeline: 'Custom',
+          step_name: 'Ad-hoc',
+          timeline: 'TBD',
           description: input.description ?? null,
           status: input.status ?? 'Not Started',
-          step: input.step ?? 1,
+          step: 0,
           workstream: input.workstream ?? 'Ops/PM',
           due_date: input.due_date ?? null,
           impact_level: input.impact_level ?? 'Medium',
+          created_by_name: 'Claude AI',
         }).select('id, task_name').single()
         if (error) return `Error creating task: ${error.message}`
 
@@ -455,14 +456,15 @@ async function executeTool(name: string, input: Record<string, any>, supabase: a
         const rows = tasks.map(t => ({
           client_id: input.client_id,
           task_name: t.title,
-          step_name: t.title,
-          timeline: `Week ${t.week}`,
+          step_name: 'Ad-hoc',
+          timeline: 'TBD',
           description: t.description ?? null,
           status: 'Not Started',
-          step: t.step ?? 1,
+          step: 0,
           workstream: t.workstream ?? 'Ops/PM',
           due_date: getWeekDueDate(t.week, refDate),
           impact_level: t.priority ?? 'Medium',
+          created_by_name: 'Claude AI',
         }))
 
         const { data, error } = await supabase.from('delivery_tasks').insert(rows).select('id, task_name, due_date')

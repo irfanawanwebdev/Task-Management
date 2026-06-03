@@ -85,7 +85,7 @@ export function CreateTaskDialog({ open, onClose, presetClientId, clients = [] }
   useNavigationGuard(open)
 
   const qc = useQueryClient()
-  const { user } = useAuth()
+  const { user, profile } = useAuth()
   const [form, setForm] = useState<CreateTaskForm>({
     ...BLANK, client_id: presetClientId ?? '', due_date: todayDateEST(),
   })
@@ -153,6 +153,7 @@ export function CreateTaskDialog({ open, onClose, presetClientId, clients = [] }
           timeline: 'TBD',
           ar_output_logged: false,
           created_by: user?.id ?? null,
+          created_by_name: profile?.full_name ?? null,
         } as never)
         .select('id')
         .single()

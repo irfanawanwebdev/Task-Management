@@ -164,6 +164,7 @@ export interface DeliveryTask {
   notes?: string | null
   links?: { label: string; url: string }[]
   created_by: string | null
+  created_by_name: string | null
   created_at: string
   updated_at: string
   // Joined fields

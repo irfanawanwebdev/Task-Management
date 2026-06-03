@@ -7,7 +7,7 @@
 import { useState, useRef, useEffect } from 'react'
 import {
   Bot, Send, Paperclip, Loader2, Database, AlertCircle,
-  Trash2, Upload, FileText, Sparkles, X,
+  Trash2, Upload, FileText, Sparkles, X, Image,
 } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -20,9 +20,16 @@ import { cn } from '@/lib/utils'
 interface Message {
   role: 'user' | 'assistant'
   content: string
+  imagePreview?: string
   toolsUsed?: string[]
   isError?: boolean
   isLoading?: boolean
+}
+
+interface PastedImage {
+  data: string
+  mediaType: string
+  preview: string
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -82,6 +89,9 @@ function MessageBubble({ msg }: { msg: Message }) {
           </div>
         ) : (
           <>
+            {msg.imagePreview && (
+              <img src={msg.imagePreview} alt="Attached" className="max-h-40 max-w-full rounded-lg mb-1.5 object-contain" />
+            )}
             {msg.role === 'assistant' ? (
               <div className="prose prose-sm prose-invert max-w-none
                 [&_table]:w-full [&_table]:border-collapse [&_table]:text-xs
@@ -181,6 +191,7 @@ export default function ClaudePage() {
   const [input, setInput]        = useState('')
   const [loading, setLoading]    = useState(false)
   const [pendingFile, setPendingFile] = useState<{ name: string; content: string } | null>(null)
+  const [pastedImage, setPastedImage] = useState<PastedImage | null>(null)
   const bottomRef   = useRef<HTMLDivElement>(null)
   const fileRef     = useRef<HTMLInputElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -207,14 +218,45 @@ export default function ClaudePage() {
     ta.style.height = `${Math.min(ta.scrollHeight, 160)}px`
   }, [input])
 
+  // Global paste listener for images
+  useEffect(() => {
+    const handler = (e: ClipboardEvent) => {
+      if (!e.clipboardData) return
+      const items = Array.from(e.clipboardData.items)
+      const files = Array.from(e.clipboardData.files)
+      const imgItem = items.find(it => it.type.startsWith('image/'))
+      const imgFile = imgItem?.getAsFile() ?? files.find(f => f.type.startsWith('image/')) ?? null
+      if (!imgFile) return
+      e.preventDefault()
+      const reader = new FileReader()
+      reader.onload = (ev) => {
+        const dataUrl = ev.target?.result as string
+        if (!dataUrl?.startsWith('data:image')) return
+        const [header, b64] = dataUrl.split(',')
+        const mediaType = header.match(/:(.*?);/)?.[1] ?? 'image/png'
+        setPastedImage({ data: b64, mediaType, preview: dataUrl })
+        setTimeout(() => textareaRef.current?.focus(), 50)
+      }
+      reader.readAsDataURL(imgFile)
+    }
+    document.addEventListener('paste', handler)
+    return () => document.removeEventListener('paste', handler)
+  }, [])
+
   const sendMessage = async (content: string, fileContent?: string) => {
-    if (!content.trim() || loading) return
+    const hasText  = content.trim().length > 0
+    const hasImage = pastedImage !== null
+    if ((!hasText && !hasImage && !fileContent) || loading) return
 
+    const textContent = hasText ? content.trim() : (hasImage ? 'What is in this image?' : '')
     const fullContent = fileContent
-      ? `${content}\n\n[Attached file content]\n---\n${fileContent}\n---`
-      : content
+      ? `${textContent}\n\n[Attached file content]\n---\n${fileContent}\n---`
+      : textContent
 
-    const userMsg: Message = { role: 'user', content: content }
+    const currentImage = pastedImage
+    setPastedImage(null)
+
+    const userMsg: Message = { role: 'user', content: textContent, imagePreview: currentImage?.preview }
     const loadingMsg: Message = { role: 'assistant', content: '', isLoading: true }
 
     setMessages(prev => [...prev, userMsg, loadingMsg])
@@ -223,14 +265,21 @@ export default function ClaudePage() {
     setLoading(true)
 
     try {
-      const history = [...messages, { role: 'user' as const, content: fullContent }].map(m => ({
-        role: m.role,
-        content: m.content,
-      }))
+      const historyMsgs = messages.map(m => ({ role: m.role, content: m.content }))
+
+      const currentMsg = currentImage && !fileContent
+        ? {
+            role: 'user' as const,
+            content: [
+              { type: 'image', source: { type: 'base64', media_type: currentImage.mediaType, data: currentImage.data } },
+              { type: 'text', text: fullContent },
+            ],
+          }
+        : { role: 'user' as const, content: fullContent }
 
       const { data, error: fnError } = await supabase.functions.invoke('ai-assistant', {
         body: {
-          messages: history,
+          messages: [...historyMsgs, currentMsg],
           user_name: profile?.full_name ?? 'Team Member',
           user_role: role ?? 'team member',
         },
@@ -258,9 +307,24 @@ export default function ClaudePage() {
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
+    e.target.value = ''
+
+    if (file.type.startsWith('image/')) {
+      const reader = new FileReader()
+      reader.onload = (ev) => {
+        const dataUrl = ev.target?.result as string
+        if (!dataUrl?.startsWith('data:image')) return
+        const [header, b64] = dataUrl.split(',')
+        const mediaType = header.match(/:(.*?);/)?.[1] ?? 'image/png'
+        setPastedImage({ data: b64, mediaType, preview: dataUrl })
+        setTimeout(() => textareaRef.current?.focus(), 50)
+      }
+      reader.readAsDataURL(file)
+      return
+    }
+
     const content = await file.text()
     setPendingFile({ name: file.name, content })
-    e.target.value = ''
   }
 
   const handleFileSend = (prompt: string) => {
@@ -362,64 +426,78 @@ export default function ClaudePage() {
       )}
 
       {/* Input area */}
-      <div className="shrink-0 rounded-xl border border-border bg-card p-3 flex gap-2 items-end">
-        {/* File upload */}
-        <input
-          ref={fileRef}
-          type="file"
-          accept=".txt,.md,.text,.vtt,.srt"
-          className="hidden"
-          onChange={handleFileSelect}
-        />
-        <button
-          onClick={() => fileRef.current?.click()}
-          title="Upload transcript (.txt, .md, .vtt)"
-          className={cn(
-            'shrink-0 p-2 rounded-lg transition-colors',
-            pendingFile
-              ? 'text-primary bg-primary/10'
-              : 'text-muted-foreground hover:text-foreground hover:bg-accent',
-          )}
-        >
-          <Paperclip className="h-4 w-4" />
-        </button>
+      <div className="shrink-0 rounded-xl border border-border bg-card p-3 space-y-2">
+        {/* Pasted image preview */}
+        {pastedImage && (
+          <div className="relative inline-block">
+            <img src={pastedImage.preview} alt="Pasted" className="max-h-24 max-w-[160px] rounded-lg border border-border object-cover" />
+            <button
+              onClick={() => setPastedImage(null)}
+              className="absolute -top-1.5 -right-1.5 h-4 w-4 rounded-full bg-destructive text-white flex items-center justify-center hover:bg-destructive/80"
+            >
+              <X className="h-2.5 w-2.5" />
+            </button>
+          </div>
+        )}
 
-        {/* Text input */}
-        <textarea
-          ref={textareaRef}
-          value={input}
-          onChange={e => setInput(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder={
-            pendingFile
-              ? 'Add instructions (or press Enter to use a suggested prompt above)…'
-              : 'Ask Claude anything… (Enter to send, Shift+Enter for new line)'
-          }
-          rows={1}
-          disabled={loading}
-          className="flex-1 bg-transparent text-sm resize-none focus:outline-none placeholder:text-muted-foreground
-                     min-h-[36px] py-1.5 leading-relaxed disabled:opacity-50"
-        />
+        <div className="flex gap-2 items-end">
+          {/* File / image upload */}
+          <input
+            ref={fileRef}
+            type="file"
+            accept=".txt,.md,.text,.vtt,.srt,image/*"
+            className="hidden"
+            onChange={handleFileSelect}
+          />
+          <button
+            onClick={() => fileRef.current?.click()}
+            title="Attach transcript or image"
+            className={cn(
+              'shrink-0 p-2 rounded-lg transition-colors',
+              pendingFile || pastedImage
+                ? 'text-primary bg-primary/10'
+                : 'text-muted-foreground hover:text-foreground hover:bg-accent',
+            )}
+          >
+            {pastedImage ? <Image className="h-4 w-4" /> : <Paperclip className="h-4 w-4" />}
+          </button>
 
-        {/* Send */}
-        <button
-          onClick={() => {
-            if (pendingFile && !input.trim()) {
-              handleFileSend(TRANSCRIPT_PROMPTS[0])
-            } else {
-              sendMessage(input, pendingFile?.content)
+          {/* Text input */}
+          <textarea
+            ref={textareaRef}
+            value={input}
+            onChange={e => setInput(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder={
+              pastedImage
+                ? 'Ask about the image… (or press Enter)'
+                : pendingFile
+                  ? 'Add instructions (or press Enter to use a suggested prompt above)…'
+                  : 'Ask Claude anything… (Enter to send, Shift+Enter for new line)'
             }
-          }}
-          disabled={(!input.trim() && !pendingFile) || loading}
-          className="shrink-0 flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground
-                     hover:bg-primary/90 disabled:opacity-40 transition-all"
-        >
-          {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-        </button>
+            rows={1}
+            disabled={loading}
+            className="flex-1 bg-transparent text-sm resize-none focus:outline-none placeholder:text-muted-foreground
+                       min-h-[36px] py-1.5 leading-relaxed disabled:opacity-50"
+          />
+
+          {/* Send */}
+          <button
+            onClick={() => {
+              if (pendingFile && !input.trim()) handleFileSend(TRANSCRIPT_PROMPTS[0])
+              else sendMessage(input, pendingFile?.content)
+            }}
+            disabled={(!input.trim() && !pendingFile && !pastedImage) || loading}
+            className="shrink-0 flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground
+                       hover:bg-primary/90 disabled:opacity-40 transition-all"
+          >
+            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+          </button>
+        </div>
       </div>
 
       <p className="text-xs text-muted-foreground text-center mt-2 shrink-0">
-        Claude can read your database and create tasks. Supported uploads: .txt .md .vtt (Otter.ai exports)
+        Claude can read your database and create tasks. Paste or attach images · Supported uploads: .txt .md .vtt
       </p>
     </div>
   )

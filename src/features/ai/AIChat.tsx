@@ -5,7 +5,7 @@
  */
 
 import { useState, useRef, useEffect } from 'react'
-import { Bot, Send, Paperclip, Loader2, Database, AlertCircle, ChevronDown, Maximize2 } from 'lucide-react'
+import { Bot, Send, Paperclip, Loader2, Database, AlertCircle, ChevronDown, Maximize2, X } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -16,9 +16,16 @@ import { cn } from '@/lib/utils'
 interface Message {
   role: 'user' | 'assistant'
   content: string
+  imagePreview?: string   // data URL — shown in chat bubble, not stored in history
   toolsUsed?: string[]
   isError?: boolean
   isLoading?: boolean
+}
+
+interface PastedImage {
+  data: string       // raw base64 (no prefix)
+  mediaType: string  // e.g. image/png
+  preview: string    // data URL for <img> display
 }
 
 const SUGGESTIONS = [
@@ -69,6 +76,7 @@ export function AIChat() {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
+  const [pastedImage, setPastedImage] = useState<PastedImage | null>(null)
   const { profile, role } = useAuth()
   const navigate = useNavigate()
   const bottomRef = useRef<HTMLDivElement>(null)
@@ -105,10 +113,52 @@ export function AIChat() {
     ta.style.height = `${Math.min(ta.scrollHeight, 120)}px`
   }, [input])
 
-  const sendMessage = async (content: string) => {
-    if (!content.trim() || loading) return
+  // Global paste listener — catches paste even when textarea isn't focused
+  useEffect(() => {
+    if (!open) return
+    const handler = (e: ClipboardEvent) => {
+      if (!e.clipboardData) return
+      const items = Array.from(e.clipboardData.items)
+      const files = Array.from(e.clipboardData.files)
 
-    const userMsg: Message = { role: 'user', content: content.trim() }
+      // Try items first (screenshots, copy from browser), then files array
+      const imgItem = items.find(it => it.type.startsWith('image/'))
+      const imgFile = imgItem?.getAsFile()
+        ?? files.find(f => f.type.startsWith('image/'))
+        ?? null
+
+      if (!imgFile) return
+      e.preventDefault()
+
+      const reader = new FileReader()
+      reader.onload = (ev) => {
+        const dataUrl = ev.target?.result as string
+        if (!dataUrl?.startsWith('data:image')) return
+        const [header, b64] = dataUrl.split(',')
+        const mediaType = header.match(/:(.*?);/)?.[1] ?? 'image/png'
+        setPastedImage({ data: b64, mediaType, preview: dataUrl })
+        setTimeout(() => textareaRef.current?.focus(), 50)
+      }
+      reader.readAsDataURL(imgFile)
+    }
+    document.addEventListener('paste', handler)
+    return () => document.removeEventListener('paste', handler)
+  }, [open])
+
+  const sendMessage = async (content: string) => {
+    const hasText  = content.trim().length > 0
+    const hasImage = pastedImage !== null
+    if ((!hasText && !hasImage) || loading) return
+
+    const textContent  = hasText ? content.trim() : 'What is in this image?'
+    const currentImage = pastedImage
+    setPastedImage(null)
+
+    const userMsg: Message = {
+      role: 'user',
+      content: textContent,
+      imagePreview: currentImage?.preview,
+    }
     const loadingMsg: Message = { role: 'assistant', content: '', isLoading: true }
 
     setMessages(prev => [...prev, userMsg, loadingMsg])
@@ -116,15 +166,26 @@ export function AIChat() {
     setLoading(true)
 
     try {
-      // Build history from current messages (exclude the loading placeholder)
-      const history = [...messages, userMsg].map(m => ({
-        role: m.role,
-        content: m.content,
-      }))
+      // History: previous messages as plain text (no images — too large for localStorage anyway)
+      const historyMsgs = messages.map(m => ({ role: m.role, content: m.content }))
+
+      // Current user message: content array if image attached, plain string otherwise
+      const currentMsg = currentImage
+        ? {
+            role: 'user' as const,
+            content: [
+              {
+                type: 'image',
+                source: { type: 'base64', media_type: currentImage.mediaType, data: currentImage.data },
+              },
+              { type: 'text', text: textContent },
+            ],
+          }
+        : { role: 'user' as const, content: textContent }
 
       const { data, error: fnError } = await supabase.functions.invoke('ai-assistant', {
         body: {
-          messages: history,
+          messages: [...historyMsgs, currentMsg],
           user_name: profile?.full_name ?? 'Team Member',
           user_role: role ?? 'team member',
         },
@@ -152,6 +213,24 @@ export function AIChat() {
   const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
+    e.target.value = ''
+
+    // Image file — attach as vision input
+    if (file.type.startsWith('image/')) {
+      const reader = new FileReader()
+      reader.onload = (ev) => {
+        const dataUrl = ev.target?.result as string
+        if (!dataUrl?.startsWith('data:image')) return
+        const [header, b64] = dataUrl.split(',')
+        const mediaType = header.match(/:(.*?);/)?.[1] ?? 'image/png'
+        setPastedImage({ data: b64, mediaType, preview: dataUrl })
+        setTimeout(() => textareaRef.current?.focus(), 50)
+      }
+      reader.readAsDataURL(file)
+      return
+    }
+
+    // Text/data file — send as message content
     const text = await file.text()
     const today = new Date().toLocaleDateString('en-US', {
       timeZone: 'America/New_York',
@@ -159,7 +238,15 @@ export function AIChat() {
     })
     const msg = `[Uploaded: ${file.name}]\n---\n${text}\n---\nToday is ${today}. Please organize these tasks with the correct weekly due dates.`
     await sendMessage(msg)
-    e.target.value = ''
+  }
+
+  // Textarea-level paste — global listener above handles the image capture,
+  // but we still prevent the default "paste as file name text" behaviour here.
+  const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const hasImage = Array.from(e.clipboardData.items).some(
+      it => it.kind === 'file' && it.type.startsWith('image/')
+    )
+    if (hasImage) e.preventDefault() // let global handler do the work
   }
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -297,6 +384,13 @@ export function AIChat() {
                     </div>
                   ) : (
                     <>
+                      {msg.imagePreview && (
+                        <img
+                          src={msg.imagePreview}
+                          alt="Attached"
+                          className="max-h-40 max-w-full rounded-lg mb-1.5 object-contain"
+                        />
+                      )}
                       {msg.role === 'assistant' ? (
                         <div className="prose prose-sm prose-invert max-w-none
                           [&_table]:w-full [&_table]:border-collapse [&_table]:text-xs
@@ -328,10 +422,27 @@ export function AIChat() {
 
         {/* Input area */}
         <div className="border-t border-border/50 p-3 shrink-0">
+          {/* Pasted image preview */}
+          {pastedImage && (
+            <div className="relative mb-2 inline-block">
+              <img
+                src={pastedImage.preview}
+                alt="Pasted"
+                className="max-h-24 max-w-[160px] rounded-lg border border-border object-cover"
+              />
+              <button
+                onClick={() => setPastedImage(null)}
+                className="absolute -top-1.5 -right-1.5 h-4 w-4 rounded-full bg-destructive text-white flex items-center justify-center hover:bg-destructive/80 transition-colors"
+              >
+                <X className="h-2.5 w-2.5" />
+              </button>
+            </div>
+          )}
+
           <div className="flex items-end gap-2 rounded-xl bg-muted/30 border border-border/40 px-3 py-2 focus-within:border-primary/40 transition-colors">
             <button
               onClick={() => fileRef.current?.click()}
-              title="Upload task file (.txt, .csv)"
+              title="Attach image or task file"
               disabled={loading}
               className="shrink-0 rounded-md p-1 text-muted-foreground hover:text-foreground hover:bg-accent transition-colors mb-0.5 disabled:opacity-40"
             >
@@ -342,14 +453,15 @@ export function AIChat() {
               value={input}
               onChange={e => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
+              onPaste={handlePaste}
               disabled={loading}
-              placeholder="Ask anything… or attach a task file"
+              placeholder={pastedImage ? 'Ask about the image… (or just press Enter)' : 'Ask anything… or paste / attach an image'}
               rows={1}
               className="flex-1 resize-none bg-transparent text-sm outline-none placeholder:text-muted-foreground/50 max-h-28 leading-relaxed disabled:opacity-50"
             />
             <button
               onClick={() => sendMessage(input)}
-              disabled={!input.trim() || loading}
+              disabled={(!input.trim() && !pastedImage) || loading}
               className="shrink-0 rounded-lg bg-primary p-1.5 text-primary-foreground transition-all hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed mb-0.5"
             >
               {loading
@@ -359,7 +471,7 @@ export function AIChat() {
             </button>
           </div>
           <p className="text-xs text-muted-foreground text-center mt-1.5 opacity-60">
-            Enter to send · Shift+Enter for newline
+            Enter to send · Shift+Enter for newline · Paste image from clipboard
           </p>
         </div>
 
@@ -367,7 +479,7 @@ export function AIChat() {
         <input
           ref={fileRef}
           type="file"
-          accept=".txt,.csv,.json,.md,.xlsx"
+          accept=".txt,.csv,.json,.md,.xlsx,image/*"
           className="hidden"
           onChange={handleFile}
         />

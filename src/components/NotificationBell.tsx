@@ -83,17 +83,20 @@ export function NotificationBell({ placement = 'down' }: { placement?: 'down' | 
   const [marking, setMarking] = useState(false)
   const [dropPos, setDropPos] = useState<{ top?: number; bottom?: number; left: number }>({ left: 0 })
   const wrapRef               = useRef<HTMLDivElement>(null)
+  const dropRef               = useRef<HTMLDivElement>(null)
   const qc                    = useQueryClient()
 
   const { data: notifications = [], isLoading } = useNotifications()
   const unreadCount = useUnreadCount()
 
-  // Close on outside click
+  // Close on outside click — must check both the bell button AND the portal dropdown,
+  // because the dropdown is rendered in document.body (outside wrapRef's subtree).
   useEffect(() => {
     function handleOutside(e: MouseEvent) {
-      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) {
-        setOpen(false)
-      }
+      const target = e.target as Node
+      const insideBell = wrapRef.current?.contains(target)
+      const insideDrop = dropRef.current?.contains(target)
+      if (!insideBell && !insideDrop) setOpen(false)
     }
     if (open) document.addEventListener('mousedown', handleOutside)
     return () => document.removeEventListener('mousedown', handleOutside)
@@ -140,6 +143,7 @@ export function NotificationBell({ placement = 'down' }: { placement?: 'down' | 
       {/* Dropdown — rendered via portal so overflow:hidden on sidebar never clips it */}
       {open && createPortal(
         <div
+          ref={dropRef}
           style={{
             position: 'fixed',
             ...(dropPos.top    !== undefined ? { top:    dropPos.top }    : {}),

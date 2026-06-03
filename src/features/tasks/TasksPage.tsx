@@ -909,9 +909,8 @@ function TaskDetailDialog({
               <div className="flex justify-between py-1.5">
                 <span className="text-muted-foreground">Created by</span>
                 <span className="font-medium">
-                  {task.created_by
-                    ? (profilesList.find(p => p.user_id === task.created_by)?.full_name ?? '—')
-                    : '—'}
+                  {task.created_by_name
+                    ?? (task.created_by ? (profilesList.find(p => p.user_id === task.created_by)?.full_name ?? '—') : '—')}
                 </span>
               </div>
             </div>
