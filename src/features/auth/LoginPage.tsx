@@ -184,7 +184,7 @@ export default function LoginPage() {
         </div>
 
         <p className="text-center text-xs text-muted-foreground">
-          JZ Smart Media — Internal Operations Platform
+          JZ Smart Media | Internal Operations Platform
         </p>
       </div>
     </div>
